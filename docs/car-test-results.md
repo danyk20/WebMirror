@@ -26,6 +26,20 @@ Rows that worked, repeated with a passenger watching in Drive (page stays up?): 
 - Car mode (H.264 + mandatory HTTPS, or JPEG with HTTPS optional): ____
 - If no row loaded: stop and review.
 
+## Car test 1b: hostnames and IPv6
+
+Setup as car test 1. The app lists "Addresses" and "Names (for the car test)" (public service sslip.io; the car needs internet through the phone to resolve them).
+
+Date: ____  Car software version: ____  Phone: ____
+
+| # | URL typed in the car | Tests | Loads? | Probe JSON file | Notes |
+|---|---|---|---|---|---|
+| 1 | `http://<hotspot-ipv4-with-dashes>.sslip.io:8080` | hostname -> hotspot IPv4 | | | |
+| 2 | `http://[<phone-ipv6>]:8080` | raw IPv6 | | | |
+| 3 | `http://<ipv6-with-dashes>.sslip.io:8080` | hostname -> IPv6 | | | |
+
+`http://test-ipv6.com` in the car browser reports IPv6 connectivity? ____
+
 ## Desk test M1.1 — virtual address over the phone hotspot (2026-11-16)
 
 Phone: Galaxy S22 (SM-S901U1), Android 16. Mac joined to the phone's hotspot (phone `swlan0` 10.15.23.199).

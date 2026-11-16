@@ -36,7 +36,7 @@ import java.util.concurrent.TimeUnit
 
 data class ServiceState(
     val running: Boolean = false,
-    val urls: List<String> = emptyList(),
+    val urls: Addresses.UrlList = Addresses.UrlList.EMPTY,
     /** True while the HTTPS server on [MirrorService.TLS_PORT] is up. */
     val httpsRunning: Boolean = false,
     /** Why HTTPS could not start (HTTP is unaffected), or null. */
@@ -129,7 +129,7 @@ class MirrorService : Service() {
                 }
             }, URL_POLL_SECONDS, URL_POLL_SECONDS, TimeUnit.SECONDS)
         }
-        _state.update { it.copy(running = true, urls = emptyList(), viewerCount = 0, serverError = null) }
+        _state.update { it.copy(running = true, urls = Addresses.UrlList.EMPTY, viewerCount = 0, serverError = null) }
         postNotification()
         registerNetworkCallback()
         TlsStore.refresh(this)
@@ -177,7 +177,7 @@ class MirrorService : Service() {
     private fun refreshUrls() {
         val virtual = VirtualIpService.state.value.let { if (it.active) it.address else null }
         val httpsNames = if (_state.value.httpsRunning) TlsStore.state.value.info?.hostNames.orEmpty() else emptyList()
-        val urls = Addresses.buildUrls(Addresses.localIpv4().map { it.ip }, virtual, PORT, httpsNames, TLS_PORT)
+        val urls = Addresses.buildUrls(Addresses.localIpv4().map { it.ip }, virtual, PORT, httpsNames, TLS_PORT, Addresses.localIpv6().map { it.ip })
         _state.update { if (it.running) it.copy(urls = urls) else it }
     }
 
@@ -234,7 +234,7 @@ class MirrorService : Service() {
         }
         hub.events = null
         getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
-        _state.update { it.copy(running = false, urls = emptyList(), viewerCount = 0, httpsRunning = false, tlsError = null) }
+        _state.update { it.copy(running = false, urls = Addresses.UrlList.EMPTY, viewerCount = 0, httpsRunning = false, tlsError = null) }
     }
 
     private fun postNotification() {

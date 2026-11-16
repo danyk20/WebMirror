@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -199,14 +200,22 @@ private fun MainScreen(
             if (state.urls.isEmpty()) {
                 Text("Server running, but no network address found. Connect to Wi-Fi or enable the hotspot.")
             } else {
+                val urls = state.urls
                 Text("Open in a browser:", style = MaterialTheme.typography.titleMedium)
-                for (url in state.urls) {
-                    Text(url, fontFamily = FontFamily.Monospace)
+                UrlGroup("Addresses", urls.addresses)
+                if (urls.names.isNotEmpty()) {
+                    UrlGroup("Names (for the car test)", urls.names)
+                    Text(
+                        "These names point at the addresses above through the public service sslip.io. " +
+                            "The device you type them into needs internet access to look them up.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
-                val qr = remember(state.urls.first()) { qrBitmap(state.urls.first(), 512) }
+                UrlGroup("https (certificate)", urls.https)
+                val qr = remember(urls.addresses.firstOrNull { !it.contains('[') } ?: urls.addresses.firstOrNull() ?: urls.https.first()) { qrBitmap(urls.addresses.firstOrNull { !it.contains('[') } ?: urls.addresses.firstOrNull() ?: urls.https.first(), 512) }
                 Image(
                     bitmap = qr.asImageBitmap(),
-                    contentDescription = "QR code for ${state.urls.first()}",
+                    contentDescription = "QR code for ${urls.addresses.firstOrNull { !it.contains('[') } ?: urls.addresses.firstOrNull() ?: urls.https.first()}",
                     filterQuality = FilterQuality.None,
                     modifier = Modifier.size(220.dp),
                 )
@@ -246,6 +255,19 @@ private fun MainScreen(
 @Composable
 private fun SectionTitle(text: String) {
     Text(text, style = MaterialTheme.typography.titleLarge)
+}
+
+@Composable
+private fun UrlGroup(title: String, urls: List<String>) {
+    if (urls.isEmpty()) return
+    Text(title, style = MaterialTheme.typography.labelLarge)
+    SelectionContainer {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            for (url in urls) {
+                Text(url, fontFamily = FontFamily.Monospace, fontSize = 18.sp)
+            }
+        }
+    }
 }
 
 @Composable
