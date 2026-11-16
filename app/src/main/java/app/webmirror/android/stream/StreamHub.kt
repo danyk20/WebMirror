@@ -47,6 +47,13 @@ class StreamHub {
     fun helloJson(): String =
         """{"t":"hello","v":$PROTOCOL_VERSION,"mode":"jpeg","codec":"","width":0,"height":0,"fps":0,"audio":"off"}"""
 
+    /** Closes and unregisters every sink that has been silent for longer than [maxIdleMs]. */
+    fun sweepIdle(maxIdleMs: Long) {
+        for (s in sinks) {
+            if (s is Expirable) s.closeIfIdle(maxIdleMs)
+        }
+    }
+
     fun requestKeyframe() {
         keyframeRequester?.invoke()
     }

@@ -6,11 +6,11 @@ Android app (Android 10+, Kotlin) that turns the phone into a small web server t
 
 1. Install Android Studio and run its setup wizard (installs the Android SDK and platform tools).
 2. Open this folder (`File > Open`). Keep "Gradle JDK" on the bundled JDK (Settings > Build Tools > Gradle). The build needs JDK 17+.
-3. **Generate the Gradle wrapper.** This repo contains `gradle/wrapper/gradle-wrapper.properties` (Gradle 9.6.0, the version Android Gradle Plugin 9.5.1 requires) but not `gradlew`, `gradlew.bat` or `gradle-wrapper.jar`, because they could not be created without Android Studio. Android Studio will sync with its own Gradle; to create the wrapper files run in a terminal inside the project (needs a local Gradle install) `gradle wrapper --gradle-version 9.6.0`, or use Android Studio's terminal after the first sync. Then commit `gradlew`, `gradlew.bat` and `gradle/wrapper/gradle-wrapper.jar`.
+3. The Gradle wrapper (`./gradlew`, Gradle 9.9.0) is in the repo; Android Studio uses it automatically.
 4. Let Android Studio install any missing SDK platform (API 37) and build tools it asks for.
 5. If you create a `local.properties` it is git-ignored; Android Studio writes `sdk.dir` there.
 
-Versions (see `gradle/libs.versions.toml`): AGP 9.5.1, Gradle 9.6.0, Kotlin 2.4.21, Compose BOM 2026.09.00, compileSdk/targetSdk 37, minSdk 29.
+Versions (see `gradle/libs.versions.toml`): AGP 9.5.1, Gradle 9.9.0 (AGP needs at least 9.6.0), Kotlin 2.4.21, Compose BOM 2026.09.00, compileSdk/targetSdk 37, minSdk 29.
 
 ## Run on the phone
 

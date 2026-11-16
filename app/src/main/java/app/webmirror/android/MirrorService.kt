@@ -18,6 +18,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import java.io.IOException
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
 
 data class ServiceState(
     val running: Boolean = false,
@@ -37,6 +40,7 @@ class MirrorService : Service() {
 
     private val hub = StreamHub()
     private var server: WebServer? = null
+    private var sweeper: ScheduledExecutorService? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -78,6 +82,17 @@ class MirrorService : Service() {
             return
         }
         server = s
+        sweeper = Executors.newSingleThreadScheduledExecutor { r ->
+            Thread(r, "idle-sweeper").apply { isDaemon = true }
+        }.also { ex ->
+            ex.scheduleWithFixedDelay({
+                try {
+                    hub.sweepIdle(IDLE_TIMEOUT_MS)
+                } catch (e: Exception) {
+                    Log.w(TAG, "sweep failed: $e")
+                }
+            }, 2, 2, TimeUnit.SECONDS)
+        }
         val urls = Addresses.localIpv4().map { Addresses.url(it.ip, PORT) }
         _state.update { it.copy(running = true, urls = urls, viewerCount = 0) }
         postNotification()
@@ -85,6 +100,8 @@ class MirrorService : Service() {
     }
 
     private fun stopServer() {
+        sweeper?.shutdownNow()
+        sweeper = null
         val s = server
         server = null
         if (s != null) {
@@ -133,6 +150,7 @@ class MirrorService : Service() {
     companion object {
         private const val TAG = "WebMirror"
         const val PORT = 8080
+        private const val IDLE_TIMEOUT_MS = 10_000L
         private const val ACTION_STOP = "app.webmirror.android.STOP"
         private const val CHANNEL_ID = "webmirror"
         private const val NOTIFICATION_ID = 1

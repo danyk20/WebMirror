@@ -1,6 +1,7 @@
 package app.webmirror.android.server
 
 import android.util.Log
+import app.webmirror.android.stream.Expirable
 import app.webmirror.android.stream.Packet
 import app.webmirror.android.stream.StreamHub
 import app.webmirror.android.stream.StreamSink
@@ -21,7 +22,7 @@ import java.util.concurrent.TimeUnit
 class ClientSession(
     handshake: NanoHTTPD.IHTTPSession,
     private val hub: StreamHub,
-) : NanoWSD.WebSocket(handshake), StreamSink {
+) : NanoWSD.WebSocket(handshake), StreamSink, Expirable {
 
     private sealed interface Outgoing {
         class Bin(val packet: Packet) : Outgoing
@@ -37,6 +38,9 @@ class ClientSession(
 
     @Volatile
     private var stopped = false
+
+    @Volatile
+    private var lastSeenNanos = System.nanoTime()
 
     @Volatile
     var viewerH264 = false
@@ -74,9 +78,27 @@ class ClientSession(
         }
     }
 
+    // ---- Expirable (idle sweep) ----
+
+    override fun closeIfIdle(maxIdleMs: Long): Boolean {
+        if (stopped) return false
+        val idleMs = (System.nanoTime() - lastSeenNanos) / 1_000_000
+        if (idleMs <= maxIdleMs) return false
+        Log.i(TAG, "viewer idle for $idleMs ms, closing")
+        shutdown()
+        forceCloseSocket()
+        return true
+    }
+
     // ---- NanoWSD.WebSocket callbacks ----
 
+    /** Called by NanoWSD for every received frame of any opcode (incl. ping/pong); used as liveness mark. */
+    override fun debugFrameReceived(frame: WebSocketFrame?) {
+        lastSeenNanos = System.nanoTime()
+    }
+
     override fun onOpen() {
+        lastSeenNanos = System.nanoTime()
         val t = Thread({ writeLoop() }, "ws-writer")
         t.isDaemon = true
         writer = t
@@ -165,8 +187,25 @@ class ClientSession(
             // shutdown
         } catch (e: IOException) {
             Log.i(TAG, "write failed: $e")
+            failWriter()
         } catch (e: Exception) {
             Log.w(TAG, "writer error: $e")
+            failWriter()
+        }
+    }
+
+    /** Writer died: unregister the viewer and close the socket so the reader thread ends too. */
+    private fun failWriter() {
+        shutdown()
+        forceCloseSocket()
+    }
+
+    /** Closing the handshake input stream closes the underlying socket (best effort). */
+    private fun forceCloseSocket() {
+        try {
+            handshakeRequest.inputStream.close()
+        } catch (e: Exception) {
+            // already closed
         }
     }
 

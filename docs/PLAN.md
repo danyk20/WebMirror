@@ -59,7 +59,7 @@ Rules that keep future features cheap:
 
 | Offset | Size | Field | Values |
 |---|---|---|---|
-| 0 | 1 | `type` | `1` = H.264 access unit, `2` = JPEG image, `3` = PCM audio (M5) |
+| 0 | 1 | `type` | `1` = H.264 access unit, `2` = JPEG image, `3` = PCM audio (M5), `0` = probe throughput dummy (M0 `blast`; ignored by the player) |
 | 1 | 1 | `flags` | bit 0 = keyframe (only for type 1) |
 | 2 | 2 | reserved | `0` |
 | 4 | 4 | `ptsHi` | upper 32 bits of presentation time in microseconds |
@@ -78,6 +78,8 @@ Rules that keep future features cheap:
 | page → phone | `kf` | — | "I lost sync, send a keyframe." |
 | page → phone | `stats` | `fps, queue, dropped, bufferMs, ua` | Every 2 s. Also acts as keep-alive. |
 | page → phone | `probe` | `results:{...}` | Probe page results (M0). |
+| page → phone | `blast` | — | M0 throughput test: phone sends 100 binary packets of type `0` (50 000 bytes payload each), then `blastDone`. |
+| phone → page | `blastDone` | `packets, bytes` | End marker of a `blast`. |
 | page → phone | `input` | reserved for future touch/typing | Not implemented. Phone ignores unknown `t`. |
 
 ### 2.2 Video modes
