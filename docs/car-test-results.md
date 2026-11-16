@@ -25,3 +25,18 @@ Rows that worked, repeated with a passenger watching in Drive (page stays up?): 
 - `VideoDecoder` present and H.264 supported on the HTTPS row? ____
 - Car mode (H.264 + mandatory HTTPS, or JPEG with HTTPS optional): ____
 - If no row loaded: stop and review.
+
+## Desk test M1.1 — virtual address over the phone hotspot (2026-11-16)
+
+Phone: Galaxy S22 (SM-S901U1), Android 16. Mac joined to the phone's hotspot (phone `swlan0` 10.15.23.199).
+
+| Test from the Mac | Result |
+|---|---|
+| `http://10.15.23.199:8080/probe.html` (hotspot address) | 200 — works |
+| `ping 198.51.100.1` (virtual address) | answered by the phone (ttl 64) |
+| `http://198.51.100.1:8099` (closed port) | refused immediately (reaches the phone) |
+| `http://198.51.100.1:8080/probe.html` | **times out** |
+
+**Cause (confirmed):** Android's connectivity module installs an "ingress discard" rule for every address owned by a `VpnService` interface. `adb shell dumpsys connectivity trafficcontroller` shows `sIngressDiscardMap: [/198.51.100.1]: tun0, tun0`: packets for that address are delivered to an app socket only if they arrive on `tun0`. Packets from hotspot clients arrive on `swlan0` and are dropped. Routing itself is correct. `Builder.allowBypass()` does not remove the rule (tried).
+
+**Conclusion:** the virtual-address approach of plan M1.1 does not work on current Android. The code stays in the repo but must not be relied on. Decision on the replacement is open.
