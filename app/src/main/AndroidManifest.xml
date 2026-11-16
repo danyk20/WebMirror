@@ -29,6 +29,16 @@
             android:name=".MirrorService"
             android:foregroundServiceType="mediaProjection"
             android:exported="false" />
+
+        <!-- Not exported: the system (uid 1000) binds VpnService regardless; the permission is required by the platform. -->
+        <service
+            android:name=".net.VirtualIpService"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+        </service>
     </application>
 
 </manifest>

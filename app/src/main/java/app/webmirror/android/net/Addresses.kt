@@ -29,4 +29,22 @@ object Addresses {
     }
 
     fun url(ip: String, port: Int): String = "http://$ip:$port"
+
+    /**
+     * URLs to show: http for every local address (the virtual address, if active, listed after them),
+     * then https for every certificate host name. No duplicates.
+     */
+    fun buildUrls(
+        localIps: List<String>,
+        virtualIp: String?,
+        httpPort: Int,
+        httpsNames: List<String>,
+        httpsPort: Int,
+    ): List<String> {
+        val urls = LinkedHashSet<String>()
+        for (ip in localIps) if (ip != virtualIp) urls.add(url(ip, httpPort))
+        if (virtualIp != null) urls.add(url(virtualIp, httpPort))
+        for (name in httpsNames) urls.add("https://$name:$httpsPort")
+        return urls.toList()
+    }
 }
