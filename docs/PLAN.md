@@ -289,7 +289,7 @@ Repeat the rows that worked while a passenger watches with the car in Drive, to 
 
 ### M2 — Screen capture + H.264 + WebCodecs player (desk milestone, test with laptop Chrome)
 
-Developer shortcut: `adb forward tcp:8080 tcp:8080`, then open `http://localhost:8080` in desktop Chrome. `localhost` counts as a secure page, so WebCodecs works without any certificate.
+Developer shortcut: `adb forward tcp:18080 tcp:8080` (local port 18080, because this Mac already has another program on localhost:8080), then open `http://127.0.0.1:18080` in desktop Chrome. `127.0.0.1` counts as a secure page, so WebCodecs works without any certificate.
 
 **M2.1 Consent and service start order (get this exactly right; wrong order crashes on Android 14+)**
 1. `MainActivity`: on Android 13+ request `POST_NOTIFICATIONS`.
@@ -445,7 +445,7 @@ Then **tune the numbers in §2.3** to the highest settings the car holds with ze
 | Level | How |
 |---|---|
 | Unit | `./gradlew test` — `PacketTest`, `CaptureSizeTest`, `AvcUtilTest`. |
-| Desk, H.264 | `adb forward tcp:8080 tcp:8080` → Chrome `http://localhost:8080`. Stopwatch delay test, rotation, second tab, 30-minute soak with Chrome Task Manager open. |
+| Desk, H.264 | `adb forward tcp:18080 tcp:8080` → Chrome `http://127.0.0.1:18080`. Stopwatch delay test, rotation, second tab, 30-minute soak with Chrome Task Manager open. |
 | Desk, JPEG | Chrome at `http://<phone-lan-ip>:8080` (no WebCodecs on plain HTTP) and the "Force JPEG" setting. |
 | Desk, virtual IP | Laptop on the phone hotspot: `curl -v http://<virtual-ip>:8080/probe.html`. |
 | Desk, HTTPS | Laptop with a hosts-file entry for the certificate's name → `https://<name>:8443`, padlock valid, WebCodecs active. |

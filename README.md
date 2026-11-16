@@ -24,7 +24,7 @@ Versions (see `gradle/libs.versions.toml`): AGP 9.5.1, Gradle 9.9.0 (AGP needs a
 - Laptop on the same Wi-Fi opens `http://<phone-ip>:8080/probe.html`, sees the results table, and the probe JSON appears in the app text box (Share button sends it via the share sheet).
 - Laptop joined to the phone's hotspot can do the same (use the phone's hotspot address shown in the app).
 - Close the browser tab: the viewer count in the app drops within 5 seconds.
-- Optional: `adb forward tcp:8080 tcp:8080` and open `http://localhost:8080/probe.html`.
+- Optional: `adb forward tcp:18080 tcp:8080` and open `http://127.0.0.1:18080/probe.html` (port 18080 because another program on the development Mac already uses localhost:8080).
 
 ## Notes
 

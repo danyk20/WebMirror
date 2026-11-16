@@ -107,7 +107,13 @@ class ClientSession(
     }
 
     override fun onClose(code: CloseCode?, reason: String?, initiatedByRemote: Boolean) {
-        Log.i(TAG, "viewer closed: $code $reason remote=$initiatedByRemote")
+        // A closed browser tab arrives as InternalServerError "Handler terminated without closing the
+        // connection" from NanoWSD; that is a normal disconnect, not an error.
+        if (code == CloseCode.InternalServerError && reason?.startsWith("Handler terminated") == true) {
+            Log.i(TAG, "viewer disconnected")
+        } else {
+            Log.i(TAG, "viewer disconnected ($code${if (reason.isNullOrEmpty()) "" else ": $reason"}, remote=$initiatedByRemote)")
+        }
         shutdown()
     }
 
