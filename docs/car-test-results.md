@@ -120,3 +120,12 @@ Certificate: Let's Encrypt for `mirror.danielkosc.eu`, issued 2026-11-17, expire
 - JPEG mode (Force JPEG) also plays in Drive; started at 10–15 fps, rose to ~30 fps later.
 - **Delay phone → car is too large** (amount not yet measured); latency control being added.
 - Bluetooth audio delay offset: not yet set.
+
+## Desk run of the automatic test (2026-11-17, Quick mode, viewer = headless Chrome on the Mac over USB)
+
+Full report: `docs/test-runs/20261117-205929-desk.csv` / `.json`. All 16 phases completed, no reconnects, no decoder resets, no drops; adaptive bitrate stayed at 4000 kbps (no false congestion after the fix in bba69d5).
+
+- Capture → draw delay (e2e P95) is ~98 ms with defaults; **80 ms of it is the jitter buffer**. `jitter-30ms` gave 48 ms, `jitter-150ms` 167 ms. The pipeline itself (encode + transfer + decode) is roughly 15–20 ms on this link.
+- On this fast, clean link the other options make no measurable difference (97–102 ms); they are meant for the car's slower, jittery Wi-Fi, so the car runs are what matters.
+- `legacy` (all improvements off) had higher RTT (23 ms vs ~4 ms) and a worse max (122 ms).
+- `pacing-vsync` adds ~15 ms; `jpeg` 105 ms at 20 fps and ~12 Mbit/s vs ~4 Mbit/s for H.264.
