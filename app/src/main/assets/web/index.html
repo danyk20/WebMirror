@@ -2,13 +2,31 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
 <title>WebMirror</title>
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
-<h1>WebMirror</h1>
-<p>The WebMirror server on the phone is running.</p>
-<p>The screen player is not built yet. To check what this browser can do, open the <a href="/probe.html">probe page</a>.</p>
+<body class="player">
+<canvas id="screen" width="16" height="16"></canvas>
+<div id="message">Connecting&hellip;</div>
+<div id="overlay" hidden>
+  <div class="row">
+    <span id="status">Connecting&hellip;</span>
+    <button id="close" type="button" aria-label="Close">&times;</button>
+  </div>
+  <div id="stats"></div>
+  <div class="row delay">
+    <button id="delayMinus" type="button" aria-label="Less delay">&minus;</button>
+    <input id="delay" type="range" min="0" max="1500" step="10" value="0">
+    <button id="delayPlus" type="button" aria-label="More delay">+</button>
+    <span id="delayValue">0 ms</span>
+  </div>
+  <div id="hint" hidden>Adjust delay until lips match sound.</div>
+  <div class="row">
+    <button id="fullscreen" type="button">Fullscreen</button>
+    <a href="/probe.html">Probe page</a>
+  </div>
+</div>
+<script src="player.js"></script>
 </body>
 </html>

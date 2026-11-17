@@ -9,3 +9,20 @@ th { background: #1c2128; width: 38%; }
 .bad { color: #ff8a80; }
 #status { margin: 8px 0; padding: 8px; background: #1c2128; }
 canvas#speed { width: 160px; height: 90px; border: 1px solid #3a4048; }
+
+/* ---- player (index.html) ---- */
+body.player { padding: 0; overflow: hidden; background: #000; position: fixed; left: 0; top: 0; right: 0; bottom: 0; -webkit-user-select: none; user-select: none; }
+.player canvas { position: absolute; left: 0; top: 0; background: #000; }
+#message { position: absolute; left: 0; right: 0; top: 40%; text-align: center; font-size: 22px; color: #9aa0a6; pointer-events: none; }
+#overlay { position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 16px; background: rgba(16, 20, 24, 0.92); font-size: 18px; }
+#overlay[hidden], #hint[hidden], #message[hidden] { display: none; }
+#overlay .row { display: flex; align-items: center; margin: 8px 0; }
+#overlay .row > * { margin-right: 12px; }
+#overlay button { min-width: 56px; min-height: 56px; font-size: 22px; color: #e8eaed; background: #2b333c; border: 1px solid #4a525c; border-radius: 8px; }
+#overlay #close { margin-left: auto; margin-right: 0; }
+#overlay #fullscreen { font-size: 18px; padding: 0 16px; }
+#status { font-weight: bold; }
+#stats { white-space: pre; color: #bdc1c6; font-size: 15px; font-family: monospace; }
+#delay { flex: 1; min-height: 40px; }
+#delayValue { min-width: 80px; text-align: right; }
+#hint { color: #bdc1c6; font-size: 15px; }
