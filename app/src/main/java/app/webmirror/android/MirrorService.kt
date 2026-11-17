@@ -404,13 +404,16 @@ class MirrorService : Service() {
     /** (Re)starts or stops the HTTPS server to match the stored certificate. HTTP is never affected. */
     private fun applyTls(info: app.webmirror.android.net.TlsInfo?) {
         stopTls()
+        server?.httpsRedirectHost = null
         if (info != null) {
             try {
                 val ctx = TlsStore.sslContext(this)
                 val t = WebServer(TLS_PORT, applicationContext.assets, hub)
-                t.makeSecure(ctx.serverSocketFactory, null)
+                t.enableTls(ctx)
                 t.start(0, true)
                 tlsServer = t
+                server?.httpsRedirectHost = info.hostNames.firstOrNull()
+                server?.httpsPort = TLS_PORT
                 _state.update { it.copy(httpsRunning = true, tlsError = null) }
                 Log.i(TAG, "https started on port $TLS_PORT")
             } catch (e: Exception) {
