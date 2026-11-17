@@ -1,10 +1,10 @@
 // WebMirror player. Plain script, no modules; no ?. , ??, or BigInt (old Chromium in the car).
-// Protocol: docs/PLAN.md section 2.1. Decoders are chosen per mode (hello.mode): "jpeg" and "h264".
+// Protocol: docs/PLAN.md section 2.1. Decoders are chosen per mode (hello.mode): "jpeg", "h264" and "hevc" (the two video modes share packet type 1 and one decoder implementation).
 (function () {
   'use strict';
 
   // ---- constants ----
-  const DEFAULT_BUFFER_MS = 80;    // network jitter buffer (plan 2.4); the phone's hello.cfg.jitterBufferMs overrides it
+  const DEFAULT_BUFFER_MS = 40;    // network jitter buffer (plan 2.4); the phone's hello.cfg.jitterBufferMs overrides it
   const BASE_WINDOW_MS = 2000;     // clock mapping = minimum over the last 2 s (re-adapts when the network speeds up)
   const MAX_QUEUE = 200;           // hard cap of waiting packets
   const DEFAULT_LATE_SKIP = 2;     // a frame later than this many frame intervals is skipped (hello.cfg.skipLateFrames; 0 = never)
@@ -23,6 +23,7 @@
   const TYPE_H264 = 1;
   const TYPE_JPEG = 2;
   const H264_PROBE_CODEC = 'avc1.42E01F';
+  const HEVC_PROBE_CODEC = 'hev1.1.6.L93.B0';   // HEVC Main 3.1, the family the phone's encoder produces
   const MAX_DECODE_QUEUE = 3;      // VideoDecoder backlog that counts as overload
   const RAF_STALL_MS = 100;        // vsync pacing: no animation frame for this long = rAF is throttled, draw at once
   const E2E_RAW_MAX = 150;         // most per-frame e2e values sent with one stats message (the phone's automatic test aggregates them)
@@ -70,6 +71,8 @@
   let pumpTimer = null;
   let h264Supported = false;      // VideoDecoder exists and isConfigSupported said yes
   let h264Check = null;           // promise of that check, run once
+  let hevcSupported = false;      // isConfigSupported said yes for HEVC with prefer-hardware
+  let hevcCheck = null;
   let paused = false;             // latest hello said mode "paused"
   let lastRxAt = 0;               // when anything was last received on the socket
   let lastKfAt = -100000;         // when a keyframe was last requested
@@ -331,8 +334,9 @@
     };
   })();
 
-  // H.264: WebCodecs VideoDecoder -> canvas. Annex-B without `description`: SPS/PPS come inside keyframes.
-  decoders.h264 = (function () {
+  // H.264 and HEVC: WebCodecs VideoDecoder -> canvas. Annex-B without `description`: parameter sets
+  // (SPS/PPS, for HEVC VPS/SPS/PPS) come inside keyframes. The codec string comes from hello.codec.
+  function makeVideoDecoder() {
     let dec = null;
     let codec = '';
     let size = '';
@@ -377,7 +381,9 @@
         }
       });
       dec = mine;
-      mine.configure({ codec: codec, optimizeForLatency: true });
+      const cfg = { codec: codec, optimizeForLatency: true };
+      if (codec.indexOf('hev1') === 0 || codec.indexOf('hvc1') === 0) cfg.hardwareAcceleration = 'prefer-hardware';
+      mine.configure(cfg);
     }
 
     function recover() {
@@ -439,7 +445,9 @@
         }
       }
     };
-  })();
+  }
+  decoders.h264 = makeVideoDecoder();
+  decoders.hevc = makeVideoDecoder();
 
   function chooseDecoder(h) {
     if (h.mode === 'paused') {
@@ -659,6 +667,31 @@
     return h264Check;
   }
 
+  // HEVC only if the browser says it can decode it in hardware (software HEVC would add delay).
+  function checkHevc() {
+    if (hevcCheck) return hevcCheck;
+    hevcCheck = new Promise(function (resolve) {
+      if (!('VideoDecoder' in window) || typeof window.EncodedVideoChunk !== 'function') {
+        resolve(false);
+        return;
+      }
+      try {
+        window.VideoDecoder.isConfigSupported({
+          codec: HEVC_PROBE_CODEC, optimizeForLatency: true, hardwareAcceleration: 'prefer-hardware'
+        }).then(
+          function (r) {
+            hevcSupported = !!(r && r.supported);
+            resolve(hevcSupported);
+          },
+          function () { resolve(false); }
+        );
+      } catch (e) {
+        resolve(false);
+      }
+    });
+    return hevcCheck;
+  }
+
   // ---- connection ----
   function connect() {
     reconnectTimer = null;
@@ -685,9 +718,9 @@
       socket.wmOpened = true;
       clearTimeout(connectTimer);
       setStatus('Waiting for the stream…');
-      checkH264().then(function (ok) {
+      Promise.all([checkH264(), checkHevc()]).then(function (r) {
         if (ws === socket) {
-          send({ t: 'hello', v: 1, h264: ok, pin: '' });
+          send({ t: 'hello', v: 1, h264: r[0], hevc: r[1], pin: '' });
           sendView();
         }
       });

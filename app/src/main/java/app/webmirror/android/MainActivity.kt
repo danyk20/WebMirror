@@ -428,6 +428,12 @@ private fun AdvancedSection(settings: Settings, encoder: String?, running: Boole
     SwitchRow(labels.getValue("tcpNoDelay"), cfg.tcpNoDelay) { change(cfg.copy(tcpNoDelay = it)) }
     NumberRow("sendBufferKb", cfg.sendBufferKb, resetToken) { change(cfg.copy(sendBufferKb = it)) }
     SwitchRow(labels.getValue("lowLatencyEncoder"), cfg.lowLatencyEncoder) { change(cfg.copy(lowLatencyEncoder = it)) }
+    Text(labels.getValue("codec"), style = MaterialTheme.typography.labelLarge)
+    Column(Modifier.selectableGroup()) {
+        for (c in StreamConfig.CODECS) {
+            ChoiceRow(c, cfg.codec == c, true) { change(cfg.copy(codec = c)) }
+        }
+    }
     Text(labels.getValue("profile"), style = MaterialTheme.typography.labelLarge)
     Column(Modifier.selectableGroup()) {
         for (p in StreamConfig.PROFILES) {

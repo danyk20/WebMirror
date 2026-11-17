@@ -25,7 +25,8 @@ class StreamConfigTest {
         assertFalse(c.fitToViewer)
         assertEquals(6, c.maxInFlight)
         assertEquals(150, c.dropAfterMs)
-        assertEquals(80, c.jitterBufferMs)
+        assertEquals(40, c.jitterBufferMs)
+        assertEquals("h264", c.codec)
         assertEquals(2, c.skipLateFrames)
         assertTrue(c.adaptiveBitrate)
         assertEquals(800, c.minBitrateKbps)
@@ -35,13 +36,13 @@ class StreamConfigTest {
     @Test
     fun mapRoundTrip() {
         val c = StreamConfig(
-            tcpNoDelay = false, sendBufferKb = 0, lowLatencyEncoder = false, profile = "high", bitrateMode = "vbr",
+            tcpNoDelay = false, sendBufferKb = 0, lowLatencyEncoder = false, profile = "high", codec = "hevc", bitrateMode = "vbr",
             intraRefresh = true, keyframeIntervalS = 5, fitToViewer = true, maxInFlight = 2, dropAfterMs = 400,
             jitterBufferMs = 10, skipLateFrames = 0, adaptiveBitrate = false, minBitrateKbps = 1500, pacing = "vsync",
         )
         assertEquals(c, StreamConfig.fromMap(c.toMap()))
         assertEquals(StreamConfig(), StreamConfig.fromMap(StreamConfig().toMap()))
-        assertEquals(15, c.toMap().size)
+        assertEquals(16, c.toMap().size)
     }
 
     @Test

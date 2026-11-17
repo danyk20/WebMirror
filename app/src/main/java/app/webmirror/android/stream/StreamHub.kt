@@ -64,6 +64,7 @@ class StreamHub(
     fun applyConfig(c: StreamConfig) {
         config = c
         update { it.copy(cfg = c.pageJson()) }
+        recomputeMode() // the codec choice may have changed
     }
 
     /** Set by the capture owner: a viewer's reported window changed (for "fit to viewer"). */
@@ -100,23 +101,29 @@ class StreamHub(
         }
 
     /**
-     * The mode the viewers need (plan 2.2): h264 only if every viewer that has said hello said `h264:true`
-     * and "Force JPEG" is off; any `h264:false` viewer forces jpeg. Without any such viewer the mode that
-     * was wanted last stays (no needless encoder switch when the last viewer leaves).
+     * The mode the viewers need (plan 2.2): a video mode only if every viewer that has said hello said
+     * `h264:true` and "Force JPEG" is off; any `h264:false` viewer forces jpeg. The video mode is hevc when
+     * `config.codec` is "hevc" and every such viewer said `hevc:true`, else h264. Without any such viewer the
+     * mode that was wanted last stays (no needless encoder switch when the last viewer leaves).
      */
     fun wantedMode(): String = synchronized(lock) { computeWanted() }
 
     private fun computeWanted(): String {
         if (forceJpegFlag) return MODE_JPEG
         var known = 0
+        var allHevc = true
         for (s in sinks) {
             when (s.h264Capable) {
                 false -> return MODE_JPEG
-                true -> known++
+                true -> {
+                    known++
+                    if (!s.hevcCapable) allHevc = false
+                }
                 null -> Unit
             }
         }
-        return if (known > 0) MODE_H264 else lastWantedMode
+        if (known == 0) return lastWantedMode
+        return if (config.codec == StreamConfig.CODEC_HEVC && allHevc) MODE_HEVC else MODE_H264
     }
 
     /** Recomputes the wanted mode and, when it changed, asks the capture owner to switch. */
@@ -165,9 +172,9 @@ class StreamHub(
         if (needKeyframe) requestKeyframe()
     }
 
-    /** The H.264 encoder has its SPS/PPS: announce the stream (mode h264 with its codec string). */
-    fun onVideoConfig(codec: String, width: Int, height: Int, fps: Int) {
-        update { it.copy(mode = MODE_H264, codec = codec, width = width, height = height, fps = fps) }
+    /** The video encoder has its parameter sets: announce the stream ([mode] h264 or hevc, with its codec string). */
+    fun onVideoConfig(mode: String, codec: String, width: Int, height: Int, fps: Int) {
+        update { it.copy(mode = mode, codec = codec, width = width, height = height, fps = fps) }
     }
 
     /**
@@ -213,7 +220,7 @@ class StreamHub(
     fun greet(sink: StreamSink) {
         synchronized(lock) {
             sink.onHello(info.toJson())
-            if (info.mode == MODE_H264) {
+            if (isVideoMode(info.mode)) {
                 for (p in gop) sink.onPacket(p)
             } else {
                 val jpeg = lastJpeg
@@ -293,6 +300,10 @@ class StreamHub(
         const val PROTOCOL_VERSION = 1
         const val MODE_JPEG = "jpeg"
         const val MODE_H264 = "h264"
+        const val MODE_HEVC = "hevc"
+
+        /** h264 and hevc share packet type 1 and the keyframe/GOP handling. */
+        fun isVideoMode(mode: String): Boolean = mode == MODE_H264 || mode == MODE_HEVC
         const val MAX_GOP_PACKETS = 300
         const val KEYFRAME_MIN_INTERVAL_MS = 500L
 

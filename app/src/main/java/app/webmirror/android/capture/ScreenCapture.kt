@@ -10,8 +10,8 @@ import android.os.HandlerThread
 import android.util.Log
 import android.view.Display
 import app.webmirror.android.encode.FrameEncoder
-import app.webmirror.android.encode.H264Encoder
 import app.webmirror.android.encode.JpegEncoder
+import app.webmirror.android.encode.VideoEncoder
 import app.webmirror.android.stream.BitrateController
 import app.webmirror.android.stream.StreamConfig
 import app.webmirror.android.stream.StreamHub
@@ -104,7 +104,8 @@ class ScreenCapture(
                 config = c
                 resetController() // any applied config: the target goes back to the ceiling, with a grace period
                 encoder?.setTarget(controller.value)
-                val rebuild = old.encoderKey != c.encoderKey && mode == StreamHub.MODE_H264
+                // A codec-only change is handled by the mode switch (hub.recomputeMode -> setMode).
+                val rebuild = old.copy(codec = c.codec).encoderKey != c.encoderKey && StreamHub.isVideoMode(mode)
                 if (rebuild || old.fitToViewer != c.fitToViewer) applyChange(forceEncoder = rebuild)
             }
         }
@@ -174,9 +175,9 @@ class ScreenCapture(
     }
 
     private fun newEncoder(s: CaptureSize.Size): FrameEncoder =
-        if (mode == StreamHub.MODE_H264) {
+        if (StreamHub.isVideoMode(mode)) {
             resetController()
-            H264Encoder(s.width, s.height, preset.fps, controller.value, hub, config) { setBaseReport(it) }
+            VideoEncoder(s.width, s.height, preset.fps, controller.value, hub, config, mode == StreamHub.MODE_HEVC) { setBaseReport(it) }
         } else {
             resetController()
             setBaseReport("JPEG ${s.width}x${s.height} @${preset.jpegFps} fps, quality ${preset.jpegQuality}\n(H.264 encoder options do not apply in JPEG mode)")
@@ -185,7 +186,7 @@ class ScreenCapture(
 
     /** Floor and ceiling of the adaptive target for the current mode: bit/s for H.264, quality for JPEG. */
     private fun limits(): Pair<Int, Int> =
-        if (mode == StreamHub.MODE_H264) {
+        if (StreamHub.isVideoMode(mode)) {
             Pair(config.minBitrateKbps * 1000, preset.h264Bitrate)
         } else {
             Pair(BitrateController.MIN_JPEG_QUALITY, preset.jpegQuality)
@@ -199,8 +200,9 @@ class ScreenCapture(
     }
 
     private fun targetText(): String {
-        val unit = if (mode == StreamHub.MODE_H264) "kbps" else "quality"
-        val div = if (mode == StreamHub.MODE_H264) 1000 else 1
+        val video = StreamHub.isVideoMode(mode)
+        val unit = if (video) "kbps" else "quality"
+        val div = if (video) 1000 else 1
         val text = "${controller.value / div}/${controller.ceiling / div} $unit"
         return if (config.adaptiveBitrate) text else "$text fixed"
     }
@@ -219,7 +221,7 @@ class ScreenCapture(
     private fun emitReport() {
         val text = synchronized(reportLock) {
             val base = baseReport ?: return
-            "$base\ntarget: ${hub.targetText}" + if (config.adaptiveBitrate) " (adaptive, floor ${controller.floor / (if (mode == StreamHub.MODE_H264) 1000 else 1)})" else ""
+            "$base\ntarget: ${hub.targetText}" + if (config.adaptiveBitrate) " (adaptive, floor ${controller.floor / (if (StreamHub.isVideoMode(mode)) 1000 else 1)})" else ""
         }
         onEncoderReport(text)
     }
@@ -263,8 +265,18 @@ class ScreenCapture(
         try {
             newEncoder(s)
         } catch (e: Exception) {
-            if (mode != StreamHub.MODE_H264) throw e
-            Log.w(TAG, "h264 encoder unavailable, using jpeg: $e")
+            if (!StreamHub.isVideoMode(mode)) throw e
+            if (mode == StreamHub.MODE_HEVC) {
+                Log.w(TAG, "HEVC encoder unavailable or refused its configuration, using H.264: $e")
+                mode = StreamHub.MODE_H264
+                try {
+                    return newEncoder(s)
+                } catch (e2: Exception) {
+                    Log.w(TAG, "h264 encoder unavailable, using jpeg: $e2")
+                }
+            } else {
+                Log.w(TAG, "h264 encoder unavailable, using jpeg: $e")
+            }
             mode = StreamHub.MODE_JPEG
             newEncoder(s)
         }
@@ -274,7 +286,7 @@ class ScreenCapture(
      * encoder does it itself once it knows its codec string (hub.onVideoConfig).
      */
     private fun publish() {
-        if (mode == StreamHub.MODE_H264) return
+        if (StreamHub.isVideoMode(mode)) return
         hub.update { it.copy(mode = StreamHub.MODE_JPEG, codec = "", width = size.width, height = size.height, fps = preset.jpegFps) }
     }
 

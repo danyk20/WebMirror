@@ -56,7 +56,7 @@ object TestPlan {
     fun legacy(base: StreamConfig = StreamConfig()): StreamConfig = base.copy(
         tcpNoDelay = false, sendBufferKb = 0, lowLatencyEncoder = false, profile = StreamConfig.PROFILE_AUTO,
         bitrateMode = StreamConfig.BITRATE_VBR, intraRefresh = false, fitToViewer = false, maxInFlight = 120,
-        dropAfterMs = 10000, jitterBufferMs = 80, skipLateFrames = 0, adaptiveBitrate = false,
+        dropAfterMs = 10000, jitterBufferMs = 80, codec = StreamConfig.CODEC_H264, skipLateFrames = 0, adaptiveBitrate = false,
         pacing = StreamConfig.PACING_IMMEDIATE,
     )
 
@@ -78,7 +78,9 @@ object TestPlan {
             p("inflight-12", "12 frames in flight", base.copy(maxInFlight = 12)),
             p("drop-after-50ms", "Drop waiting frames after 50 ms", base.copy(dropAfterMs = 50)),
             p("drop-after-400ms", "Drop waiting frames after 400 ms", base.copy(dropAfterMs = 400)),
+            p("hevc", "HEVC (H.265) instead of H.264", base.copy(codec = StreamConfig.CODEC_HEVC)),
             p("jitter-30ms", "Player jitter buffer 30 ms", base.copy(jitterBufferMs = 30)),
+            p("jitter-20ms", "Player jitter buffer 20 ms", base.copy(jitterBufferMs = 20)),
             p("jitter-150ms", "Player jitter buffer 150 ms", base.copy(jitterBufferMs = 150)),
             p("no-adaptive-bitrate", "Adaptive bitrate off", base.copy(adaptiveBitrate = false)),
             p("pacing-vsync", "Player draws once per screen refresh", base.copy(pacing = StreamConfig.PACING_VSYNC)),
@@ -97,6 +99,9 @@ object TestPlan {
         if (spec.forceJpeg) return null
         if (jpegMode) return "the stream was JPEG (a viewer cannot decode H.264), so H.264 options did not apply"
         val text = encoderText ?: return null
+        if (spec.config.codec == StreamConfig.CODEC_HEVC && !text.startsWith("HEVC")) {
+            return "HEVC was not used (a viewer cannot decode it in hardware, or the encoder refused it): H.264 was measured"
+        }
         val lines = text.lines().filter { l -> UNSUPPORTED_MARKERS.any { l.contains(it) } }
         // Only report what this phase asked for: the default phase has the same lines for the same reasons.
         val relevant = lines.filter { l ->

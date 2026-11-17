@@ -10,9 +10,10 @@ import org.junit.Test
 
 class StreamHubTest {
 
-    private class Recorder(var h264: Boolean? = null) : StreamSink {
+    private class Recorder(var h264: Boolean? = null, var hevc: Boolean = false) : StreamSink {
         val log = ArrayList<String>()
         override val h264Capable: Boolean? get() = h264
+        override val hevcCapable: Boolean get() = hevc
         override fun onHello(json: String) { log.add("hello") }
         override fun onPacket(p: Packet) { log.add("packet${p.type}") }
     }
@@ -85,7 +86,7 @@ class StreamHubTest {
     @Test
     fun gopCacheStartsAtLastKeyframeAndIsSentToNewViewers() {
         val hub = StreamHub()
-        hub.onVideoConfig("avc1.42C01F", 8, 8, 30)
+        hub.onVideoConfig(StreamHub.MODE_H264, "avc1.42C01F", 8, 8, 30)
         hub.onPacket(h264(false))                // before any keyframe: ignored by the cache
         hub.onPacket(h264(true))
         hub.onPacket(h264(false))
@@ -158,5 +159,45 @@ class StreamHubTest {
         hub.forceJpeg = true
         hub.forceJpeg = false
         assertEquals(listOf("h264", "jpeg", "h264"), wanted)
+    }
+
+    @Test
+    fun hevcOnlyIfConfiguredAndEveryViewerCanDecodeIt() {
+        val hub = StreamHub()
+        val wanted = ArrayList<String>()
+        hub.modeRequester = { wanted.add(it) }
+        val a = Recorder()
+        val b = Recorder()
+        hub.register(a)
+        hub.register(b)
+        a.h264 = true
+        a.hevc = true
+        hub.greet(a)                                   // codec still h264 in the config
+        assertEquals(listOf("h264"), wanted)
+        hub.applyConfig(StreamConfig(codec = "hevc"))  // the only viewer can: switch
+        assertEquals(listOf("h264", "hevc"), wanted)
+        b.h264 = true
+        b.hevc = false
+        hub.greet(b)                                   // an H.264-only viewer joins: back to h264
+        assertEquals(listOf("h264", "hevc", "h264"), wanted)
+        hub.unregister(b)
+        assertEquals(listOf("h264", "hevc", "h264", "hevc"), wanted)
+        hub.applyConfig(StreamConfig(codec = "h264"))
+        assertEquals("h264", wanted.last())
+        hub.forceJpeg = true
+        assertEquals("jpeg", wanted.last())
+    }
+
+    @Test
+    fun hevcKeyframesFillTheGopCacheLikeH264() {
+        val hub = StreamHub()
+        hub.onVideoConfig(StreamHub.MODE_HEVC, "hev1.1.6.L93.B0", 576, 1280, 30)
+        hub.onPacket(h264(true))
+        hub.onPacket(h264(false))
+        val r = Recorder()
+        hub.register(r)
+        hub.greet(r)
+        assertEquals(listOf("hello", "packet1", "packet1"), r.log)
+        assertTrue(hub.helloJson().contains(""""mode":"hevc","codec":"hev1.1.6.L93.B0""""))
     }
 }

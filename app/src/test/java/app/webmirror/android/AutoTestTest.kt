@@ -26,16 +26,17 @@ class AutoTestTest {
     // ---- plan ----
 
     @Test
-    fun planHasTheSixteenPhasesInOrderAndUniqueNames() {
+    fun planHasTheEighteenPhasesInOrderAndUniqueNames() {
         val plan = TestPlan.phases()
         assertEquals(
             listOf(
                 "default", "legacy", "no-lowlatency-encoder", "profile-high", "vbr", "intra-refresh-on", "fit-to-viewer-on",
-                "inflight-3", "inflight-12", "drop-after-50ms", "drop-after-400ms", "jitter-30ms", "jitter-150ms",
-                "no-adaptive-bitrate", "pacing-vsync", "jpeg",
+                "inflight-3", "inflight-12", "drop-after-50ms", "drop-after-400ms", "hevc", "jitter-30ms", "jitter-20ms",
+                "jitter-150ms", "no-adaptive-bitrate", "pacing-vsync", "jpeg",
             ),
             plan.map { it.name },
         )
+        assertEquals(18, plan.size)
         assertEquals(plan.size - 1, plan.map { it.config.id }.toSet().size) // jpeg shares the default config id
     }
 
@@ -247,5 +248,8 @@ class AutoTestTest {
         assertNotNull(TestPlan.unsupportedNote(plan.getValue("vbr"), text, true))
         assertNull(TestPlan.unsupportedNote(plan.getValue("jpeg"), text, true))
         assertNotEquals("", TestPlan.unsupportedNote(plan.getValue("profile-high"), text, false))
+        // HEVC phase: fine when the encoder text says HEVC, noted when H.264 was measured instead
+        assertNull(TestPlan.unsupportedNote(plan.getValue("hevc"), "HEVC 584x1280 @30 fps\nprofile: main", false))
+        assertNotNull(TestPlan.unsupportedNote(plan.getValue("hevc"), text, false))
     }
 }

@@ -15,7 +15,9 @@ data class StreamConfig(
     val sendBufferKb: Int = 64,
     // ---- encoder (rebuild on change) ----
     val lowLatencyEncoder: Boolean = true,
-    /** "baseline", "main", "high" or "auto". */
+    /** "h264" or "hevc". HEVC is used only if every viewer can decode it in hardware, else H.264 (then JPEG). */
+    val codec: String = CODEC_H264,
+    /** H.264 only (HEVC always uses Main): "baseline", "main", "high" or "auto". */
     val profile: String = PROFILE_BASELINE,
     /** "cbr" or "vbr". */
     val bitrateMode: String = BITRATE_CBR,
@@ -27,12 +29,12 @@ data class StreamConfig(
     val maxInFlight: Int = 6,
     val dropAfterMs: Int = 150,
     // ---- adaptive bitrate (live) ----
-    /** Lower the H.264 bitrate (JPEG: quality) when a viewer falls behind, raise it again when it recovers. */
+    /** Lower the H.264/HEVC bitrate (JPEG: quality) when a viewer falls behind, raise it again when it recovers. */
     val adaptiveBitrate: Boolean = true,
     /** Lowest H.264 bitrate the controller may choose, kbit/s (JPEG: quality never goes below 30). */
     val minBitrateKbps: Int = 800,
     // ---- page (sent in hello.cfg) ----
-    val jitterBufferMs: Int = 80,
+    val jitterBufferMs: Int = 40,
     /** The player skips frames later than this many frame intervals; 0 = never. */
     val skipLateFrames: Int = 2,
     /** "immediate" = draw each decoded frame at once; "vsync" = draw the newest decoded frame once per screen refresh. */
@@ -42,6 +44,7 @@ data class StreamConfig(
     /** The fields whose change needs a new encoder. */
     data class EncoderKey(
         val lowLatencyEncoder: Boolean,
+        val codec: String,
         val profile: String,
         val bitrateMode: String,
         val intraRefresh: Boolean,
@@ -49,7 +52,7 @@ data class StreamConfig(
     )
 
     val encoderKey: EncoderKey
-        get() = EncoderKey(lowLatencyEncoder, profile, bitrateMode, intraRefresh, keyframeIntervalS)
+        get() = EncoderKey(lowLatencyEncoder, codec, profile, bitrateMode, intraRefresh, keyframeIntervalS)
 
     /** Which parts of the running system a change touches. */
     data class Diff(
@@ -77,6 +80,7 @@ data class StreamConfig(
         "tcpNoDelay" to tcpNoDelay,
         "sendBufferKb" to sendBufferKb,
         "lowLatencyEncoder" to lowLatencyEncoder,
+        "codec" to codec,
         "profile" to profile,
         "bitrateMode" to bitrateMode,
         "intraRefresh" to intraRefresh,
@@ -103,7 +107,7 @@ data class StreamConfig(
 
     /** One compact line for overlays and logs. */
     fun summary(): String = buildString {
-        append(profile).append(' ').append(bitrateMode)
+        append(codec).append(' ').append(profile).append(' ').append(bitrateMode)
         if (lowLatencyEncoder) append(" lowlat")
         if (intraRefresh) append(" intra-refresh") else append(" kf").append(keyframeIntervalS).append('s')
         if (fitToViewer) append(" fit")
@@ -126,12 +130,15 @@ data class StreamConfig(
         const val PROFILE_MAIN = "main"
         const val PROFILE_HIGH = "high"
         const val PROFILE_AUTO = "auto"
+        const val CODEC_H264 = "h264"
+        const val CODEC_HEVC = "hevc"
         const val BITRATE_CBR = "cbr"
         const val BITRATE_VBR = "vbr"
 
         const val PACING_IMMEDIATE = "immediate"
         const val PACING_VSYNC = "vsync"
 
+        val CODECS = listOf(CODEC_H264, CODEC_HEVC)
         val PACINGS = listOf(PACING_IMMEDIATE, PACING_VSYNC)
         val PROFILES = listOf(PROFILE_BASELINE, PROFILE_MAIN, PROFILE_HIGH, PROFILE_AUTO)
         val BITRATE_MODES = listOf(BITRATE_CBR, BITRATE_VBR)
@@ -141,6 +148,7 @@ data class StreamConfig(
             "tcpNoDelay" to "TCP no-delay (new connections)",
             "sendBufferKb" to "Socket send buffer, KB (0 = system default; new connections)",
             "lowLatencyEncoder" to "Low-latency encoder mode (Android 11+)",
+            "codec" to "Video codec (HEVC only if every viewer decodes it in hardware)",
             "profile" to "H.264 profile",
             "bitrateMode" to "Bitrate mode",
             "intraRefresh" to "Intra refresh instead of keyframes",
@@ -175,6 +183,7 @@ data class StreamConfig(
                 return v.coerceIn(r.first, r.last)
             }
             fun bool(key: String, def: Boolean): Boolean = m[key] as? Boolean ?: def
+            val codec = (m["codec"] as? String)?.takeIf { it in CODECS } ?: d.codec
             val profile = (m["profile"] as? String)?.takeIf { it in PROFILES } ?: d.profile
             val pacing = (m["pacing"] as? String)?.takeIf { it in PACINGS } ?: d.pacing
             val mode = (m["bitrateMode"] as? String)?.takeIf { it in BITRATE_MODES } ?: d.bitrateMode
@@ -182,6 +191,7 @@ data class StreamConfig(
                 tcpNoDelay = bool("tcpNoDelay", d.tcpNoDelay),
                 sendBufferKb = num("sendBufferKb", d.sendBufferKb),
                 lowLatencyEncoder = bool("lowLatencyEncoder", d.lowLatencyEncoder),
+                codec = codec,
                 profile = profile,
                 bitrateMode = mode,
                 intraRefresh = bool("intraRefresh", d.intraRefresh),

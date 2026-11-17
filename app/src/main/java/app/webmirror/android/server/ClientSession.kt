@@ -58,6 +58,11 @@ class ClientSession(
     override val h264Capable: Boolean? get() = viewerH264
 
     @Volatile
+    private var viewerHevc = false
+
+    override val hevcCapable: Boolean get() = viewerHevc
+
+    @Volatile
     private var viewPx: ViewBox? = null
 
     override val viewBox: ViewBox? get() = viewPx
@@ -67,12 +72,12 @@ class ClientSession(
     /** Clock offset to this page, from ping/pong round trips (plan 2.1). */
     private val clock = ClockSync()
 
-    /** From the page's last `stats`: cumulative skipped frames, network lateness and when it arrived. */
+    /** From the page's last `stats`: cumulative skipped frames, decoder queue size and when it arrived. */
     @Volatile
     private var pageSkipped = 0L
 
     @Volatile
-    private var pageNetLateMs = 0
+    private var pageDecodeQueue = 0
 
     @Volatile
     private var pageStatsAtMs = 0L
@@ -87,7 +92,7 @@ class ClientSession(
             val fresh = nowMs - pageStatsAtMs < STATS_FRESH_MS
             return BitrateController.ViewerSignal(
                 id, outbox.oldestPendingWaitMs(nowMs), outbox.dropped, pageSkipped,
-                if (fresh) pageNetLateMs else 0,
+                if (fresh) pageDecodeQueue else 0,
             )
         }
     }
@@ -100,7 +105,7 @@ class ClientSession(
         if (stopped) return
         synchronized(mon) {
             // A new stream description invalidates everything waiting; H.264 resumes at a keyframe.
-            outbox.reset(json.contains("\"mode\":\"h264\""))
+            outbox.reset(json.contains("\"mode\":\"h264\"") || json.contains("\"mode\":\"hevc\""))
             graceUntilMs = nowMs() + BitrateController.GRACE_MS
             addControl(Outgoing.Text(json))
             mon.notifyAll()
@@ -246,7 +251,7 @@ class ClientSession(
                 "stats" -> {
                     // Add what only the server knows, so one log line tells the whole story.
                     pageSkipped = obj.optLong("skipped", 0) - obj.optLong("replaced", 0) // vsync replacements are not congestion
-                    pageNetLateMs = obj.optInt("netLateMs", 0)
+                    pageDecodeQueue = obj.optInt("decodeQueue", 0)
                     pageStatsAtMs = nowMs()
                     obj.put("vid", id)
                     clock.best(nowMs())?.let { obj.put("clockRttMs", it.rttUs / 1000.0) }
@@ -291,6 +296,7 @@ class ClientSession(
             return
         }
         viewerH264 = obj.optBoolean("h264", false)
+        viewerHevc = obj.optBoolean("hevc", false)
         hub.greet(this)
     }
 

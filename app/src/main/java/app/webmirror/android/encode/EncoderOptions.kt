@@ -13,6 +13,7 @@ object EncoderOptions {
     const val AVC_PROFILE_MAIN = 0x02
     const val AVC_PROFILE_HIGH = 0x08
     const val AVC_PROFILE_CONSTRAINED_BASELINE = 0x10000
+    const val HEVC_PROFILE_MAIN = 0x01
 
     /** Result of [pickProfile]: [profile] is null for "let the encoder decide". */
     data class ProfilePick(val profile: Int?, val description: String)
@@ -37,6 +38,11 @@ object EncoderOptions {
             else ProfilePick(null, "auto (high requested but not listed by the encoder)")
         else -> ProfilePick(null, "auto (encoder default)")
     }
+
+    /** HEVC always uses Main (8-bit 4:2:0, widely supported, hardware decodable); a missing listing leaves it to the encoder. */
+    fun pickHevcProfile(supported: Set<Int>): ProfilePick =
+        if (HEVC_PROFILE_MAIN in supported) ProfilePick(HEVC_PROFILE_MAIN, "main (HEVC, fixed)")
+        else ProfilePick(null, "auto (HEVC main not listed by the encoder)")
 
     // MediaCodecInfo.CodecProfileLevel.AVCLevel* in increasing order, with H.264 table A-1 limits.
     private class Level(val constant: Int, val maxFrameMbs: Int, val maxMbPerSec: Int)

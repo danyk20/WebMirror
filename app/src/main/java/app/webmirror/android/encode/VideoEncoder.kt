@@ -15,22 +15,24 @@ import app.webmirror.android.stream.StreamConfig
 import app.webmirror.android.stream.StreamHub
 
 /**
- * H.264 mode (plan M2.3): the virtual display draws into the codec's input surface; every output buffer
- * becomes a packet. SPS+PPS (the codec-config buffer) are not sent on their own: they are prepended to
- * every keyframe so a decoder can start at any keyframe.
+ * H.264 / HEVC mode (plan M2.3): the virtual display draws into the codec's input surface; every output buffer
+ * becomes a packet. The parameter sets (the codec-config buffer: SPS+PPS, for HEVC VPS+SPS+PPS) are not sent on
+ * their own: they are prepended to every keyframe so a decoder can start at any keyframe. [hevc] selects
+ * `video/hevc` (profile Main, otherwise the same options); the file keeps its H.264 vocabulary in the option names.
  *
  * The encoder options of [StreamConfig] (profile, low latency, bitrate mode, intra refresh, keyframe
  * interval) are only requested when the encoder's capabilities say it supports them; what was requested and
  * what the SPS finally says is described by [H264Report] and handed to [onReport]. If the encoder refuses
  * the full option set, it is opened again with the plain format.
  */
-class H264Encoder(
+class VideoEncoder(
     private val width: Int,
     private val height: Int,
     private val fps: Int,
     private val bitrate: Int,
     private val hub: StreamHub,
     private val config: StreamConfig = StreamConfig(),
+    private val hevc: Boolean = false,
     private val onReport: (String) -> Unit = {},
 ) : FrameEncoder {
 
@@ -45,8 +47,8 @@ class H264Encoder(
         val actual: String? = null,
         val fallback: String? = null,
     ) {
-        fun describe(width: Int, height: Int, fps: Int): String = buildString {
-            append("H.264 ${width}x$height @$fps fps\n")
+        fun describe(width: Int, height: Int, fps: Int, name: String = "H.264"): String = buildString {
+            append("$name ${width}x$height @$fps fps\n")
             append("profile: $profile, level $level\n")
             if (actual != null) append("SPS says: $actual\n")
             append("low latency: $lowLatency\n")
@@ -62,7 +64,8 @@ class H264Encoder(
     @Volatile
     private var report = H264Report()
 
-    private val thread = HandlerThread("h264-encoder").apply { start() }
+    private val mime = if (hevc) MediaFormat.MIMETYPE_VIDEO_HEVC else MediaFormat.MIMETYPE_VIDEO_AVC
+    private val thread = HandlerThread("video-encoder").apply { start() }
     private val handler = Handler(thread.looper)
     private val codec: MediaCodec
     private val inputSurface: Surface
@@ -98,12 +101,12 @@ class H264Encoder(
                 if (stopped || paused || info.size == 0) return
                 handleOutput(data, info)
             } catch (e: Exception) {
-                if (!stopped) Log.w(TAG, "h264 output failed: $e")
+                if (!stopped) Log.w(TAG, "video output failed: $e")
             }
         }
 
         override fun onError(codec: MediaCodec, e: MediaCodec.CodecException) {
-            Log.w(TAG, "h264 codec error: $e")
+            Log.w(TAG, "video codec error: $e")
         }
 
         override fun onOutputFormatChanged(codec: MediaCodec, format: MediaFormat) {}
@@ -113,7 +116,7 @@ class H264Encoder(
         val opened = try {
             open(full = true)
         } catch (e: Exception) {
-            Log.w(TAG, "h264 encoder refused the option set, retrying with the plain format: $e")
+            Log.w(TAG, "video encoder refused the option set, retrying with the plain format: $e")
             try {
                 val o = open(full = false)
                 Opened(o.codec, o.surface, o.report.copy(fallback = "encoder refused the options (${e.message}); plain format used"))
@@ -129,16 +132,16 @@ class H264Encoder(
     }
 
     private fun emitReport() {
-        val text = report.describe(width, height, fps)
+        val text = report.describe(width, height, fps, if (hevc) "HEVC" else "H.264")
         Log.i(TAG, "encoder state:\n$text")
         onReport(text)
     }
 
     /** Creates, configures and starts a codec. [full] = request the options of [config] where supported. */
     private fun open(full: Boolean): Opened {
-        val c = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+        val c = MediaCodec.createEncoderByType(mime)
         try {
-            val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
+            val format = MediaFormat.createVideoFormat(mime, width, height).apply {
                 setInteger(MediaFormat.KEY_COLOR_FORMAT, CodecCapabilities.COLOR_FormatSurface)
                 setInteger(MediaFormat.KEY_BIT_RATE, bitrate)
                 setInteger(MediaFormat.KEY_FRAME_RATE, fps)
@@ -171,7 +174,7 @@ class H264Encoder(
     private fun applyOptions(c: MediaCodec, format: MediaFormat, start: H264Report): H264Report {
         var r = start
         val caps: CodecCapabilities? = try {
-            c.codecInfo.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_AVC)
+            c.codecInfo.getCapabilitiesForType(mime)
         } catch (e: Exception) {
             Log.w(TAG, "cannot read encoder capabilities: $e")
             null
@@ -181,19 +184,24 @@ class H264Encoder(
 
         // Profile and level, only if the encoder lists them.
         val levels = caps?.profileLevels.orEmpty()
-        val pick = EncoderOptions.pickProfile(config.profile, levels.map { it.profile }.toSet())
+        val pick = if (hevc) {
+            EncoderOptions.pickHevcProfile(levels.map { it.profile }.toSet())
+        } else {
+            EncoderOptions.pickProfile(config.profile, levels.map { it.profile }.toSet())
+        }
         val profile = pick.profile
         var levelText = "auto"
         if (profile != null) {
             format.setInteger(MediaFormat.KEY_PROFILE, profile)
             val listed = levels.filter { it.profile == profile }.map { it.level }.toSet()
-            val level = EncoderOptions.pickLevel(width, height, fps, listed)
+            // HEVC: no level is requested (the encoder picks one that fits; the SPS tells which).
+            val level = if (hevc) null else EncoderOptions.pickLevel(width, height, fps, listed)
             if (level != null) {
                 format.setInteger(MediaFormat.KEY_LEVEL, level)
                 levelText = "0x${Integer.toHexString(level)} (smallest listed that fits)"
             }
         }
-        if (profile == null && config.profile != StreamConfig.PROFILE_AUTO) {
+        if (profile == null && (hevc || config.profile != StreamConfig.PROFILE_AUTO)) {
             Log.i(TAG, "profile ${config.profile}: ${pick.description}")
         }
         r = r.copy(profile = pick.description, level = levelText)
@@ -264,20 +272,21 @@ class H264Encoder(
     private fun handleOutput(data: ByteArray, info: MediaCodec.BufferInfo) {
         if ((info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
             configBytes = data
-            val codecString = AvcUtil.codecString(data)
+            val codecString = if (hevc) HevcUtil.codecString(data) else AvcUtil.codecString(data)
             if (codecString == null) {
                 Log.w(TAG, "no SPS in codec config")
                 return
             }
-            report = report.copy(actual = "$codecString (${AvcUtil.profileName(codecString)})")
+            val profileName = if (hevc) HevcUtil.profileName(codecString) else AvcUtil.profileName(codecString)
+            report = report.copy(actual = "$codecString ($profileName)")
             if (!reportedActual) {
                 reportedActual = true
                 emitReport()
             }
-            hub.onVideoConfig(codecString, width, height, fps)
+            hub.onVideoConfig(if (hevc) StreamHub.MODE_HEVC else StreamHub.MODE_H264, codecString, width, height, fps)
             return
         }
-        val key = (info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0
+        val key = (info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0 || (hevc && HevcUtil.isKeyframe(data))
         val config = configBytes
         val payload = if (key && config != null) config + data else data
         hub.onPacket(Packet(Packet.TYPE_H264, if (key) Packet.FLAG_KEYFRAME else 0, info.presentationTimeUs, payload))
@@ -311,17 +320,17 @@ class H264Encoder(
         try {
             codec.stop()
         } catch (e: Exception) {
-            Log.w(TAG, "h264 stop: $e")
+            Log.w(TAG, "video stop: $e")
         }
         try {
             codec.release()
         } catch (e: Exception) {
-            Log.w(TAG, "h264 release: $e")
+            Log.w(TAG, "video release: $e")
         }
         try {
             inputSurface.release()
         } catch (e: Exception) {
-            Log.w(TAG, "h264 surface release: $e")
+            Log.w(TAG, "video surface release: $e")
         }
         thread.quitSafely()
     }
