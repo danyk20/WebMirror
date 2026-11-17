@@ -177,10 +177,14 @@ private val COLUMNS = listOf(
     Col("srv drop", 56.dp) { it.page.srvDropped.toString() },
     Col("kf req", 44.dp) { it.phone.keyframes.toString() },
     Col("target min/avg", 96.dp) { "${it.phone.targetMin ?: "-"}/${f0(it.phone.targetAvg)}" },
+    Col("mode", 52.dp) { it.phone.mode.ifEmpty { "-" } },
+    Col("encoder", 190.dp) { if (it.phone.encoder.isEmpty()) "-" else "${it.phone.encoder} ${if (it.phone.hardware == true) "hw" else if (it.phone.hardware == false) "SW" else ""}" },
+    Col("enc fps", 52.dp) { f1(it.phone.encodeFps) },
+    Col("codec string", 130.dp) { it.phone.codec.ifEmpty { "-" } },
     Col("status", 96.dp) { it.status },
 )
 
-/** Detail view of one report: table sorted by score (best first), `legacy` highlighted, Share button. */
+/** Detail view of one report: table sorted by score (best first), Share button. */
 @Composable
 fun TestReportScreen(stem: String, onBack: () -> Unit) {
     val context = LocalContext.current
@@ -208,7 +212,7 @@ fun TestReportScreen(stem: String, onBack: () -> Unit) {
             "${r.device}, preset ${r.preset}, ${r.phaseSeconds} s measured per phase${if (r.completed) "" else ", ABORTED (partial)"}.",
             style = MaterialTheme.typography.bodySmall,
         )
-        Text("Milliseconds unless noted. Best first; the highlighted row is the legacy reference.", style = MaterialTheme.typography.bodySmall)
+        Text("Milliseconds unless noted. Best first; orange rows: the phase's option did not apply. encode fps = frames out of the encoder per second on the phone.", style = MaterialTheme.typography.bodySmall)
         Column(Modifier.horizontalScroll(rememberScrollState())) {
             Row {
                 for (c in COLUMNS) Text(c.title, modifier = Modifier.width(c.width), fontWeight = FontWeight.Bold, fontSize = 11.sp, fontFamily = FontFamily.Monospace)

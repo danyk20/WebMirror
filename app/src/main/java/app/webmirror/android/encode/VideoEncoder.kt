@@ -15,10 +15,14 @@ import app.webmirror.android.stream.StreamConfig
 import app.webmirror.android.stream.StreamHub
 
 /**
- * H.264 / HEVC mode (plan M2.3): the virtual display draws into the codec's input surface; every output buffer
+ * H.264 / HEVC / VP9 / AV1 mode (plan M2.3, 2.2): the virtual display draws into the codec's input surface; every output buffer
  * becomes a packet. The parameter sets (the codec-config buffer: SPS+PPS, for HEVC VPS+SPS+PPS) are not sent on
- * their own: they are prepended to every keyframe so a decoder can start at any keyframe. [hevc] selects
- * `video/hevc` (profile Main, otherwise the same options); the file keeps its H.264 vocabulary in the option names.
+ * their own: they are prepended to every keyframe so a decoder can start at any keyframe. [mode] (a
+ * `CodecChooser` codec id) selects the MIME type and [encoderName] the exact MediaCodec (hardware or software, chosen
+ * by the hub). HEVC: profile Main; VP9: profile 0; AV1: Main 8-bit; the same low-latency / CBR / intra-refresh /
+ * keyframe keys where supported, no B-frame key for VP9/AV1. AV1 sends the codec-config sequence header OBU in front
+ * of every keyframe (WebCodecs AV1: no `description`); VP9 has no config and its codec string comes from the first
+ * keyframe. The file keeps its H.264 vocabulary in the option names.
  *
  * The encoder options of [StreamConfig] (profile, low latency, bitrate mode, intra refresh, keyframe
  * interval) are only requested when the encoder's capabilities say it supports them; what was requested and
@@ -32,7 +36,9 @@ class VideoEncoder(
     private val bitrate: Int,
     private val hub: StreamHub,
     private val config: StreamConfig = StreamConfig(),
-    private val hevc: Boolean = false,
+    private val mode: String = StreamHub.MODE_H264,
+    private val encoderName: String,
+    private val hardware: Boolean,
     private val onReport: (String) -> Unit = {},
 ) : FrameEncoder {
 
@@ -47,8 +53,9 @@ class VideoEncoder(
         val actual: String? = null,
         val fallback: String? = null,
     ) {
-        fun describe(width: Int, height: Int, fps: Int, name: String = "H.264"): String = buildString {
+        fun describe(width: Int, height: Int, fps: Int, name: String = "H.264", encoder: String = ""): String = buildString {
             append("$name ${width}x$height @$fps fps\n")
+            if (encoder.isNotEmpty()) append("encoder: $encoder\n")
             append("profile: $profile, level $level\n")
             if (actual != null) append("SPS says: $actual\n")
             append("low latency: $lowLatency\n")
@@ -64,7 +71,11 @@ class VideoEncoder(
     @Volatile
     private var report = H264Report()
 
-    private val mime = if (hevc) MediaFormat.MIMETYPE_VIDEO_HEVC else MediaFormat.MIMETYPE_VIDEO_AVC
+    private val hevc = mode == StreamHub.MODE_HEVC
+    private val vp9 = mode == StreamHub.MODE_VP9
+    private val av1 = mode == StreamHub.MODE_AV1
+    private val mime = CodecSupport.MIMES.getValue(mode)
+    private val label = CodecSupport.LABELS.getValue(mode)
     private val thread = HandlerThread("video-encoder").apply { start() }
     private val handler = Handler(thread.looper)
     private val codec: MediaCodec
@@ -80,6 +91,12 @@ class VideoEncoder(
 
     @Volatile
     private var configBytes: ByteArray? = null
+
+    /** AV1: the sequence header OBU to put in front of keyframes. */
+    private var seqHeader: ByteArray? = null
+
+    /** True once `hub.onVideoConfig` was called (H.264/HEVC/AV1 at the config buffer or first keyframe, VP9 at the first keyframe). */
+    private var announced = false
 
     override val surface: Surface get() = inputSurface
 
@@ -132,14 +149,14 @@ class VideoEncoder(
     }
 
     private fun emitReport() {
-        val text = report.describe(width, height, fps, if (hevc) "HEVC" else "H.264")
+        val text = report.describe(width, height, fps, label, "$encoderName (${if (hardware) "hardware" else "software"})")
         Log.i(TAG, "encoder state:\n$text")
         onReport(text)
     }
 
     /** Creates, configures and starts a codec. [full] = request the options of [config] where supported. */
     private fun open(full: Boolean): Opened {
-        val c = MediaCodec.createEncoderByType(mime)
+        val c = MediaCodec.createByCodecName(encoderName)
         try {
             val format = MediaFormat.createVideoFormat(mime, width, height).apply {
                 setInteger(MediaFormat.KEY_COLOR_FORMAT, CodecCapabilities.COLOR_FormatSurface)
@@ -179,13 +196,18 @@ class VideoEncoder(
             Log.w(TAG, "cannot read encoder capabilities: $e")
             null
         }
-        // Never any B-frames: they add reordering delay.
-        format.setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
+        // Never any B-frames: they add reordering delay (VP9 and AV1 as used here have no such key).
+        if (!vp9 && !av1) format.setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
 
         // Profile and level, only if the encoder lists them.
         val levels = caps?.profileLevels.orEmpty()
+        val listedProfiles = levels.map { it.profile }.toSet()
         val pick = if (hevc) {
-            EncoderOptions.pickHevcProfile(levels.map { it.profile }.toSet())
+            EncoderOptions.pickHevcProfile(listedProfiles)
+        } else if (vp9) {
+            EncoderOptions.pickFixedProfile(listedProfiles, EncoderOptions.VP9_PROFILE_0, "VP9 profile 0")
+        } else if (av1) {
+            EncoderOptions.pickFixedProfile(listedProfiles, EncoderOptions.AV1_PROFILE_MAIN8, "AV1 Main 8-bit")
         } else {
             EncoderOptions.pickProfile(config.profile, levels.map { it.profile }.toSet())
         }
@@ -194,14 +216,14 @@ class VideoEncoder(
         if (profile != null) {
             format.setInteger(MediaFormat.KEY_PROFILE, profile)
             val listed = levels.filter { it.profile == profile }.map { it.level }.toSet()
-            // HEVC: no level is requested (the encoder picks one that fits; the SPS tells which).
-            val level = if (hevc) null else EncoderOptions.pickLevel(width, height, fps, listed)
+            // HEVC/VP9/AV1: no level is requested (the encoder picks one that fits; the stream tells which).
+            val level = if (hevc || vp9 || av1) null else EncoderOptions.pickLevel(width, height, fps, listed)
             if (level != null) {
                 format.setInteger(MediaFormat.KEY_LEVEL, level)
                 levelText = "0x${Integer.toHexString(level)} (smallest listed that fits)"
             }
         }
-        if (profile == null && (hevc || config.profile != StreamConfig.PROFILE_AUTO)) {
+        if (profile == null && (mode != StreamHub.MODE_H264 || config.profile != StreamConfig.PROFILE_AUTO)) {
             Log.i(TAG, "profile ${config.profile}: ${pick.description}")
         }
         r = r.copy(profile = pick.description, level = levelText)
@@ -269,26 +291,68 @@ class VideoEncoder(
         return r
     }
 
+    private fun announce(codecString: String) {
+        announced = true
+        val profileName = when {
+            hevc -> HevcUtil.profileName(codecString)
+            vp9 || av1 -> label
+            else -> AvcUtil.profileName(codecString)
+        }
+        report = report.copy(actual = "$codecString ($profileName)")
+        if (!reportedActual) {
+            reportedActual = true
+            emitReport()
+        }
+        hub.onVideoConfig(mode, codecString, width, height, fps, encoderName, hardware)
+    }
+
     private fun handleOutput(data: ByteArray, info: MediaCodec.BufferInfo) {
         if ((info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
+            if (vp9) return // VP9 has no codec config; any such buffer is ignored
+            if (av1) {
+                val seq = Av1Util.sequenceHeader(data)
+                val cs = seq?.let { Av1Util.codecString(it) }
+                if (seq == null || cs == null) {
+                    Log.w(TAG, "no usable sequence header in AV1 codec config (will try the first keyframe)")
+                    return
+                }
+                seqHeader = seq
+                announce(cs)
+                return
+            }
             configBytes = data
             val codecString = if (hevc) HevcUtil.codecString(data) else AvcUtil.codecString(data)
             if (codecString == null) {
                 Log.w(TAG, "no SPS in codec config")
                 return
             }
-            val profileName = if (hevc) HevcUtil.profileName(codecString) else AvcUtil.profileName(codecString)
-            report = report.copy(actual = "$codecString ($profileName)")
-            if (!reportedActual) {
-                reportedActual = true
-                emitReport()
-            }
-            hub.onVideoConfig(if (hevc) StreamHub.MODE_HEVC else StreamHub.MODE_H264, codecString, width, height, fps)
+            announce(codecString)
             return
         }
-        val key = (info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0 || (hevc && HevcUtil.isKeyframe(data))
+        val key = (info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0 ||
+            (hevc && HevcUtil.isKeyframe(data)) || (vp9 && Vp9Util.isKeyframe(data)) || (av1 && Av1Util.isKeyframe(data))
+        if (vp9 && !announced) {
+            if (!key) return // nothing can be shown before the first keyframe, and the page has no hello yet
+            announce(Vp9Util.codecString(data, width, height, fps))
+        }
+        if (av1) {
+            if (seqHeader == null && key) {
+                // No (usable) codec-config buffer: take the sequence header from the keyframe itself.
+                val seq = Av1Util.sequenceHeader(data)
+                if (seq != null) {
+                    seqHeader = seq
+                    Av1Util.codecString(seq)?.let { announce(it) }
+                }
+            }
+            if (!announced) return
+        }
         val config = configBytes
-        val payload = if (key && config != null) config + data else data
+        val seq = seqHeader
+        val payload = when {
+            key && config != null -> config + data
+            av1 && key && seq != null -> Av1Util.withSequenceHeader(data, seq)
+            else -> data
+        }
         hub.onPacket(Packet(Packet.TYPE_H264, if (key) Packet.FLAG_KEYFRAME else 0, info.presentationTimeUs, payload))
     }
 

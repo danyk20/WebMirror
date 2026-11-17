@@ -1,5 +1,5 @@
 // WebMirror player. Plain script, no modules; no ?. , ??, or BigInt (old Chromium in the car).
-// Protocol: docs/PLAN.md section 2.1. Decoders are chosen per mode (hello.mode): "jpeg", "h264" and "hevc" (the two video modes share packet type 1 and one decoder implementation).
+// Protocol: docs/PLAN.md section 2.1. Decoders are chosen per mode (hello.mode): "jpeg", "h264", "hevc", "vp9" and "av1" (the video modes share packet type 1 and one decoder implementation).
 (function () {
   'use strict';
 
@@ -22,8 +22,13 @@
   const HEADER = 12;
   const TYPE_H264 = 1;
   const TYPE_JPEG = 2;
-  const H264_PROBE_CODEC = 'avc1.42E01F';
-  const HEVC_PROBE_CODEC = 'hev1.1.6.L93.B0';   // HEVC Main 3.1, the family the phone's encoder produces
+  // Representative codec strings for the capability check (hello.codecs), checked at 1280x720.
+  const PROBE_CODECS = {
+    h264: 'avc1.42E01F',
+    hevc: 'hev1.1.6.L93.B0',
+    vp9: 'vp09.00.31.08',
+    av1: 'av01.0.08M.08'
+  };
   const MAX_DECODE_QUEUE = 3;      // VideoDecoder backlog that counts as overload
   const RAF_STALL_MS = 100;        // vsync pacing: no animation frame for this long = rAF is throttled, draw at once
   const E2E_RAW_MAX = 150;         // most per-frame e2e values sent with one stats message (the phone's automatic test aggregates them)
@@ -69,10 +74,8 @@
   let lastStatsAt = 0;
   let fps = 0;
   let pumpTimer = null;
-  let h264Supported = false;      // VideoDecoder exists and isConfigSupported said yes
-  let h264Check = null;           // promise of that check, run once
-  let hevcSupported = false;      // isConfigSupported said yes for HEVC with prefer-hardware
-  let hevcCheck = null;
+  let codecSupport = null;        // { h264: {sw, hw}, hevc: ..., vp9: ..., av1: ... } from the capability check
+  let codecCheck = null;          // promise of that check, run once
   let paused = false;             // latest hello said mode "paused"
   let lastRxAt = 0;               // when anything was last received on the socket
   let lastKfAt = -100000;         // when a keyframe was last requested
@@ -334,8 +337,9 @@
     };
   })();
 
-  // H.264 and HEVC: WebCodecs VideoDecoder -> canvas. Annex-B without `description`: parameter sets
-  // (SPS/PPS, for HEVC VPS/SPS/PPS) come inside keyframes. The codec string comes from hello.codec.
+  // H.264, HEVC, VP9 and AV1: WebCodecs VideoDecoder -> canvas. No `description`: H.264/HEVC are Annex-B with the
+  // parameter sets (SPS/PPS, HEVC VPS/SPS/PPS) inside keyframes; VP9 chunks are single frames; AV1 chunks are
+  // temporal units with the sequence header OBU inside keyframes. The codec string comes from hello.codec.
   function makeVideoDecoder() {
     let dec = null;
     let codec = '';
@@ -382,7 +386,9 @@
       });
       dec = mine;
       const cfg = { codec: codec, optimizeForLatency: true };
-      if (codec.indexOf('hev1') === 0 || codec.indexOf('hvc1') === 0) cfg.hardwareAcceleration = 'prefer-hardware';
+      // Ask for hardware only where the capability check found it (an unsupported preference could fail configure()).
+      const fam = codecFamily(codec);
+      if (fam && codecSupport && codecSupport[fam] && codecSupport[fam].hw) cfg.hardwareAcceleration = 'prefer-hardware';
       mine.configure(cfg);
     }
 
@@ -448,6 +454,16 @@
   }
   decoders.h264 = makeVideoDecoder();
   decoders.hevc = makeVideoDecoder();
+  decoders.vp9 = makeVideoDecoder();
+  decoders.av1 = makeVideoDecoder();
+
+  function codecFamily(codec) {
+    if (codec.indexOf('avc1') === 0) return 'h264';
+    if (codec.indexOf('hev1') === 0 || codec.indexOf('hvc1') === 0) return 'hevc';
+    if (codec.indexOf('vp09') === 0) return 'vp9';
+    if (codec.indexOf('av01') === 0) return 'av1';
+    return '';
+  }
 
   function chooseDecoder(h) {
     if (h.mode === 'paused') {
@@ -644,52 +660,44 @@
     }
   }
 
-  // ---- capability check: H.264 only if WebCodecs can decode Baseline 3.1 ----
-  function checkH264() {
-    if (h264Check) return h264Check;
-    h264Check = new Promise(function (resolve) {
-      if (!('VideoDecoder' in window) || typeof window.EncodedVideoChunk !== 'function') {
-        resolve(false);
-        return;
-      }
+  // ---- capability check: per codec, decodable at all (sw) and decodable in hardware (hw), at 1280x720 ----
+  function checkOne(codec, preferHardware) {
+    return new Promise(function (resolve) {
       try {
-        window.VideoDecoder.isConfigSupported({ codec: H264_PROBE_CODEC, optimizeForLatency: true }).then(
-          function (r) {
-            h264Supported = !!(r && r.supported);
-            resolve(h264Supported);
-          },
+        const cfg = { codec: codec, codedWidth: 1280, codedHeight: 720, optimizeForLatency: true };
+        if (preferHardware) cfg.hardwareAcceleration = 'prefer-hardware';
+        window.VideoDecoder.isConfigSupported(cfg).then(
+          function (r) { resolve(!!(r && r.supported)); },
           function () { resolve(false); }
         );
       } catch (e) {
         resolve(false);
       }
     });
-    return h264Check;
   }
 
-  // HEVC only if the browser says it can decode it in hardware (software HEVC would add delay).
-  function checkHevc() {
-    if (hevcCheck) return hevcCheck;
-    hevcCheck = new Promise(function (resolve) {
+  function checkCodecs() {
+    if (codecCheck) return codecCheck;
+    codecCheck = new Promise(function (resolve) {
+      const result = {};
+      const names = Object.keys(PROBE_CODECS);
+      names.forEach(function (n) { result[n] = { sw: false, hw: false }; });
       if (!('VideoDecoder' in window) || typeof window.EncodedVideoChunk !== 'function') {
-        resolve(false);
+        codecSupport = result;
+        resolve(result);
         return;
       }
-      try {
-        window.VideoDecoder.isConfigSupported({
-          codec: HEVC_PROBE_CODEC, optimizeForLatency: true, hardwareAcceleration: 'prefer-hardware'
-        }).then(
-          function (r) {
-            hevcSupported = !!(r && r.supported);
-            resolve(hevcSupported);
-          },
-          function () { resolve(false); }
-        );
-      } catch (e) {
-        resolve(false);
-      }
+      const jobs = [];
+      names.forEach(function (n) {
+        jobs.push(checkOne(PROBE_CODECS[n], false).then(function (ok) { result[n].sw = ok; }));
+        jobs.push(checkOne(PROBE_CODECS[n], true).then(function (ok) { result[n].hw = ok; }));
+      });
+      Promise.all(jobs).then(function () {
+        codecSupport = result;
+        resolve(result);
+      });
     });
-    return hevcCheck;
+    return codecCheck;
   }
 
   // ---- connection ----
@@ -718,9 +726,10 @@
       socket.wmOpened = true;
       clearTimeout(connectTimer);
       setStatus('Waiting for the stream…');
-      Promise.all([checkH264(), checkHevc()]).then(function (r) {
+      checkCodecs().then(function (c) {
         if (ws === socket) {
-          send({ t: 'hello', v: 1, h264: r[0], hevc: r[1], pin: '' });
+          // h264 / hevc booleans: kept for older phone apps (h264 = decodable at all, hevc = in hardware).
+          send({ t: 'hello', v: 1, h264: c.h264.sw || c.h264.hw, hevc: c.hevc.hw, codecs: c, pin: '' });
           sendView();
         }
       });
@@ -812,6 +821,8 @@
     if (cfgId) lines.push('cfg ' + cfgId + '   ' + cfgSummary);
     if (hello) {
       lines.push(hello.width + 'x' + hello.height + '   mode ' + hello.mode + '   audio ' + hello.audio);
+      if (hello.codec) lines.push('codec ' + hello.codec + (hello.encoder ? '   encoder ' + hello.encoder : ''));
+      if (hello.why) lines.push(hello.why);
     }
     statsEl.textContent = lines.join('\n');
   }

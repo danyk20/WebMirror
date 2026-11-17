@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
 import android.view.Display
+import app.webmirror.android.encode.CodecSupport
 import app.webmirror.android.encode.FrameEncoder
 import app.webmirror.android.encode.JpegEncoder
 import app.webmirror.android.encode.VideoEncoder
@@ -49,6 +50,9 @@ class ScreenCapture(
     private var virtualDisplay: VirtualDisplay? = null
     private var encoder: FrameEncoder? = null
     private var mode = StreamHub.MODE_JPEG
+
+    /** MediaCodec name of the video encoder in use (null in JPEG mode). */
+    private var activeEncoder: String? = null
     private var size = CaptureSize.Size(0, 0)
     private var released = false
 
@@ -65,6 +69,8 @@ class ScreenCapture(
     fun start() {
         check(virtualDisplay == null && !released) { "already started" }
         size = targetSize()
+        updatePhone(size)
+        CodecSupport.logOnce(size.width, size.height, preset.fps)
         mode = hub.wantedMode()
         val enc = newEncoderOrFallback(size)
         encoder = enc
@@ -105,7 +111,11 @@ class ScreenCapture(
                 resetController() // any applied config: the target goes back to the ceiling, with a grace period
                 encoder?.setTarget(controller.value)
                 // A codec-only change is handled by the mode switch (hub.recomputeMode -> setMode).
-                val rebuild = old.copy(codec = c.codec).encoderKey != c.encoderKey && StreamHub.isVideoMode(mode)
+                val video = StreamHub.isVideoMode(mode)
+                val keyChanged = old.copy(codec = c.codec, allowSoftwareEncoder = c.allowSoftwareEncoder).encoderKey != c.encoderKey
+                // Same mode but another encoder (hardware <-> software, allowed or not): rebuild too.
+                val nameChanged = video && hub.encoderFor(mode)?.first != activeEncoder
+                val rebuild = video && (keyChanged || nameChanged)
                 if (rebuild || old.fitToViewer != c.fitToViewer) applyChange(forceEncoder = rebuild)
             }
         }
@@ -157,6 +167,7 @@ class ScreenCapture(
         val newSize = targetSize()
         val sizeChanged = newSize != size
         if (!sizeChanged && !forceEncoder) return
+        updatePhone(newSize)
         try {
             // Build the new encoder first, then move the one display over, then retire the old encoder.
             val old = encoder
@@ -174,11 +185,20 @@ class ScreenCapture(
         }
     }
 
+    /** Tells the hub which encoders fit this size and rate (the codec choice depends on it). */
+    private fun updatePhone(s: CaptureSize.Size) {
+        hub.setPhone(CodecSupport.phoneCaps(s.width, s.height, preset.fps))
+    }
+
     private fun newEncoder(s: CaptureSize.Size): FrameEncoder =
         if (StreamHub.isVideoMode(mode)) {
             resetController()
-            VideoEncoder(s.width, s.height, preset.fps, controller.value, hub, config, mode == StreamHub.MODE_HEVC) { setBaseReport(it) }
+            val enc = hub.encoderFor(mode) ?: throw IllegalStateException("the phone has no usable $mode encoder")
+            val e = VideoEncoder(s.width, s.height, preset.fps, controller.value, hub, config, mode, enc.first, enc.second) { setBaseReport(it) }
+            activeEncoder = enc.first
+            e
         } else {
+            activeEncoder = null
             resetController()
             setBaseReport("JPEG ${s.width}x${s.height} @${preset.jpegFps} fps, quality ${preset.jpegQuality}\n(H.264 encoder options do not apply in JPEG mode)")
             JpegEncoder(s.width, s.height, preset.jpegFps, controller.value, hub)
@@ -260,26 +280,27 @@ class ScreenCapture(
         }
     }
 
-    /** A device without a usable H.264 encoder falls back to JPEG instead of failing the capture. */
-    private fun newEncoderOrFallback(s: CaptureSize.Size): FrameEncoder =
-        try {
-            newEncoder(s)
-        } catch (e: Exception) {
-            if (!StreamHub.isVideoMode(mode)) throw e
-            if (mode == StreamHub.MODE_HEVC) {
-                Log.w(TAG, "HEVC encoder unavailable or refused its configuration, using H.264: $e")
-                mode = StreamHub.MODE_H264
-                try {
-                    return newEncoder(s)
-                } catch (e2: Exception) {
-                    Log.w(TAG, "h264 encoder unavailable, using jpeg: $e2")
-                }
-            } else {
-                Log.w(TAG, "h264 encoder unavailable, using jpeg: $e")
+    /**
+     * An encoder that cannot be created or configured falls back: the chosen codec -> H.264 -> JPEG (the reason goes
+     * into `hello.why`). A device without a usable H.264 encoder falls back to JPEG instead of failing the capture.
+     */
+    private fun newEncoderOrFallback(s: CaptureSize.Size): FrameEncoder {
+        var failed = false
+        while (true) {
+            try {
+                val e = newEncoder(s)
+                if (!failed) hub.noteFallback(null)
+                return e
+            } catch (ex: Exception) {
+                if (!StreamHub.isVideoMode(mode)) throw ex
+                val next = if (mode != StreamHub.MODE_H264) StreamHub.MODE_H264 else StreamHub.MODE_JPEG
+                Log.w(TAG, "$mode encoder unavailable or refused its configuration, using $next: $ex")
+                failed = true
+                hub.noteFallback("$mode encoder failed: ${ex.message ?: ex.javaClass.simpleName}")
+                mode = next
             }
-            mode = StreamHub.MODE_JPEG
-            newEncoder(s)
         }
+    }
 
     /**
      * Tells the hub (and so every viewer, in a new hello) what the stream looks like now. In h264 mode the
@@ -287,7 +308,7 @@ class ScreenCapture(
      */
     private fun publish() {
         if (StreamHub.isVideoMode(mode)) return
-        hub.update { it.copy(mode = StreamHub.MODE_JPEG, codec = "", width = size.width, height = size.height, fps = preset.jpegFps) }
+        hub.update { it.copy(mode = StreamHub.MODE_JPEG, codec = "", encoder = "", hardware = null, why = hub.whyFor(StreamHub.MODE_JPEG), width = size.width, height = size.height, fps = preset.jpegFps) }
     }
 
     private fun targetSize(): CaptureSize.Size {

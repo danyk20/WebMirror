@@ -3,6 +3,7 @@ package app.webmirror.android.server
 import android.util.Log
 import app.webmirror.android.stream.BitrateController
 import app.webmirror.android.stream.ClockSync
+import app.webmirror.android.stream.CodecChooser
 import app.webmirror.android.stream.Expirable
 import app.webmirror.android.stream.Packet
 import app.webmirror.android.stream.StreamHub
@@ -53,14 +54,9 @@ class ClientSession(
     private var lastSeenNanos = System.nanoTime()
 
     @Volatile
-    private var viewerH264: Boolean? = null
+    private var caps: CodecChooser.ViewerCaps? = null
 
-    override val h264Capable: Boolean? get() = viewerH264
-
-    @Volatile
-    private var viewerHevc = false
-
-    override val hevcCapable: Boolean get() = viewerHevc
+    override val viewerCaps: CodecChooser.ViewerCaps? get() = caps
 
     @Volatile
     private var viewPx: ViewBox? = null
@@ -105,7 +101,7 @@ class ClientSession(
         if (stopped) return
         synchronized(mon) {
             // A new stream description invalidates everything waiting; H.264 resumes at a keyframe.
-            outbox.reset(json.contains("\"mode\":\"h264\"") || json.contains("\"mode\":\"hevc\""))
+            outbox.reset(StreamHub.isVideoMode(MODE_REGEX.find(json)?.groupValues?.get(1).orEmpty()))
             graceUntilMs = nowMs() + BitrateController.GRACE_MS
             addControl(Outgoing.Text(json))
             mon.notifyAll()
@@ -295,9 +291,20 @@ class ClientSession(
             }
             return
         }
-        viewerH264 = obj.optBoolean("h264", false)
-        viewerHevc = obj.optBoolean("hevc", false)
+        caps = parseCaps(obj)
         hub.greet(this)
+    }
+
+    /** `codecs: {h264:{sw,hw}, ...}` of the page's hello; pages that only send the old `h264` / `hevc` booleans are still understood. */
+    private fun parseCaps(obj: JSONObject): CodecChooser.ViewerCaps {
+        val o = obj.optJSONObject("codecs") ?: return CodecChooser.ViewerCaps.legacy(obj.optBoolean("h264", false), obj.optBoolean("hevc", false))
+        val m = HashMap<String, CodecChooser.Support>()
+        for (c in CodecChooser.VIDEO_CODECS) {
+            val e = o.optJSONObject(c) ?: continue
+            val hw = e.optBoolean("hw", false)
+            m[c] = CodecChooser.Support(sw = e.optBoolean("sw", false) || hw, hw = hw)
+        }
+        return CodecChooser.ViewerCaps(m)
     }
 
     /** M0.9 throughput test: 100 dummy packets of 50 000 bytes payload = 5 MB, then a text marker. */
@@ -413,6 +420,7 @@ class ClientSession(
         /** Hard safety limit of queued text messages. Video never waits in a queue (see [VideoOutbox]). */
         const val MAX_QUEUE = 120
 
+        private val MODE_REGEX = Regex("\"mode\":\"(\\w+)\"")
         private const val WAIT_MS = 200L
         private const val STATS_FRESH_MS = 3000L
         private val nextId = java.util.concurrent.atomic.AtomicInteger()

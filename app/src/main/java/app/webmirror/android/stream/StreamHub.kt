@@ -24,6 +24,11 @@ class StreamHub(
     data class HelloInfo(
         val mode: String = MODE_JPEG,
         val codec: String = "",
+        /** Name of the MediaCodec encoder in use ("" for JPEG) and whether it is hardware (null = unknown/none). */
+        val encoder: String = "",
+        val hardware: Boolean? = null,
+        /** Why this mode was chosen (`hello.why`), e.g. "auto: hevc hw on phone and all viewers". */
+        val why: String = "",
         val width: Int = 0,
         val height: Int = 0,
         val fps: Int = 0,
@@ -32,7 +37,7 @@ class StreamHub(
         val cfg: String = StreamConfig().pageJson(),
     ) {
         fun toJson(): String =
-            """{"t":"hello","v":$PROTOCOL_VERSION,"mode":"$mode","codec":"$codec","width":$width,"height":$height,"fps":$fps,"audio":"$audio","cfg":$cfg}"""
+            """{"t":"hello","v":$PROTOCOL_VERSION,"mode":"$mode","codec":"$codec","why":${JsonText.quote(why)},"encoder":${JsonText.quote(encoder + if (hardware == true) " (hw)" else if (hardware == false) " (sw)" else "")},"width":$width,"height":$height,"fps":$fps,"audio":"$audio","cfg":$cfg}"""
     }
 
     private val sinks = CopyOnWriteArrayList<StreamSink>()
@@ -45,6 +50,8 @@ class StreamHub(
     private var lastKeyframeRequestMs: Long? = null
     private var forceJpegFlag = false
     private var lastWantedMode = MODE_JPEG
+    private var lastChoice = CodecChooser.Choice(MODE_JPEG, null, false, "jpeg: no viewer yet")
+    private var fallbackNote: String? = null
     private var lastNotice: String? = null
     private var lastNoticeAtMs = 0L
     private var lastNoticeTtlMs = 0L
@@ -59,6 +66,35 @@ class StreamHub(
     @Volatile
     var config: StreamConfig = StreamConfig()
         private set
+
+    /** What the phone's encoders can do at the current picture size; set by the capture owner. */
+    @Volatile
+    var phone: CodecChooser.PhoneCaps = CodecChooser.PhoneCaps()
+        private set
+
+    fun setPhone(c: CodecChooser.PhoneCaps) {
+        if (c == phone) return
+        phone = c
+        recomputeMode()
+    }
+
+    /** The encoder (MediaCodec name, hardware?) to create for [mode] now, or null if the phone has none. */
+    fun encoderFor(mode: String): Pair<String, Boolean>? = synchronized(lock) {
+        val c = lastChoice
+        if (c.mode == mode && c.encoder != null) c.encoder to c.hardware
+        else CodecChooser.encoderForMode(mode, phone, config.allowSoftwareEncoder)
+    }
+
+    /** The capture owner could not build the chosen encoder and used another one; [text] says why (null = no problem). */
+    fun noteFallback(text: String?) {
+        synchronized(lock) { fallbackNote = text }
+    }
+
+    /** `hello.why` for [mode]: the choice's reason, or the fallback note when the encoder for the choice failed. */
+    fun whyFor(mode: String): String = synchronized(lock) {
+        if (lastChoice.mode == mode) lastChoice.why
+        else "$mode: fallback from ${lastChoice.mode} (${fallbackNote ?: "its encoder could not be created"})"
+    }
 
     /** Makes [c] the active configuration and sends its page-side part to every viewer in a new `hello`. */
     fun applyConfig(c: StreamConfig) {
@@ -101,40 +137,40 @@ class StreamHub(
         }
 
     /**
-     * The mode the viewers need (plan 2.2): a video mode only if every viewer that has said hello said
-     * `h264:true` and "Force JPEG" is off; any `h264:false` viewer forces jpeg. The video mode is hevc when
-     * `config.codec` is "hevc" and every such viewer said `hevc:true`, else h264. Without any such viewer the
-     * mode that was wanted last stays (no needless encoder switch when the last viewer leaves).
+     * The mode the viewers need (plan 2.2), by [CodecChooser]: "Force JPEG" wins; else every viewer that said hello
+     * counts (its decode support per codec) together with the phone's encoders and `config.codec` /
+     * `config.allowSoftwareEncoder`. Without any such viewer the mode that was wanted last stays (no needless
+     * encoder switch when the last viewer leaves).
      */
-    fun wantedMode(): String = synchronized(lock) { computeWanted() }
+    fun wantedMode(): String = synchronized(lock) { computeChoice()?.mode ?: lastWantedMode }
 
-    private fun computeWanted(): String {
-        if (forceJpegFlag) return MODE_JPEG
-        var known = 0
-        var allHevc = true
-        for (s in sinks) {
-            when (s.h264Capable) {
-                false -> return MODE_JPEG
-                true -> {
-                    known++
-                    if (!s.hevcCapable) allHevc = false
-                }
-                null -> Unit
-            }
-        }
-        if (known == 0) return lastWantedMode
-        return if (config.codec == StreamConfig.CODEC_HEVC && allHevc) MODE_HEVC else MODE_H264
+    private fun computeChoice(): CodecChooser.Choice? {
+        if (forceJpegFlag) return CodecChooser.Choice(MODE_JPEG, null, false, "jpeg: Force JPEG is on")
+        val caps = sinks.mapNotNull { it.viewerCaps }
+        if (caps.isEmpty()) return null
+        return CodecChooser.choose(config.codec, config.allowSoftwareEncoder, phone, caps)
     }
 
     /** Recomputes the wanted mode and, when it changed, asks the capture owner to switch. */
     fun recomputeMode() {
         val wanted: String
+        var changed = false
+        var whyChanged: String? = null
         synchronized(lock) {
-            wanted = computeWanted()
-            if (wanted == lastWantedMode) return
-            lastWantedMode = wanted
+            val choice = computeChoice() ?: return
+            val oldWhy = lastChoice.why
+            lastChoice = choice
+            wanted = choice.mode
+            if (wanted == lastWantedMode) {
+                if (choice.why != oldWhy && info.mode == wanted) whyChanged = choice.why
+            } else {
+                lastWantedMode = wanted
+                fallbackNote = null
+                changed = true
+            }
         }
-        modeRequester?.invoke(wanted)
+        whyChanged?.let { w -> update { it.copy(why = w) } }
+        if (changed) modeRequester?.invoke(wanted)
     }
 
     fun register(sink: StreamSink) {
@@ -157,6 +193,7 @@ class StreamHub(
     fun onPacket(packet: Packet) {
         var needKeyframe = false
         synchronized(lock) {
+            if (packet.type == Packet.TYPE_JPEG || packet.type == Packet.TYPE_H264) metrics.encodedFrames.incrementAndGet()
             if (packet.type == Packet.TYPE_JPEG) lastJpeg = packet
             if (packet.type == Packet.TYPE_H264) {
                 if (packet.isKeyframe) {
@@ -173,8 +210,10 @@ class StreamHub(
     }
 
     /** The video encoder has its parameter sets: announce the stream ([mode] h264 or hevc, with its codec string). */
-    fun onVideoConfig(mode: String, codec: String, width: Int, height: Int, fps: Int) {
-        update { it.copy(mode = mode, codec = codec, width = width, height = height, fps = fps) }
+    fun onVideoConfig(mode: String, codec: String, width: Int, height: Int, fps: Int, encoder: String = "", hardware: Boolean? = null) {
+        update {
+            it.copy(mode = mode, codec = codec, encoder = encoder, hardware = hardware, why = whyFor(mode), width = width, height = height, fps = fps)
+        }
     }
 
     /**
@@ -205,6 +244,8 @@ class StreamHub(
             gop.clear()
             lastKeyframeRequestMs = null
             lastWantedMode = MODE_JPEG
+            lastChoice = CodecChooser.Choice(MODE_JPEG, null, false, "jpeg: no viewer yet")
+            fallbackNote = null
             lastNotice = null
             targetText = ""
         }
@@ -301,9 +342,11 @@ class StreamHub(
         const val MODE_JPEG = "jpeg"
         const val MODE_H264 = "h264"
         const val MODE_HEVC = "hevc"
+        const val MODE_VP9 = "vp9"
+        const val MODE_AV1 = "av1"
 
-        /** h264 and hevc share packet type 1 and the keyframe/GOP handling. */
-        fun isVideoMode(mode: String): Boolean = mode == MODE_H264 || mode == MODE_HEVC
+        /** h264, hevc, vp9 and av1 share packet type 1 and the keyframe/GOP handling. */
+        fun isVideoMode(mode: String): Boolean = mode in CodecChooser.VIDEO_CODECS
         const val MAX_GOP_PACKETS = 300
         const val KEYFRAME_MIN_INTERVAL_MS = 500L
 

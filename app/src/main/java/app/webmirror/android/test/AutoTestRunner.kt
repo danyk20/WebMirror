@@ -244,6 +244,7 @@ object AutoTestRunner {
         val metrics = hub?.metrics
         var bytes0 = -1L
         var kf0 = 0L
+        var frames0 = 0L
         var t0 = 0L
         var lastTargetMs = 0L
         val targets = ArrayList<Int>()
@@ -257,6 +258,7 @@ object AutoTestRunner {
                 if (bytes0 < 0 && metrics != null) {
                     bytes0 = metrics.bytesSent.get()
                     kf0 = metrics.keyframeRequests.get()
+                    frames0 = metrics.encodedFrames.get()
                     t0 = t
                 }
                 if (t - lastTargetMs >= TARGET_SAMPLE_MS) {
@@ -281,11 +283,13 @@ object AutoTestRunner {
         if (page.reconnects > 0) disconnected = true
         val seconds = if (bytes0 >= 0) maxOf(0.001, (endNow - t0) / 1000.0) else 0.0
         val mbps = if (bytes0 >= 0 && metrics != null) (metrics.bytesSent.get() - bytes0) * 8.0 / 1e6 / seconds else 0.0
+        val encodeFps = if (bytes0 >= 0 && metrics != null) (metrics.encodedFrames.get() - frames0) / seconds else 0.0
         val keyframes = if (bytes0 >= 0 && metrics != null) metrics.keyframeRequests.get() - kf0 else 0L
         val encoder = st.encoder.orEmpty()
         val streamText = st.stream.orEmpty()
         val jpegMode = Aggregate.isJpegStream(streamText)
-        val unsupported = TestPlan.unsupportedNote(spec, encoder, jpegMode)
+        val video = st.video
+        val unsupported = TestPlan.unsupportedNote(spec, encoder, jpegMode, video?.mode)
         val preset = settings.preset
         val expectedFps = Aggregate.parseStreamFps(streamText) ?: if (jpegMode) preset.jpegFps else preset.fps
         val status = when {
@@ -297,6 +301,7 @@ object AutoTestRunner {
         val notes = ArrayList<String>()
         if (unsupported != null) notes.add(unsupported)
         if (disconnected) notes.add(if (page.reconnects > 0) "the viewer reconnected during the measurement" else "the viewer disconnected or stopped reporting")
+        if (video?.hardware == false && video.mode != "jpeg") notes.add("software encoder (${video.encoder})")
         if (attempt > 1) notes.add("repeated after a disconnect")
         if (page.samples == 0) notes.add("no stats for this configuration arrived in the measured window")
         if (page.samples > 0 && page.e2eFrames == 0) notes.add("no e2e measurement (clock offset unknown)")
@@ -309,6 +314,8 @@ object AutoTestRunner {
             phone = PhoneSide(
                 mbps = mbps, keyframes = keyframes, targetMin = targets.minOrNull(),
                 targetAvg = if (targets.isEmpty()) null else targets.average(), encoderState = encoder, stream = streamText,
+                mode = video?.mode.orEmpty(), codec = video?.codec.orEmpty(), encoder = video?.encoder.orEmpty(),
+                hardware = video?.hardware, encodeFps = encodeFps,
             ),
         )
     }

@@ -9,4 +9,7 @@ class StreamMetrics {
 
     /** Keyframe requests that reached the encoder (after the hub's rate limit). */
     val keyframeRequests = AtomicLong()
+
+    /** Frames the encoders delivered to the hub (video and JPEG), for the phone-side encode fps of the automatic test. */
+    val encodedFrames = AtomicLong()
 }

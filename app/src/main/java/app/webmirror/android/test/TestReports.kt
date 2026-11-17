@@ -83,6 +83,9 @@ object TestReports {
                     mbps = p.optDouble("mbps", 0.0), keyframes = p.optLong("keyframes"),
                     targetMin = if (p.isNull("targetMin")) null else p.optInt("targetMin"), targetAvg = p.dbl("targetAvg"),
                     encoderState = p.optString("encoderState"), stream = p.optString("stream"),
+                    mode = p.optString("mode"), codec = p.optString("codec"), encoder = p.optString("encoder"),
+                    hardware = if (p.isNull("hardware") || !p.has("hardware")) null else p.optBoolean("hardware"),
+                    encodeFps = p.optDouble("encodeFps", 0.0),
                 ),
                 score = p.dbl("score"), rank = if (p.isNull("rank")) null else p.optInt("rank"),
             )

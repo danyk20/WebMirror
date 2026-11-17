@@ -1,5 +1,6 @@
 package app.webmirror.android
 
+import app.webmirror.android.stream.CodecChooser
 import app.webmirror.android.stream.Packet
 import app.webmirror.android.stream.StreamConfig
 import app.webmirror.android.stream.StreamHub
@@ -12,18 +13,27 @@ class StreamHubTest {
 
     private class Recorder(var h264: Boolean? = null, var hevc: Boolean = false) : StreamSink {
         val log = ArrayList<String>()
-        override val h264Capable: Boolean? get() = h264
-        override val hevcCapable: Boolean get() = hevc
+        override val viewerCaps: CodecChooser.ViewerCaps? get() = h264?.let { CodecChooser.ViewerCaps.legacy(it, hevc) }
         override fun onHello(json: String) { log.add("hello") }
         override fun onPacket(p: Packet) { log.add("packet${p.type}") }
     }
+
+    private val phone = CodecChooser.PhoneCaps(
+        mapOf(
+            "h264" to CodecChooser.PhoneCodec(hw = "c2.qti.avc.encoder"),
+            "hevc" to CodecChooser.PhoneCodec(hw = "c2.qti.hevc.encoder"),
+            "vp9" to CodecChooser.PhoneCodec(sw = "c2.android.vp9.encoder"),
+        ),
+    )
+
+    private fun hubWithPhone(now: () -> Long = { 0L }) = StreamHub(now).also { it.setPhone(phone) }
 
     @Test
     fun helloJsonDescribesTheStream() {
         val hub = StreamHub()
         hub.update { it.copy(width = 576, height = 1280, fps = 30, audio = "bluetooth") }
         assertEquals(
-            """{"t":"hello","v":1,"mode":"jpeg","codec":"","width":576,"height":1280,"fps":30,"audio":"bluetooth","cfg":${StreamConfig().pageJson()}}""",
+            """{"t":"hello","v":1,"mode":"jpeg","codec":"","why":"","encoder":"","width":576,"height":1280,"fps":30,"audio":"bluetooth","cfg":${StreamConfig().pageJson()}}""",
             hub.helloJson(),
         )
     }
@@ -129,7 +139,8 @@ class StreamHubTest {
 
     @Test
     fun modeIsH264OnlyIfEveryViewerCanAndSwitchesLive() {
-        val hub = StreamHub()
+        val hub = hubWithPhone()
+        hub.applyConfig(StreamConfig(codec = "h264"))
         val wanted = ArrayList<String>()
         hub.modeRequester = { wanted.add(it) }
         val a = Recorder()
@@ -150,7 +161,8 @@ class StreamHubTest {
 
     @Test
     fun forceJpegWinsOverCapableViewers() {
-        val hub = StreamHub()
+        val hub = hubWithPhone()
+        hub.applyConfig(StreamConfig(codec = "h264"))
         val wanted = ArrayList<String>()
         hub.modeRequester = { wanted.add(it) }
         val a = Recorder(true)
@@ -163,7 +175,8 @@ class StreamHubTest {
 
     @Test
     fun hevcOnlyIfConfiguredAndEveryViewerCanDecodeIt() {
-        val hub = StreamHub()
+        val hub = hubWithPhone()
+        hub.applyConfig(StreamConfig(codec = "h264"))
         val wanted = ArrayList<String>()
         hub.modeRequester = { wanted.add(it) }
         val a = Recorder()
@@ -186,6 +199,41 @@ class StreamHubTest {
         assertEquals("h264", wanted.last())
         hub.forceJpeg = true
         assertEquals("jpeg", wanted.last())
+    }
+
+    @Test
+    fun autoModeFollowsViewersAndTheHelloCarriesWhyAndEncoder() {
+        val hub = hubWithPhone()
+        val wanted = ArrayList<String>()
+        hub.modeRequester = { wanted.add(it) }
+        val a = Recorder(true, true)
+        hub.register(a)
+        hub.greet(a)
+        assertEquals(listOf("hevc"), wanted)
+        hub.onVideoConfig("hevc", "hev1.1.6.L93.B0", 576, 1280, 30, "c2.qti.hevc.encoder", true)
+        val j = hub.helloJson()
+        assertTrue(j, j.contains(""""why":"auto: hevc hw on phone and all viewers""""))
+        assertTrue(j, j.contains(""""encoder":"c2.qti.hevc.encoder (hw)""""))
+        assertEquals("c2.qti.hevc.encoder", hub.encoderFor("hevc")?.first)
+        val b = Recorder(true, false)
+        hub.register(b)
+        hub.greet(b)
+        assertEquals(listOf("hevc", "h264"), wanted)
+        // software VP9 only with the switch on, fixed codec
+        hub.applyConfig(StreamConfig(codec = "vp9", allowSoftwareEncoder = true))
+        assertEquals("h264", wanted.last()) // viewers a/b do not decode VP9 in hardware: auto result
+        assertEquals("c2.android.vp9.encoder", hub.encoderFor("vp9")?.first)
+    }
+
+    @Test
+    fun fallbackIsExplainedInWhy() {
+        val hub = hubWithPhone()
+        val a = Recorder(true, true)
+        hub.register(a)
+        hub.greet(a)
+        hub.noteFallback("hevc encoder failed: boom")
+        assertTrue(hub.whyFor("h264").contains("fallback from hevc (hevc encoder failed: boom)"))
+        assertEquals("auto: hevc hw on phone and all viewers", hub.whyFor("hevc"))
     }
 
     @Test

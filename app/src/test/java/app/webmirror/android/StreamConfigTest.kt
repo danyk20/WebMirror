@@ -26,7 +26,8 @@ class StreamConfigTest {
         assertEquals(6, c.maxInFlight)
         assertEquals(150, c.dropAfterMs)
         assertEquals(40, c.jitterBufferMs)
-        assertEquals("h264", c.codec)
+        assertEquals("auto", c.codec)
+        assertFalse(c.allowSoftwareEncoder)
         assertEquals(2, c.skipLateFrames)
         assertTrue(c.adaptiveBitrate)
         assertEquals(800, c.minBitrateKbps)
@@ -36,13 +37,24 @@ class StreamConfigTest {
     @Test
     fun mapRoundTrip() {
         val c = StreamConfig(
-            tcpNoDelay = false, sendBufferKb = 0, lowLatencyEncoder = false, profile = "high", codec = "hevc", bitrateMode = "vbr",
+            tcpNoDelay = false, sendBufferKb = 0, lowLatencyEncoder = false, profile = "high", codec = "vp9", allowSoftwareEncoder = true, bitrateMode = "vbr",
             intraRefresh = true, keyframeIntervalS = 5, fitToViewer = true, maxInFlight = 2, dropAfterMs = 400,
             jitterBufferMs = 10, skipLateFrames = 0, adaptiveBitrate = false, minBitrateKbps = 1500, pacing = "vsync",
         )
         assertEquals(c, StreamConfig.fromMap(c.toMap()))
         assertEquals(StreamConfig(), StreamConfig.fromMap(StreamConfig().toMap()))
-        assertEquals(16, c.toMap().size)
+        assertEquals(17, c.toMap().size)
+    }
+
+    @Test
+    fun codecSettingAcceptsAutoAndTheFourCodecsOnly() {
+        for (c in listOf("auto", "h264", "hevc", "vp9", "av1")) assertEquals(c, StreamConfig.fromMap(mapOf("codec" to c)).codec)
+        assertEquals("auto", StreamConfig.fromMap(mapOf("codec" to "vp8")).codec)
+        assertTrue(StreamConfig.fromMap(mapOf("allowSoftwareEncoder" to true)).allowSoftwareEncoder)
+        assertFalse(StreamConfig.fromMap(mapOf("allowSoftwareEncoder" to "yes")).allowSoftwareEncoder)
+        val d = StreamConfig().diff(StreamConfig(allowSoftwareEncoder = true))
+        assertTrue(d.encoder)
+        assertNotEquals(StreamConfig().id, StreamConfig(codec = "av1").id)
     }
 
     @Test

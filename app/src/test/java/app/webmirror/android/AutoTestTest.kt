@@ -26,54 +26,35 @@ class AutoTestTest {
     // ---- plan ----
 
     @Test
-    fun planHasTheEighteenPhasesInOrderAndUniqueNames() {
+    fun planHasTheEightPhasesInOrderAndUniqueNames() {
         val plan = TestPlan.phases()
         assertEquals(
             listOf(
-                "default", "legacy", "no-lowlatency-encoder", "profile-high", "vbr", "intra-refresh-on", "fit-to-viewer-on",
-                "inflight-3", "inflight-12", "drop-after-50ms", "drop-after-400ms", "hevc", "jitter-30ms", "jitter-20ms",
-                "jitter-150ms", "no-adaptive-bitrate", "pacing-vsync", "jpeg",
+                "default", "jitter-30ms", "jitter-20ms", "no-adaptive-bitrate", "codec-h264", "codec-hevc", "codec-vp9", "codec-av1",
             ),
             plan.map { it.name },
         )
-        assertEquals(18, plan.size)
-        assertEquals(plan.size - 1, plan.map { it.config.id }.toSet().size) // jpeg shares the default config id
+        assertEquals(8, plan.size)
+        assertEquals(plan.size, plan.map { it.config.id }.toSet().size)
     }
 
     @Test
-    fun everyPhaseChangesOneFieldFromTheDefaultsExceptLegacy() {
+    fun everyPhaseChangesOnlyItsOwnFieldsFromTheDefaults() {
         val base = StreamConfig().toMap()
         for (p in TestPlan.phases()) {
             val changed = p.config.toMap().filter { (k, v) -> base[k] != v }.keys
             when (p.name) {
                 "default" -> assertTrue(changed.isEmpty())
-                "jpeg" -> {
-                    assertTrue(changed.isEmpty())
-                    assertTrue(p.forceJpeg)
-                }
-                "legacy" -> assertTrue(changed.size > 5)
+                "codec-vp9", "codec-av1" -> assertEquals(setOf("codec", "allowSoftwareEncoder"), changed)
                 else -> assertEquals("${p.name}: $changed", 1, changed.size)
             }
-            if (p.name != "jpeg") assertFalse(p.forceJpeg)
+            assertFalse(p.forceJpeg)
         }
-    }
-
-    @Test
-    fun legacyHasAllImprovementsOff() {
-        val c = TestPlan.phases().first { it.name == "legacy" }.config
-        assertFalse(c.tcpNoDelay)
-        assertEquals(0, c.sendBufferKb)
-        assertFalse(c.lowLatencyEncoder)
-        assertEquals("auto", c.profile)
-        assertEquals("vbr", c.bitrateMode)
-        assertFalse(c.intraRefresh)
-        assertFalse(c.fitToViewer)
-        assertEquals(120, c.maxInFlight)
-        assertEquals(10000, c.dropAfterMs)
-        assertEquals(80, c.jitterBufferMs)
-        assertEquals(0, c.skipLateFrames)
-        assertFalse(c.adaptiveBitrate)
-        assertEquals("immediate", c.pacing)
+        val byName = TestPlan.phases().associateBy { it.name }
+        assertEquals("vp9", byName.getValue("codec-vp9").config.codec)
+        assertTrue(byName.getValue("codec-av1").config.allowSoftwareEncoder)
+        assertFalse(byName.getValue("codec-hevc").config.allowSoftwareEncoder)
+        assertEquals("auto", byName.getValue("default").config.codec)
     }
 
     @Test
@@ -239,17 +220,31 @@ class AutoTestTest {
     }
 
     @Test
-    fun unsupportedNoteOnlyForTheOptionThePhaseAskedFor() {
-        val text = "H.264 584x1280 @30 fps\nprofile: auto (high requested but not listed by the encoder), level auto\nlow latency: partly (latency 1, priority 0 set; low-latency feature NOT supported by this encoder)\nintra refresh: off"
+    fun unsupportedNoteForForcedCodecsThatWereNotUsed() {
         val plan = TestPlan.phases().associateBy { it.name }
-        assertNotNull(TestPlan.unsupportedNote(plan.getValue("profile-high"), text, false))
-        assertNull(TestPlan.unsupportedNote(plan.getValue("vbr"), text, false))
-        assertNull(TestPlan.unsupportedNote(plan.getValue("default"), text, false))
-        assertNotNull(TestPlan.unsupportedNote(plan.getValue("vbr"), text, true))
-        assertNull(TestPlan.unsupportedNote(plan.getValue("jpeg"), text, true))
-        assertNotEquals("", TestPlan.unsupportedNote(plan.getValue("profile-high"), text, false))
-        // HEVC phase: fine when the encoder text says HEVC, noted when H.264 was measured instead
-        assertNull(TestPlan.unsupportedNote(plan.getValue("hevc"), "HEVC 584x1280 @30 fps\nprofile: main", false))
-        assertNotNull(TestPlan.unsupportedNote(plan.getValue("hevc"), text, false))
+        val h264 = "H.264 584x1280 @30 fps\nprofile: constrained baseline"
+        assertNull(TestPlan.unsupportedNote(plan.getValue("default"), h264, false, "h264"))
+        assertNull(TestPlan.unsupportedNote(plan.getValue("codec-hevc"), "HEVC 584x1280 @30 fps", false, "hevc"))
+        assertNotNull(TestPlan.unsupportedNote(plan.getValue("codec-hevc"), h264, false, "h264"))
+        assertNotNull(TestPlan.unsupportedNote(plan.getValue("codec-vp9"), h264, false))
+        assertNull(TestPlan.unsupportedNote(plan.getValue("codec-vp9"), "VP9 584x1280 @30 fps", false))
+        assertTrue(TestPlan.unsupportedNote(plan.getValue("codec-av1"), h264, false, "hevc")!!.contains("hevc was measured"))
+        assertNotNull(TestPlan.unsupportedNote(plan.getValue("codec-h264"), h264, true))
+    }
+
+    @Test
+    fun reportCarriesCodecEncoderAndEncodeFps() {
+        val r = result("codec-vp9", 130.0).let {
+            it.copy(phone = it.phone.copy(mode = "vp9", codec = "vp09.00.31.08", encoder = "c2.android.vp9.encoder", hardware = false, encodeFps = 24.5))
+        }
+        val run = TestRun("t", 1_700_000_000_000, TestOptions(runName = "t"), "smoother", "Dev", 36, true, Scoring.rank(listOf(r)))
+        val json = ReportFormat.toJson(run)
+        assertTrue(json.contains("\"mode\": \"vp9\""))
+        assertTrue(json.contains("\"codec\": \"vp09.00.31.08\""))
+        assertTrue(json.contains("\"hardware\": false"))
+        assertTrue(json.contains("\"encodeFps\": 24.50"))
+        val csv = ReportFormat.toCsv(run)
+        assertTrue(csv.lines().first { it.startsWith("rank,") }.contains("mode,codec,encoder,hardware,encodeFps"))
+        assertTrue(csv.contains("vp9,vp09.00.31.08,c2.android.vp9.encoder,false,24.50"))
     }
 }

@@ -66,7 +66,9 @@ import androidx.core.content.ContextCompat
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 import app.webmirror.android.capture.Preset
+import app.webmirror.android.encode.CodecSupport
 import app.webmirror.android.stream.StreamConfig
+import app.webmirror.android.stream.StreamHub
 import app.webmirror.android.net.Ipv4
 import app.webmirror.android.net.TlsStore
 import app.webmirror.android.net.VirtualIpService
@@ -129,12 +131,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         settings = Settings(this)
         TlsStore.refresh(this)
-        // Restore the virtual address if it was on and the system consent is still valid.
-        if (settings.virtualIpEnabled && !VirtualIpService.state.value.active &&
-            Ipv4.isValid(settings.virtualIp) && VpnService.prepare(this) == null
-        ) {
-            VirtualIpService.start(this, settings.virtualIp)
-        }
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -154,6 +150,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Restore the virtual address if it was on and the system consent is still valid. Done here, not in
+        // onCreate: an activity created while the screen is off/locked may not start services (the start is also
+        // guarded, and tried again on the next resume).
+        if (settings.virtualIpEnabled && !VirtualIpService.state.value.active &&
+            Ipv4.isValid(settings.virtualIp) && VpnService.prepare(this) == null
+        ) {
+            VirtualIpService.start(this, settings.virtualIp)
+        }
         MirrorService.refresh(this)
     }
 
@@ -220,7 +224,7 @@ private fun MainScreen(
     ) {
         Text("WebMirror", style = MaterialTheme.typography.headlineMedium)
 
-        StatusBanner(state.running, state.paused, state.stream)
+        StatusBanner(state.running, state.paused, state.stream, state.video)
 
         // ---- Server ----
         SectionTitle("Server")
@@ -314,7 +318,7 @@ private fun MainScreen(
 
 /** Impossible to miss: red when nothing is served, green while mirroring. */
 @Composable
-private fun StatusBanner(running: Boolean, paused: Boolean, stream: String?) {
+private fun StatusBanner(running: Boolean, paused: Boolean, stream: String?, video: StreamHub.HelloInfo?) {
     val bg = when {
         paused -> ComposeColor(0xFFB26A00)
         running -> ComposeColor(0xFF1B7F3B)
@@ -340,7 +344,9 @@ private fun StatusBanner(running: Boolean, paused: Boolean, stream: String?) {
             Text(
                 when {
                     paused -> "Screen capture ended. Viewers stay connected; tap Start to resume."
-                    running -> stream ?: ""
+                    running -> (stream ?: "") + (video?.takeIf { it.why.isNotEmpty() }?.let {
+                        "\n${it.why}" + if (it.encoder.isNotEmpty()) "\n${it.encoder} (${if (it.hardware == true) "hardware" else "software"}), ${it.codec}" else ""
+                    } ?: "")
                     else -> "Nothing is being served. The Tesla browser cannot connect."
                 },
                 color = ComposeColor.White,
@@ -428,6 +434,7 @@ private fun AdvancedSection(settings: Settings, encoder: String?, running: Boole
     SwitchRow(labels.getValue("tcpNoDelay"), cfg.tcpNoDelay) { change(cfg.copy(tcpNoDelay = it)) }
     NumberRow("sendBufferKb", cfg.sendBufferKb, resetToken) { change(cfg.copy(sendBufferKb = it)) }
     SwitchRow(labels.getValue("lowLatencyEncoder"), cfg.lowLatencyEncoder) { change(cfg.copy(lowLatencyEncoder = it)) }
+    SwitchRow(labels.getValue("allowSoftwareEncoder"), cfg.allowSoftwareEncoder) { change(cfg.copy(allowSoftwareEncoder = it)) }
     Text(labels.getValue("codec"), style = MaterialTheme.typography.labelLarge)
     Column(Modifier.selectableGroup()) {
         for (c in StreamConfig.CODECS) {
@@ -464,6 +471,18 @@ private fun AdvancedSection(settings: Settings, encoder: String?, running: Boole
     OutlinedButton(onClick = { resetToken++; change(StreamConfig()) }, modifier = Modifier.fillMaxWidth()) {
         Text("Reset to defaults")
     }
+
+    Text("Codecs on this phone", style = MaterialTheme.typography.titleMedium)
+    val preset = settings.preset
+    val codecTable = remember(preset) {
+        val p = android.graphics.Point()
+        @Suppress("DEPRECATION")
+        context.getSystemService(android.hardware.display.DisplayManager::class.java)
+            .getDisplay(android.view.Display.DEFAULT_DISPLAY).getRealSize(p)
+        val size = app.webmirror.android.capture.CaptureSize.compute(p.x, p.y, preset.maxLongSide)
+        CodecSupport.describe(CodecSupport.rows(size.width, size.height, preset.fps), size.width, size.height, preset.fps)
+    }
+    Text(text = codecTable, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
 
     Text("Effective encoder state", style = MaterialTheme.typography.titleMedium)
     Text(

@@ -62,6 +62,8 @@ data class ServiceState(
     val lastProbe: String? = null,
     /** Size of the picture being sent, e.g. "576x1280 @30 fps", or null when not mirroring. */
     val stream: String? = null,
+    /** The latest stream description (mode, codec string, encoder, hardware, why), or null when not mirroring. */
+    val video: StreamHub.HelloInfo? = null,
     /** What the encoder actually accepted (profile, low latency, ...), multi-line, or null when not mirroring. */
     val encoder: String? = null,
 )
@@ -243,7 +245,7 @@ class MirrorService : Service() {
         if (!active || capture == null && projection == null) return
         endCapture()
         hub.update { it.copy(mode = StreamHub.MODE_PAUSED) }
-        _state.update { it.copy(paused = true, stream = null, encoder = null) }
+        _state.update { it.copy(paused = true, stream = null, video = null, encoder = null) }
         enterPausedForeground()
         Log.i(TAG, "capture paused, server still running")
     }
@@ -260,7 +262,7 @@ class MirrorService : Service() {
         } catch (e: Exception) {
             Log.w(TAG, "cannot enter paused foreground state: $e")
         }
-        _state.update { it.copy(paused = true, stream = null) }
+        _state.update { it.copy(paused = true, stream = null, video = null) }
     }
 
     /**
@@ -301,7 +303,7 @@ class MirrorService : Service() {
         releaseLocks()
         stopServer()
         hub.reset()
-        _state.update { it.copy(running = false, paused = false, serverError = error, stream = null, encoder = null) }
+        _state.update { it.copy(running = false, paused = false, serverError = error, stream = null, video = null, encoder = null) }
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
         Log.i(TAG, "mirroring stopped")
@@ -395,7 +397,7 @@ class MirrorService : Service() {
             }
 
             override fun onStreamChanged(info: StreamHub.HelloInfo) {
-                _state.update { it.copy(stream = "${info.width}x${info.height} @${info.fps} fps (${info.mode})") }
+                _state.update { it.copy(stream = "${info.width}x${info.height} @${info.fps} fps (${info.mode})", video = info) }
             }
         }
     }

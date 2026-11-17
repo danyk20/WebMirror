@@ -52,39 +52,23 @@ data class TestOptions(
 /** The list of phases. Edit [phases] to change what the test does: each entry is a full [StreamConfig]. */
 object TestPlan {
 
-    /** Everything the improvements changed, switched back: the "before" reference. */
-    fun legacy(base: StreamConfig = StreamConfig()): StreamConfig = base.copy(
-        tcpNoDelay = false, sendBufferKb = 0, lowLatencyEncoder = false, profile = StreamConfig.PROFILE_AUTO,
-        bitrateMode = StreamConfig.BITRATE_VBR, intraRefresh = false, fitToViewer = false, maxInFlight = 120,
-        dropAfterMs = 10000, jitterBufferMs = 80, codec = StreamConfig.CODEC_H264, skipLateFrames = 0, adaptiveBitrate = false,
-        pacing = StreamConfig.PACING_IMMEDIATE,
-    )
-
     /** Passing a config through the same clamping the app does when it stores it keeps the config id stable. */
     private fun norm(c: StreamConfig): StreamConfig = StreamConfig.fromMap(c.toMap())
 
     fun phases(base: StreamConfig = StreamConfig()): List<PhaseSpec> {
-        fun p(name: String, description: String, c: StreamConfig, jpeg: Boolean = false) =
-            PhaseSpec(name, description, norm(c), jpeg)
+        fun p(name: String, description: String, c: StreamConfig) = PhaseSpec(name, description, norm(c))
+        // The other options (legacy, low-latency, profile, vbr, intra refresh, fit to viewer, in-flight, drop-after,
+        // vsync pacing, jitter 150 ms, JPEG) were measured in the car on 2026-11-18 and made no measurable difference
+        // (docs/car-test-results.md); they are not repeated. The options themselves still exist in StreamConfig.
         return listOf(
-            p("default", "All current defaults", base),
-            p("legacy", "All improvements off (reference)", legacy(base)),
-            p("no-lowlatency-encoder", "Low-latency encoder mode off", base.copy(lowLatencyEncoder = false)),
-            p("profile-high", "H.264 High profile", base.copy(profile = StreamConfig.PROFILE_HIGH)),
-            p("vbr", "Variable bitrate", base.copy(bitrateMode = StreamConfig.BITRATE_VBR)),
-            p("intra-refresh-on", "Intra refresh instead of keyframes", base.copy(intraRefresh = true)),
-            p("fit-to-viewer-on", "Stream size fitted to the viewer window", base.copy(fitToViewer = true)),
-            p("inflight-3", "3 frames in flight", base.copy(maxInFlight = 3)),
-            p("inflight-12", "12 frames in flight", base.copy(maxInFlight = 12)),
-            p("drop-after-50ms", "Drop waiting frames after 50 ms", base.copy(dropAfterMs = 50)),
-            p("drop-after-400ms", "Drop waiting frames after 400 ms", base.copy(dropAfterMs = 400)),
-            p("hevc", "HEVC (H.265) instead of H.264", base.copy(codec = StreamConfig.CODEC_HEVC)),
+            p("default", "All current defaults (codec auto, jitter 40 ms, adaptive bitrate)", base),
             p("jitter-30ms", "Player jitter buffer 30 ms", base.copy(jitterBufferMs = 30)),
             p("jitter-20ms", "Player jitter buffer 20 ms", base.copy(jitterBufferMs = 20)),
-            p("jitter-150ms", "Player jitter buffer 150 ms", base.copy(jitterBufferMs = 150)),
             p("no-adaptive-bitrate", "Adaptive bitrate off", base.copy(adaptiveBitrate = false)),
-            p("pacing-vsync", "Player draws once per screen refresh", base.copy(pacing = StreamConfig.PACING_VSYNC)),
-            p("jpeg", "JPEG instead of H.264", base, jpeg = true),
+            p("codec-h264", "Forced H.264", base.copy(codec = StreamConfig.CODEC_H264)),
+            p("codec-hevc", "Forced HEVC", base.copy(codec = StreamConfig.CODEC_HEVC)),
+            p("codec-vp9", "Forced VP9 (software encoder allowed)", base.copy(codec = StreamConfig.CODEC_VP9, allowSoftwareEncoder = true)),
+            p("codec-av1", "Forced AV1 (software encoder allowed)", base.copy(codec = StreamConfig.CODEC_AV1, allowSoftwareEncoder = true)),
         )
     }
 
@@ -95,21 +79,22 @@ object TestPlan {
      * A note when the encoder text shows that the option of a phase did not apply (the phase then measures the
      * same thing as `default`), else null. [jpegMode]: the stream is JPEG, so H.264 options do not apply.
      */
-    fun unsupportedNote(spec: PhaseSpec, encoderText: String?, jpegMode: Boolean): String? {
+    fun unsupportedNote(spec: PhaseSpec, encoderText: String?, jpegMode: Boolean, actualMode: String? = null): String? {
         if (spec.forceJpeg) return null
         if (jpegMode) return "the stream was JPEG (a viewer cannot decode H.264), so H.264 options did not apply"
         val text = encoderText ?: return null
-        if (spec.config.codec == StreamConfig.CODEC_HEVC && !text.startsWith("HEVC")) {
-            return "HEVC was not used (a viewer cannot decode it in hardware, or the encoder refused it): H.264 was measured"
+        val fixed = spec.config.codec
+        if (fixed != StreamConfig.CODEC_AUTO) {
+            val label = mapOf("h264" to "H.264", "hevc" to "HEVC", "vp9" to "VP9", "av1" to "AV1").getValue(fixed)
+            val used = if (actualMode != null) actualMode == fixed else text.startsWith(label)
+            if (!used) {
+                return "$label was not used (the phone has no usable encoder for it, a viewer cannot decode it in hardware, or the encoder refused it): ${actualMode ?: "another codec"} was measured"
+            }
         }
         val lines = text.lines().filter { l -> UNSUPPORTED_MARKERS.any { l.contains(it) } }
         // Only report what this phase asked for: the default phase has the same lines for the same reasons.
         val relevant = lines.filter { l ->
             when (spec.name) {
-                "no-lowlatency-encoder", "legacy" -> false
-                "profile-high" -> l.startsWith("profile:")
-                "vbr" -> l.startsWith("bitrate mode:")
-                "intra-refresh-on" -> l.startsWith("intra refresh:")
                 else -> l.startsWith("FALLBACK")
             }
         }
@@ -268,6 +253,13 @@ data class PhoneSide(
     val targetAvg: Double?,
     val encoderState: String,
     val stream: String,
+    /** The mode actually used ("h264", "hevc", "vp9", "av1", "jpeg"), its codec string, the MediaCodec name and whether it is hardware. */
+    val mode: String = "",
+    val codec: String = "",
+    val encoder: String = "",
+    val hardware: Boolean? = null,
+    /** Frames out of the encoder per second during the measured window (the phone side of the frame rate). */
+    val encodeFps: Double = 0.0,
 )
 
 object PhaseStatus {
@@ -292,6 +284,7 @@ data class PhaseResult(
     val score: Double? = null,
     val rank: Int? = null,
 ) {
+    /** Only old reports (before 2026-11-18) have a `legacy` reference phase. */
     val reference: Boolean get() = name == "legacy"
 }
 
@@ -386,6 +379,8 @@ object ReportFormat {
             append("\"decoderResets\": ${p.decoderResets}, \"reconnects\": ${p.reconnects}, ")
             append("\"mbps\": ${num(h.mbps)}, \"srvDropped\": ${p.srvDropped}, \"keyframes\": ${h.keyframes}, ")
             append("\"targetMin\": ${h.targetMin ?: "null"}, \"targetAvg\": ${num(h.targetAvg)}, ")
+            append("\"mode\": ${JsonText.quote(h.mode)}, \"codec\": ${JsonText.quote(h.codec)}, \"encoder\": ${JsonText.quote(h.encoder)}, ")
+            append("\"hardware\": ${h.hardware ?: "null"}, \"encodeFps\": ${num(h.encodeFps)}, ")
             append("\"stream\": ${JsonText.quote(h.stream)}, \"encoderState\": ${JsonText.quote(h.encoderState)}")
             append("}")
             append(if (i < run.phases.size - 1) ",\n" else "\n")
@@ -396,7 +391,8 @@ object ReportFormat {
     val CSV_HEADER = listOf(
         "rank", "phase", "score", "status", "e2eAvgMs", "e2eP95Ms", "e2eMaxMs", "fpsAvg", "fpsMin", "rttAvgMs",
         "lateMs", "netLateMs", "skipped", "replaced", "dropped", "decoderResets", "reconnects", "mbps",
-        "srvDropped", "keyframes", "targetMin", "targetAvg", "samples", "attempts", "expectedFps", "note",
+        "srvDropped", "keyframes", "targetMin", "targetAvg", "samples", "attempts", "expectedFps", "mode", "codec", "encoder",
+        "hardware", "encodeFps", "note",
     )
 
     private fun csvText(s: String): String =
@@ -417,7 +413,8 @@ object ReportFormat {
                     csvNum(p.netLateMs), p.skipped.toString(), p.replaced.toString(), p.dropped.toString(),
                     p.decoderResets.toString(), p.reconnects.toString(), csvNum(h.mbps), p.srvDropped.toString(),
                     h.keyframes.toString(), h.targetMin?.toString() ?: "", csvNum(h.targetAvg), p.samples.toString(),
-                    r.attempts.toString(), r.expectedFps.toString(), csvText(r.note),
+                    r.attempts.toString(), r.expectedFps.toString(), h.mode, csvText(h.codec), csvText(h.encoder),
+                    h.hardware?.toString() ?: "", csvNum(h.encodeFps), csvText(r.note),
                 ).joinToString(","),
             ).append('\n')
         }

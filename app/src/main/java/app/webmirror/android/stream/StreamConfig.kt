@@ -15,8 +15,13 @@ data class StreamConfig(
     val sendBufferKb: Int = 64,
     // ---- encoder (rebuild on change) ----
     val lowLatencyEncoder: Boolean = true,
-    /** "h264" or "hevc". HEVC is used only if every viewer can decode it in hardware, else H.264 (then JPEG). */
-    val codec: String = CODEC_H264,
+    /**
+     * "auto" (the app chooses by hardware support on the phone and on every viewer, see `CodecChooser`), or a fixed
+     * "h264", "hevc", "vp9" or "av1". A fixed codec is used only if the phone and every viewer support it, else the auto result.
+     */
+    val codec: String = CODEC_AUTO,
+    /** Auto mode and fixed choices use software encoders only when true (for testing VP9/AV1 on phones without hardware for them). */
+    val allowSoftwareEncoder: Boolean = false,
     /** H.264 only (HEVC always uses Main): "baseline", "main", "high" or "auto". */
     val profile: String = PROFILE_BASELINE,
     /** "cbr" or "vbr". */
@@ -45,6 +50,7 @@ data class StreamConfig(
     data class EncoderKey(
         val lowLatencyEncoder: Boolean,
         val codec: String,
+        val allowSoftwareEncoder: Boolean,
         val profile: String,
         val bitrateMode: String,
         val intraRefresh: Boolean,
@@ -52,7 +58,7 @@ data class StreamConfig(
     )
 
     val encoderKey: EncoderKey
-        get() = EncoderKey(lowLatencyEncoder, codec, profile, bitrateMode, intraRefresh, keyframeIntervalS)
+        get() = EncoderKey(lowLatencyEncoder, codec, allowSoftwareEncoder, profile, bitrateMode, intraRefresh, keyframeIntervalS)
 
     /** Which parts of the running system a change touches. */
     data class Diff(
@@ -81,6 +87,7 @@ data class StreamConfig(
         "sendBufferKb" to sendBufferKb,
         "lowLatencyEncoder" to lowLatencyEncoder,
         "codec" to codec,
+        "allowSoftwareEncoder" to allowSoftwareEncoder,
         "profile" to profile,
         "bitrateMode" to bitrateMode,
         "intraRefresh" to intraRefresh,
@@ -107,7 +114,7 @@ data class StreamConfig(
 
     /** One compact line for overlays and logs. */
     fun summary(): String = buildString {
-        append(codec).append(' ').append(profile).append(' ').append(bitrateMode)
+        append(codec).append(if (allowSoftwareEncoder) "+sw" else "").append(' ').append(profile).append(' ').append(bitrateMode)
         if (lowLatencyEncoder) append(" lowlat")
         if (intraRefresh) append(" intra-refresh") else append(" kf").append(keyframeIntervalS).append('s')
         if (fitToViewer) append(" fit")
@@ -130,15 +137,18 @@ data class StreamConfig(
         const val PROFILE_MAIN = "main"
         const val PROFILE_HIGH = "high"
         const val PROFILE_AUTO = "auto"
+        const val CODEC_AUTO = "auto"
         const val CODEC_H264 = "h264"
         const val CODEC_HEVC = "hevc"
+        const val CODEC_VP9 = "vp9"
+        const val CODEC_AV1 = "av1"
         const val BITRATE_CBR = "cbr"
         const val BITRATE_VBR = "vbr"
 
         const val PACING_IMMEDIATE = "immediate"
         const val PACING_VSYNC = "vsync"
 
-        val CODECS = listOf(CODEC_H264, CODEC_HEVC)
+        val CODECS = listOf(CODEC_AUTO, CODEC_H264, CODEC_HEVC, CODEC_VP9, CODEC_AV1)
         val PACINGS = listOf(PACING_IMMEDIATE, PACING_VSYNC)
         val PROFILES = listOf(PROFILE_BASELINE, PROFILE_MAIN, PROFILE_HIGH, PROFILE_AUTO)
         val BITRATE_MODES = listOf(BITRATE_CBR, BITRATE_VBR)
@@ -148,7 +158,8 @@ data class StreamConfig(
             "tcpNoDelay" to "TCP no-delay (new connections)",
             "sendBufferKb" to "Socket send buffer, KB (0 = system default; new connections)",
             "lowLatencyEncoder" to "Low-latency encoder mode (Android 11+)",
-            "codec" to "Video codec (HEVC only if every viewer decodes it in hardware)",
+            "codec" to "Video codec (auto = by hardware support on the phone and every viewer)",
+            "allowSoftwareEncoder" to "Allow software encoders (slow; for testing VP9/AV1)",
             "profile" to "H.264 profile",
             "bitrateMode" to "Bitrate mode",
             "intraRefresh" to "Intra refresh instead of keyframes",
@@ -192,6 +203,7 @@ data class StreamConfig(
                 sendBufferKb = num("sendBufferKb", d.sendBufferKb),
                 lowLatencyEncoder = bool("lowLatencyEncoder", d.lowLatencyEncoder),
                 codec = codec,
+                allowSoftwareEncoder = bool("allowSoftwareEncoder", d.allowSoftwareEncoder),
                 profile = profile,
                 bitrateMode = mode,
                 intraRefresh = bool("intraRefresh", d.intraRefresh),

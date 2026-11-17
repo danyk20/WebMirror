@@ -93,8 +93,17 @@ class VirtualIpService : VpnService() {
         val state: StateFlow<VirtualIpState> = _state.asStateFlow()
 
         /** Call only after `VpnService.prepare(context)` returned null (consent granted). */
-        fun start(context: Context, ip: String) {
+        fun start(context: Context, ip: String): Boolean = try {
             context.startService(Intent(context, VirtualIpService::class.java).putExtra(EXTRA_IP, ip))
+            true
+        } catch (e: IllegalStateException) {
+            // BackgroundServiceStartNotAllowedException (API 31+, a subclass) when the app is not in the foreground,
+            // e.g. the screen is off. Not fatal: the next resume tries again.
+            Log.w(TAG, "cannot start the virtual address service now (app not in the foreground?): $e")
+            false
+        } catch (e: SecurityException) {
+            Log.w(TAG, "virtual address service start refused: $e")
+            false
         }
 
         fun stop(context: Context) {

@@ -14,11 +14,8 @@ interface StreamSink {
     /** Closes this viewer's connection (the page reconnects by itself). */
     fun disconnect() {}
 
-    /** What the viewer said in its `hello` (`h264`), or null while it has not said hello yet. */
-    val h264Capable: Boolean? get() = null
-
-    /** What the viewer said in its `hello` (`hevc`): it can decode HEVC in hardware. False for pages that do not say. */
-    val hevcCapable: Boolean get() = false
+    /** What the viewer said in its `hello` (decode support per codec), or null while it has not said hello yet. */
+    val viewerCaps: CodecChooser.ViewerCaps? get() = null
 
     /** This viewer's congestion signals for the bitrate controller, or null if it has none. */
     fun congestion(nowMs: Long): BitrateController.ViewerSignal? = null
