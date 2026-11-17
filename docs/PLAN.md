@@ -40,7 +40,7 @@ PHONE (app)                                             BROWSER (car / laptop)
 │ MirrorService (foreground service)        │          │                              │
 │  ├ ScreenCapture: MediaProjection         │  WS      │  WebSocket                   │
 │  │   └ VirtualDisplay ─► surface          │ binary   │   ├ H.264 → VideoDecoder     │
-│  ├ H264Encoder (MediaCodec)  ─┐           │ packets  │   │          → canvas        │
+│  ├ VideoEncoder (H.264/HEVC)  ─┐           │ packets  │   │          → canvas        │
 │  ├ JpegEncoder (ImageReader) ─┼► StreamHub├─────────►│   ├ JPEG  → createImageBitmap│
 │  ├ AudioCapture (M5)         ─┘    │      │          │   │          → canvas        │
 │  ├ WebServer (NanoHTTPD + WS) ◄────┘      │◄─────────┤   └ PCM (M5) → Web Audio     │
@@ -64,7 +64,7 @@ Rules that keep future features cheap:
 | 2 | 2 | reserved | `0` |
 | 4 | 4 | `ptsHi` | upper 32 bits of presentation time in microseconds |
 | 8 | 4 | `ptsLo` | lower 32 bits |
-| 12 | n | payload | type 1: Annex-B H.264 (start codes `00 00 00 01`), keyframes always start with SPS+PPS. type 2: a complete JPEG file. type 3: PCM 16-bit little-endian, 48 000 Hz, stereo interleaved. |
+| 12 | n | payload | type 1: Annex-B H.264 **or HEVC** (start codes `00 00 00 01`; which one is given by `hello.mode`/`codec`, so no new packet type is needed), keyframes always start with the parameter sets (SPS+PPS; HEVC: VPS+SPS+PPS). HEVC keyframes are IRAP pictures (NAL types 16..23). type 2: a complete JPEG file. type 3: PCM 16-bit little-endian, 48 000 Hz, stereo interleaved. |
 
 `pts` is the phone's monotonic clock (`System.nanoTime()/1000`). Video and audio use the same clock; that is what makes sync possible. In JavaScript read it as `hi * 4294967296 + lo` (do not use BigInt, old browsers lack it).
 
@@ -72,8 +72,8 @@ Rules that keep future features cheap:
 
 | Direction | `t` | Fields | Meaning |
 |---|---|---|---|
-| page → phone | `hello` | `v:1, h264:boolean, pin:string` | First message. `h264` = result of the capability check. |
-| phone → page | `hello` | `v:1, mode:"h264"\|"jpeg"\|"paused", codec:"avc1.xxxxxx", width, height, fps, audio:"bluetooth"\|"browser"\|"off", cfg:{id, summary, jitterBufferMs, skipLateFrames, pacing}` | Stream description. Sent again whenever anything in it changes (rotation, preset, mode). `mode:"paused"`: screen capture ended on the phone (screen lock, status-bar chip, system) but the server and the viewer connections stay up; no packets follow until a normal `hello` arrives after the user taps Start again. The page keeps its last picture and shows "Paused on the phone. Open WebMirror and tap Start." Other fields are the last known values and may be ignored. |
+| page → phone | `hello` | `v:1, h264:boolean, hevc:boolean, pin:string` | First message. `h264` = result of the capability check. `hevc` = `isConfigSupported({codec:"hev1.1.6.L93.B0", hardwareAcceleration:"prefer-hardware"})` is true (pages that do not send it count as false). |
+| phone → page | `hello` | `v:1, mode:"h264"\|"hevc"\|"jpeg"\|"paused", codec:"avc1.xxxxxx"\|"hev1.P.C.Lxx.B0", width, height, fps, audio:"bluetooth"\|"browser"\|"off", cfg:{id, summary, jitterBufferMs, skipLateFrames, pacing}` | Stream description. Sent again whenever anything in it changes (rotation, preset, mode). `mode:"paused"`: screen capture ended on the phone (screen lock, status-bar chip, system) but the server and the viewer connections stay up; no packets follow until a normal `hello` arrives after the user taps Start again. The page keeps its last picture and shows "Paused on the phone. Open WebMirror and tap Start." Other fields are the last known values and may be ignored. |
 | phone → page | `denied` | `reason:"pin"\|"version"` | Then the phone closes the socket. |
 | phone → page | `ping` | `ts, off?, rtt?, inFlight, pending, target` | Every 1 s to every viewer (liveness; the page reconnects if it received nothing, text or binary, for 3 s, showing "Reconnecting…" over the last picture). `ts` = the phone's monotonic clock in µs (same clock as packet pts) at the moment of sending; the page answers at once with `pong`. `off` = clock offset in µs, page clock minus phone clock, from the sample with the smallest round trip in the last 30 s (absent until the first pong arrived); `rtt` = the last measured round trip in ms. `inFlight, pending, target` = the phone's flow-control state for this viewer, shown in the overlay; `target` = current adaptive bitrate/quality as text, e.g. `"3200/4000 kbps"`, `"40/50 quality"`, empty when none. |
 | page → phone | `pong` | `ts, pageTs` | Immediate answer to `ping`: `ts` echoed, `pageTs` = `performance.now()` (ms, fractional) when answering. The phone computes `rtt = receive time - ts` and `offset = pageTs*1000 - (ts + rtt/2)` (NTP style, symmetric delay assumed) and keeps the sample with the smallest rtt of the last 30 s. The page measures for every drawn frame `e2eMs = performance.now() - (pts/1000 + off/1000)`, the time from the phone's capture timestamp to drawing; the offset is forgotten when the socket closes. |
@@ -95,6 +95,7 @@ One object (`stream/StreamConfig.kt`, persisted in `Settings`) holds every laten
 |---|---|---|
 | `tcpNoDelay` | true | TCP_NODELAY on accepted sockets (new connections) |
 | `sendBufferKb` | 64 | socket send buffer; 0 = system default (new connections) |
+| `codec` | h264 | `h264` / `hevc`. HEVC (`video/hevc`, profile Main fixed, no level requested, same low-latency / CBR / intra-refresh / keyframe keys where supported, no B-frames) is used only if `codec == hevc` and every viewer that said hello said `hevc:true`; otherwise H.264, then JPEG as before. If the HEVC encoder cannot be created or configured, it is logged and H.264 is used. The codec string is built from the SPS (`encode/HevcUtil`): `hev1.` + optional profile-space letter (A/B/C) + `general_profile_idc` + `.` + the 32 compatibility flags in reverse bit order, hex without leading zeros + `.` + `L`/`H` (tier) + `general_level_idc` + `.` + the constraint bytes in hex, trailing zero bytes omitted (ISO/IEC 14496-15 Annex E.3, as summarised by the W3C WebCodecs HEVC registration and MDN's codecs parameter guide), e.g. `hev1.1.6.L93.B0`. A change of `codec` is applied through the mode switch (hub recomputes the wanted mode) |
 | `lowLatencyEncoder` | true | API 30+: `KEY_LATENCY=1`, `KEY_PRIORITY=0`, plus `KEY_LOW_LATENCY=1` if `FEATURE_LowLatency` is supported |
 | `profile` | baseline | baseline (Constrained Baseline, else Baseline) / main / high / auto; requested only if listed in `profileLevels`, else auto (logged); `KEY_MAX_B_FRAMES=0` always |
 | `bitrateMode` | cbr | cbr / vbr, only if `isBitrateModeSupported` |
@@ -103,9 +104,9 @@ One object (`stream/StreamConfig.kt`, persisted in `Settings`) holds every laten
 | `fitToViewer` | false | encoded size = largest size inside the viewers' physical window (`w*dpr` x `h*dpr`; the largest viewer wins), phone aspect, capped by the preset's long side, multiples of 16; re-encode only if the size changes by more than 10% |
 | `maxInFlight` | 6 | frames sent but not acknowledged (VideoOutbox); range 1..200 |
 | `dropAfterMs` | 150 | H.264: drop waiting packets and wait for a keyframe only if the oldest waited longer; range 10..20000 |
-| `adaptiveBitrate` | true | `stream/BitrateController` (pure), evaluated every 500 ms by `ScreenCapture` on the worst viewer. Congestion = oldest waiting frame waited > `dropAfterMs`/2, or outbox drops / page skips (not vsync replacements) since the last tick, or page `netLateMs` > 150 (stats fresher than 3 s). Congestion: target x 0.7 (not below the floor), then no further decrease for 1 s. After 4 s without congestion: +10 % (at least 1 unit, not above the preset value), then again 4 s. Applied with `MediaCodec.setParameters(PARAMETER_KEY_VIDEO_BITRATE)`, no rebuild; in JPEG mode the same controller moves the JPEG quality between 30 and the preset quality. The target resets to the preset value when the encoder is rebuilt. Shown in the encoder state, in `ping.target` (page overlay) and `stats.target` (log/state); changes logged at INFO, at most every 2 s |
+| `adaptiveBitrate` | true | `stream/BitrateController` (pure), evaluated every 500 ms by `ScreenCapture` on the worst viewer. Congestion = real evidence only: outbox drops (congestion drops, not reset drops) or page skips (not vsync replacements) since the last tick, oldest waiting frame waited > `dropAfterMs`, or page `decodeQueue` > 2 (stats fresher than 3 s). Network lateness alone (`netLateMs`) and waits shorter than `dropAfterMs` are not congestion (the old rule "waited > `dropAfterMs`/2 = 75 ms" cut the target to 800-1300 kbit/s in the car with 0 drops and no delay benefit: car test 3). The target is cut only after congestion in 2 consecutive ticks: x 0.75 (not below the floor), then at least 1 s before the next cut. After 2 s without congestion: +25 % (at least 1 unit, not above the preset value), then again 2 s (800 to 4000 kbit/s in about 16 s). Applied with `MediaCodec.setParameters(PARAMETER_KEY_VIDEO_BITRATE)`, no rebuild; in JPEG mode the same controller moves the JPEG quality between 30 and the preset quality. The target resets to the preset value when the encoder is rebuilt. Shown in the encoder state, in `ping.target` (page overlay) and `stats.target` (log/state); changes logged at INFO, at most every 2 s |
 | `minBitrateKbps` | 800 | floor of the H.264 target, kbit/s (clamped to the preset bitrate) |
-| `jitterBufferMs` | 80 | page: buffer added to the due time (plan 2.4) |
+| `jitterBufferMs` | 40 | page: buffer added to the due time (plan 2.4) |
 | `skipLateFrames` | 2 | page: skip frames later than this many frame intervals; 0 = never |
 | `pacing` | immediate | page: `immediate` draws every decoded frame at once; `vsync` keeps only the newest decoded frame (closing an older undrawn one, counted in `skipped`/`replaced`) and draws it from a `requestAnimationFrame` loop once per refresh; if no rAF callback ran for 100 ms (throttled), it draws at once (`hello.cfg.pacing`) |
 
@@ -113,15 +114,15 @@ The UI ("Advanced streaming options") shows the effective encoder state (profile
 
 ### 2.1.2 Automatic test (`test/`)
 
-One button on the phone runs the whole comparison from the car. The test pattern (`TestPatternActivity`: moving bar, scrolling text, frame counter, millisecond clock, coloured noise, phase name and remaining time in a corner; Back aborts) or whatever is on screen is the content. Preconditions (mirroring running, not paused, at least one viewer) are waited for, never failed. Each phase of `TestPlan.phases()` (an editable list of full `StreamConfig`s, base = defaults, one changed field each, plus `legacy` = every improvement off as the reference, and `jpeg` = force JPEG) is applied with `MirrorService.applyConfig`, then 5 s settle (not measured) and 40 s (Quick: 20 s) measured. Stats count only if their `cfgId` is the phase's, they cover time after the settle period, and they come from the same viewer. Socket-option changes reconnect the viewer so they take effect. A phase during which the viewer disconnected or reconnected is repeated once. Phases whose encoder option could not be applied are marked `unsupported` and listed last without a rank. At the end the owner's `StreamConfig`, preset and Force-JPEG are restored.
+One button on the phone runs the whole comparison from the car. The test pattern (`TestPatternActivity`: moving bar, scrolling text, frame counter, millisecond clock, coloured noise, phase name and remaining time in a corner; Back aborts) or whatever is on screen is the content. Preconditions (mirroring running, not paused, at least one viewer) are waited for, never failed. Each phase of `TestPlan.phases()` (an editable list of full `StreamConfig`s, base = defaults, one changed field each, plus `legacy` = every improvement off as the reference (jitter 80), and `jpeg` = force JPEG; 18 phases, `default` = the current defaults incl. jitter 40 ms; `hevc` = codec hevc, `jitter-30ms`, `jitter-20ms`, `jitter-150ms`, `no-adaptive-bitrate`; the `hevc` phase is marked unsupported when H.264 was measured instead) is applied with `MirrorService.applyConfig`, then 5 s settle (not measured) and 40 s (Quick: 20 s) measured. Stats count only if their `cfgId` is the phase's, they cover time after the settle period, and they come from the same viewer. Socket-option changes reconnect the viewer so they take effect. A phase during which the viewer disconnected or reconnected is repeated once. Phases whose encoder option could not be applied are marked `unsupported` and listed last without a rank. At the end the owner's `StreamConfig`, preset and Force-JPEG are restored.
 
 Score (lower is better): `e2e P95 + fps penalty + 2000 per reconnect + 250 per decoder reset + 5000 if the viewer disconnected`; fps penalty = `max(0, 0.8 x preset fps - average fps) / (0.8 x preset fps) x 1000`. E2e P95 is taken over all frames drawn in the measured window (from `stats.e2eRaw`). Reports: `filesDir/tests/<yyyyMMdd-HHmmss>-<runName>.json` and `.csv` (`adb shell run-as app.webmirror.android cat files/tests/<name>.csv`), listed in the app under "Test results" with a table sorted by score and a Share button; the page gets a `notice` "Test finished — best: <phase>".
 
 ### 2.2 Video modes
 The phone can only attach one output to the screen capture at a time (Android 14+ allows one virtual display per capture session). So the server runs in **one mode for all viewers**:
-- `h264` when every connected viewer said `h264:true`.
+- `h264` (or `hevc`, see `codec` in 2.1.1) when every connected viewer said `h264:true`.
 - `jpeg` as soon as any connected viewer said `h264:false`. Back to `h264` when that viewer leaves.
-Every page implements both decoders and follows the `mode` in the latest `hello`.
+Every page implements the decoders (H.264 and HEVC share one WebCodecs implementation, configured from `hello.codec` with `optimizeForLatency`, no `description`, Annex-B input, `prefer-hardware` for HEVC) and follows the `mode` in the latest `hello`.
 
 ### 2.3 Quality presets (starting values, tuned after car test M3)
 | Preset | Longest side of the image | Max fps | H.264 bitrate | JPEG quality |
@@ -163,7 +164,7 @@ WebMirror/
         │   ├── Settings.kt                 # SharedPreferences wrapper
         │   ├── capture/ScreenCapture.kt    # MediaProjection + VirtualDisplay
         │   ├── capture/CaptureSize.kt      # preset → width/height (pure function)
-        │   ├── encode/H264Encoder.kt       # MediaCodec
+        │   ├── encode/VideoEncoder.kt      # MediaCodec, H.264 and HEVC (+ AvcUtil, HevcUtil)
         │   ├── encode/JpegEncoder.kt       # ImageReader → Bitmap → JPEG
         │   ├── encode/AvcUtil.kt           # codec string from SPS (pure function)
         │   ├── audio/AudioCapture.kt       # M5
@@ -336,7 +337,7 @@ Developer shortcut: `adb forward tcp:18080 tcp:8080` (local port 18080, because 
 
 **M2.2 `capture/CaptureSize.kt`** — pure function `compute(screenW, screenH, maxLongSide): Size` per §2.3. Unit tests: 1080×2400 @1920 → 864×1920; 1080×2400 @1280 → 576×1280; 2400×1080 @1280 → 1280×576; 720×1280 @1920 → 720×1280 (no upscale).
 
-**M2.3 `encode/H264Encoder.kt`**
+**M2.3 `encode/VideoEncoder.kt` (was H264Encoder)**
 ```kotlin
 val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, w, h).apply {
     setInteger(KEY_COLOR_FORMAT, CodecCapabilities.COLOR_FormatSurface)
