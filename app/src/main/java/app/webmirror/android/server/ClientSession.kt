@@ -43,8 +43,9 @@ class ClientSession(
     private var lastSeenNanos = System.nanoTime()
 
     @Volatile
-    var viewerH264 = false
-        private set
+    private var viewerH264: Boolean? = null
+
+    override val h264Capable: Boolean? get() = viewerH264
 
     // ---- StreamSink (called from producer threads) ----
 

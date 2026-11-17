@@ -1,6 +1,5 @@
 // WebMirror player. Plain script, no modules; no ?. , ??, or BigInt (old Chromium in the car).
-// Protocol: docs/PLAN.md section 2.1. Decoders are chosen per mode (hello.mode); today only "jpeg" exists.
-// Adding H.264 means adding decoders.h264 and a capability check; nothing else needs to change.
+// Protocol: docs/PLAN.md section 2.1. Decoders are chosen per mode (hello.mode): "jpeg" and "h264".
 (function () {
   'use strict';
 
@@ -17,6 +16,8 @@
   const HEADER = 12;
   const TYPE_H264 = 1;
   const TYPE_JPEG = 2;
+  const H264_PROBE_CODEC = 'avc1.42E01F';
+  const MAX_DECODE_QUEUE = 10;     // VideoDecoder backlog that counts as overload
 
   // ---- elements ----
   const canvas = document.getElementById('screen');
@@ -46,6 +47,8 @@
   let lastStatsAt = 0;
   let fps = 0;
   let pumpTimer = null;
+  let h264Supported = false;      // VideoDecoder exists and isConfigSupported said yes
+  let h264Check = null;           // promise of that check, run once
   let paused = false;             // latest hello said mode "paused"
 
   // ---- small helpers ----
@@ -202,6 +205,99 @@
     };
   })();
 
+  // H.264: WebCodecs VideoDecoder -> canvas. Annex-B without `description`: SPS/PPS come inside keyframes.
+  decoders.h264 = (function () {
+    let dec = null;
+    let codec = '';
+    let size = '';
+    let waitingForKey = true;
+
+    function onFrame(frame) {
+      try {
+        setCanvasSize(frame.displayWidth, frame.displayHeight);
+        ctx.drawImage(frame, 0, 0);
+        framesDrawn++;
+        showMessage('');
+      } finally {
+        frame.close(); // forgetting this leaks GPU memory and freezes the page
+      }
+    }
+
+    function closeDecoder() {
+      const old = dec;
+      dec = null;
+      if (old) {
+        try { old.close(); } catch (e) { /* already closed */ }
+      }
+    }
+
+    function create() {
+      closeDecoder();
+      waitingForKey = true;
+      const mine = new VideoDecoder({
+        output: onFrame,
+        error: function (e) {
+          if (dec !== mine) return;
+          if (window.console) console.log('decoder error', e);
+          recover();
+        }
+      });
+      dec = mine;
+      mine.configure({ codec: codec, optimizeForLatency: true });
+    }
+
+    function recover() {
+      try {
+        create();
+      } catch (e) {
+        dec = null;
+      }
+      send({ t: 'kf' });
+    }
+
+    return {
+      type: TYPE_H264,
+      droppable: false,
+      start: function (h, resync) {
+        const changed = !dec || h.codec !== codec || size !== h.width + 'x' + h.height;
+        codec = h.codec;
+        size = h.width + 'x' + h.height;
+        if (changed) {
+          try { create(); } catch (e) { dec = null; setStatus('Decoder failed'); }
+        } else if (resync) {
+          waitingForKey = true;
+        }
+      },
+      reset: function () { closeDecoder(); },
+      resync: function () { waitingForKey = true; },
+      submit: function (p) {
+        if (!dec) return;
+        if (waitingForKey && !p.key) {
+          dropped++;
+          return;
+        }
+        if (dec.decodeQueueSize > MAX_DECODE_QUEUE) {
+          // Overloaded: skip to the next keyframe.
+          dropped++;
+          waitingForKey = true;
+          send({ t: 'kf' });
+          return;
+        }
+        if (p.key) waitingForKey = false;
+        try {
+          dec.decode(new EncodedVideoChunk({
+            type: p.key ? 'key' : 'delta',
+            timestamp: Math.round(p.pts * 1000),
+            data: p.data
+          }));
+        } catch (e) {
+          if (window.console) console.log('decode failed', e);
+          recover();
+        }
+      }
+    };
+  })();
+
   function chooseDecoder(h) {
     if (h.mode === 'paused') {
       // Capture ended on the phone: keep the decoder and the last picture, tell the viewer why.
@@ -212,12 +308,13 @@
       updateStats();
       return;
     }
+    const resumed = paused;
     paused = false;
     const next = decoders[h.mode];
     if (decoder && decoder !== next) decoder.reset();
     decoder = next || null;
     if (decoder) {
-      decoder.start(h);
+      decoder.start(h, resumed);
       setStatus('Connected');
       showMessage(framesDrawn > 0 ? '' : 'Waiting for the picture…');
     } else {
@@ -317,6 +414,29 @@
     }
   }
 
+  // ---- capability check: H.264 only if WebCodecs can decode Baseline 3.1 ----
+  function checkH264() {
+    if (h264Check) return h264Check;
+    h264Check = new Promise(function (resolve) {
+      if (!('VideoDecoder' in window) || typeof window.EncodedVideoChunk !== 'function') {
+        resolve(false);
+        return;
+      }
+      try {
+        window.VideoDecoder.isConfigSupported({ codec: H264_PROBE_CODEC, optimizeForLatency: true }).then(
+          function (r) {
+            h264Supported = !!(r && r.supported);
+            resolve(h264Supported);
+          },
+          function () { resolve(false); }
+        );
+      } catch (e) {
+        resolve(false);
+      }
+    });
+    return h264Check;
+  }
+
   // ---- connection ----
   function connect() {
     reconnectTimer = null;
@@ -341,7 +461,9 @@
       if (ws !== socket) return;
       clearTimeout(connectTimer);
       setStatus('Waiting for the stream…');
-      send({ t: 'hello', v: 1, h264: false, pin: '' });
+      checkH264().then(function (ok) {
+        if (ws === socket) send({ t: 'hello', v: 1, h264: ok, pin: '' });
+      });
     };
     socket.onmessage = function (ev) {
       if (ws !== socket) return;
@@ -436,7 +558,7 @@
   window.addEventListener('resize', layout);
   document.addEventListener('visibilitychange', function () {
     if (!document.hidden) {
-      flushQueue();
+      flushQueue(); // the queue may hold stale packets after a long hidden period
       if (decoder) decoder.resync();
       send({ t: 'kf' });
     }

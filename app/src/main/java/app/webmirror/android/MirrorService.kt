@@ -157,6 +157,7 @@ class MirrorService : Service() {
                 bindEvents()
             }
             hub.update { it.copy(audio = settings.audioMode.key) }
+            hub.forceJpeg = settings.forceJpeg
             val cap = ScreenCapture(this, p, hub, settings.preset)
             capture = cap
             cap.start()
@@ -247,6 +248,7 @@ class MirrorService : Service() {
     /** Applies preset and audio mode from [Settings] to the running stream. */
     private fun applySettings() {
         val settings = Settings(this)
+        hub.forceJpeg = settings.forceJpeg
         capture?.setPreset(settings.preset)
         hub.update { it.copy(audio = settings.audioMode.key) }
         if (capture != null) {

@@ -27,13 +27,13 @@ class JpegEncoder(
     private val fps: Int,
     private val quality: Int,
     private val hub: StreamHub,
-) {
+) : FrameEncoder {
     private val thread = HandlerThread("jpeg-encoder").apply { start() }
     private val handler = Handler(thread.looper)
     private val reader: ImageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, MAX_IMAGES)
 
     /** Where the VirtualDisplay must draw. */
-    val surface: Surface get() = reader.surface
+    override val surface: Surface get() = reader.surface
 
     private val minIntervalMs = 1000L / fps
     private val out = ReusableStream()
@@ -57,11 +57,11 @@ class JpegEncoder(
      * Stops delivering frames without releasing anything (the display may still draw into the old
      * surface for a moment while it is being resized and re-attached). Call [stop] afterwards.
      */
-    fun pause() {
+    override fun pause() {
         handler.post { paused = true }
     }
 
-    fun stop() {
+    override fun stop() {
         handler.post {
             stopped = true
             try {
@@ -79,6 +79,9 @@ class JpegEncoder(
             thread.quitSafely()
         }
     }
+
+    /** Every JPEG frame is complete: nothing to do. */
+    override fun requestKeyframe() {}
 
     private fun onImageAvailable(r: ImageReader) {
         if (stopped) return

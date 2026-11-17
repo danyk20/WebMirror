@@ -351,8 +351,9 @@ private fun QualitySection(settings: Settings, onChanged: () -> Unit) {
 
 @Composable
 private fun DisplaySection(settings: Settings, onChanged: () -> Unit) {
+    var forceJpeg by remember { mutableStateOf(settings.forceJpeg) }
     var keepOn by remember { mutableStateOf(settings.keepScreenOn) }
-    SectionTitle("Screen")
+    SectionTitle("Screen and video")
     Row(verticalAlignment = Alignment.CenterVertically) {
         Switch(checked = keepOn, onCheckedChange = {
             keepOn = it
@@ -362,6 +363,15 @@ private fun DisplaySection(settings: Settings, onChanged: () -> Unit) {
         Text("Keep screen on", modifier = Modifier.padding(start = 12.dp))
     }
     Text("Capture stops if the phone screen locks.", style = MaterialTheme.typography.bodySmall)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Switch(checked = forceJpeg, onCheckedChange = {
+            forceJpeg = it
+            settings.forceJpeg = it
+            onChanged()
+        })
+        Text("Force JPEG mode", modifier = Modifier.padding(start = 12.dp))
+    }
+    Text("Off: H.264 is used when every viewer can decode it, JPEG otherwise.", style = MaterialTheme.typography.bodySmall)
 }
 
 @Composable

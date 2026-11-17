@@ -9,6 +9,8 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
 import android.view.Display
+import app.webmirror.android.encode.FrameEncoder
+import app.webmirror.android.encode.H264Encoder
 import app.webmirror.android.encode.JpegEncoder
 import app.webmirror.android.stream.StreamHub
 
@@ -33,7 +35,8 @@ class ScreenCapture(
 
     private var preset = initialPreset
     private var virtualDisplay: VirtualDisplay? = null
-    private var encoder: JpegEncoder? = null
+    private var encoder: FrameEncoder? = null
+    private var mode = StreamHub.MODE_JPEG
     private var size = CaptureSize.Size(0, 0)
     private var released = false
 
@@ -50,7 +53,8 @@ class ScreenCapture(
     fun start() {
         check(virtualDisplay == null && !released) { "already started" }
         size = targetSize()
-        val enc = newEncoder(size)
+        mode = hub.wantedMode()
+        val enc = newEncoderOrFallback(size)
         encoder = enc
         virtualDisplay = projection.createVirtualDisplay(
             "WebMirror", size.width, size.height, densityDpi(),
@@ -58,6 +62,8 @@ class ScreenCapture(
             enc.surface, null, handler,
         )
         publish()
+        hub.keyframeRequester = { encoder?.requestKeyframe() }
+        hub.modeRequester = { m -> setMode(m) }
         displayManager.registerDisplayListener(displayListener, handler)
         Log.i(TAG, "capture started ${size.width}x${size.height} ${preset.label}")
     }
@@ -73,6 +79,17 @@ class ScreenCapture(
         }
     }
 
+    /** Switches between jpeg and h264 on the same display (plan 2.2). Safe to call from any thread. */
+    fun setMode(m: String) {
+        handler.post {
+            synchronized(this) {
+                if (mode == m) return@synchronized
+                mode = m
+                applyChange(forceEncoder = true)
+            }
+        }
+    }
+
     /** Recomputes the size (rotation) and reconfigures if it changed. Safe to call from any thread. */
     fun reconfigure() {
         handler.post { synchronized(this) { applyChange(forceEncoder = false) } }
@@ -82,6 +99,8 @@ class ScreenCapture(
     fun stop() {
         if (released) return
         released = true
+        hub.modeRequester = null
+        hub.keyframeRequester = null
         try {
             displayManager.unregisterDisplayListener(displayListener)
         } catch (e: Exception) {
@@ -108,7 +127,7 @@ class ScreenCapture(
         try {
             // Build the new encoder first, then move the one display over, then retire the old encoder.
             val old = encoder
-            val enc = newEncoder(newSize)
+            val enc = newEncoderOrFallback(newSize)
             old?.pause()
             if (sizeChanged) vd.resize(newSize.width, newSize.height, densityDpi())
             vd.setSurface(enc.surface)
@@ -122,12 +141,31 @@ class ScreenCapture(
         }
     }
 
-    private fun newEncoder(s: CaptureSize.Size) =
-        JpegEncoder(s.width, s.height, preset.fps, preset.jpegQuality, hub)
+    private fun newEncoder(s: CaptureSize.Size): FrameEncoder =
+        if (mode == StreamHub.MODE_H264) {
+            H264Encoder(s.width, s.height, preset.fps, preset.h264Bitrate, hub)
+        } else {
+            JpegEncoder(s.width, s.height, preset.fps, preset.jpegQuality, hub)
+        }
 
-    /** Tells the hub (and so every viewer, in a new hello) what the stream looks like now. */
+    /** A device without a usable H.264 encoder falls back to JPEG instead of failing the capture. */
+    private fun newEncoderOrFallback(s: CaptureSize.Size): FrameEncoder =
+        try {
+            newEncoder(s)
+        } catch (e: Exception) {
+            if (mode != StreamHub.MODE_H264) throw e
+            Log.w(TAG, "h264 encoder unavailable, using jpeg: $e")
+            mode = StreamHub.MODE_JPEG
+            newEncoder(s)
+        }
+
+    /**
+     * Tells the hub (and so every viewer, in a new hello) what the stream looks like now. In h264 mode the
+     * encoder does it itself once it knows its codec string (hub.onVideoConfig).
+     */
     private fun publish() {
-        hub.update { it.copy(mode = StreamHub.MODE_JPEG, width = size.width, height = size.height, fps = preset.fps) }
+        if (mode == StreamHub.MODE_H264) return
+        hub.update { it.copy(mode = StreamHub.MODE_JPEG, codec = "", width = size.width, height = size.height, fps = preset.fps) }
     }
 
     private fun targetSize(): CaptureSize.Size {

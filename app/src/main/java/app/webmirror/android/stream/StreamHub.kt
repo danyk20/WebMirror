@@ -3,11 +3,15 @@ package app.webmirror.android.stream
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * Fan-out point between encoders and sinks. Holds the stream description (`hello`) and the picture a new
- * viewer needs to see something immediately. Adding H.264 later means adding a mode value, a codec string
- * and a GOP cache next to [lastJpeg]; nothing here has to be rewritten.
+ * Fan-out point between encoders and sinks. Holds the stream description (`hello`), the picture a new
+ * viewer needs to see something immediately (last JPEG, or the H.264 packets since the last keyframe),
+ * and decides which video mode the viewers need (plan 2.2).
+ *
+ * [nowMs] is injectable for tests.
  */
-class StreamHub {
+class StreamHub(
+    private val nowMs: () -> Long = { System.nanoTime() / 1_000_000 },
+) {
 
     interface Events {
         fun onViewerCountChanged(count: Int)
@@ -35,6 +39,10 @@ class StreamHub {
     private val lock = Any()
     private var info = HelloInfo()
     private var lastJpeg: Packet? = null
+    private val gop = ArrayList<Packet>()
+    private var lastKeyframeRequestMs: Long? = null
+    private var forceJpegFlag = false
+    private var lastWantedMode = MODE_JPEG
 
     @Volatile
     var events: Events? = null
@@ -43,7 +51,53 @@ class StreamHub {
     @Volatile
     var keyframeRequester: (() -> Unit)? = null
 
+    /**
+     * Set by the capture owner: called (without any hub lock held) when the video mode the viewers need
+     * differs from what is being sent. The owner switches the encoder and then reports through
+     * [update] / [onVideoConfig].
+     */
+    @Volatile
+    var modeRequester: ((String) -> Unit)? = null
+
     val viewerCount: Int get() = sinks.size
+
+    var forceJpeg: Boolean
+        get() = synchronized(lock) { forceJpegFlag }
+        set(value) {
+            synchronized(lock) { forceJpegFlag = value }
+            recomputeMode()
+        }
+
+    /**
+     * The mode the viewers need (plan 2.2): h264 only if every viewer that has said hello said `h264:true`
+     * and "Force JPEG" is off; any `h264:false` viewer forces jpeg. Without any such viewer the mode that
+     * was wanted last stays (no needless encoder switch when the last viewer leaves).
+     */
+    fun wantedMode(): String = synchronized(lock) { computeWanted() }
+
+    private fun computeWanted(): String {
+        if (forceJpegFlag) return MODE_JPEG
+        var known = 0
+        for (s in sinks) {
+            when (s.h264Capable) {
+                false -> return MODE_JPEG
+                true -> known++
+                null -> Unit
+            }
+        }
+        return if (known > 0) MODE_H264 else lastWantedMode
+    }
+
+    /** Recomputes the wanted mode and, when it changed, asks the capture owner to switch. */
+    fun recomputeMode() {
+        val wanted: String
+        synchronized(lock) {
+            wanted = computeWanted()
+            if (wanted == lastWantedMode) return
+            lastWantedMode = wanted
+        }
+        modeRequester?.invoke(wanted)
+    }
 
     fun register(sink: StreamSink) {
         sinks.add(sink)
@@ -51,15 +105,37 @@ class StreamHub {
     }
 
     fun unregister(sink: StreamSink) {
-        if (sinks.remove(sink)) events?.onViewerCountChanged(sinks.size)
+        if (sinks.remove(sink)) {
+            events?.onViewerCountChanged(sinks.size)
+            recomputeMode()
+        }
     }
 
-    /** Called by encoders for every packet. JPEG packets are remembered for viewers that join later. */
+    /**
+     * Called by encoders for every packet. JPEG packets are remembered for viewers that join later; H.264
+     * packets go into the GOP cache (everything since the last keyframe).
+     */
     fun onPacket(packet: Packet) {
+        var needKeyframe = false
         synchronized(lock) {
             if (packet.type == Packet.TYPE_JPEG) lastJpeg = packet
+            if (packet.type == Packet.TYPE_H264) {
+                if (packet.isKeyframe) {
+                    gop.clear()
+                    gop.add(packet)
+                } else if (gop.isNotEmpty()) {
+                    gop.add(packet) // deltas before the first keyframe are useless to a late viewer
+                    if (gop.size > MAX_GOP_PACKETS) needKeyframe = true
+                }
+            }
             for (s in sinks) s.onPacket(packet)
         }
+        if (needKeyframe) requestKeyframe()
+    }
+
+    /** The H.264 encoder has its SPS/PPS: announce the stream (mode h264 with its codec string). */
+    fun onVideoConfig(codec: String, width: Int, height: Int, fps: Int) {
+        update { it.copy(mode = MODE_H264, codec = codec, width = width, height = height, fps = fps) }
     }
 
     /**
@@ -72,7 +148,10 @@ class StreamHub {
             val new = change(old)
             if (new == old) return
             info = new
-            if (new.width != old.width || new.height != old.height || new.mode != old.mode) lastJpeg = null
+            if (new.width != old.width || new.height != old.height || new.mode != old.mode || new.codec != old.codec) {
+                lastJpeg = null
+                gop.clear()
+            }
             val json = new.toJson()
             for (s in sinks) s.onHello(json)
             events?.onStreamChanged(new)
@@ -84,18 +163,30 @@ class StreamHub {
         synchronized(lock) {
             info = HelloInfo()
             lastJpeg = null
+            gop.clear()
+            lastKeyframeRequestMs = null
+            lastWantedMode = MODE_JPEG
         }
     }
 
     fun helloJson(): String = synchronized(lock) { info.toJson() }
 
-    /** Called when a viewer's own `hello` arrived: stream description first, then the last picture. */
+    /**
+     * Called when a viewer's own `hello` arrived: stream description first, then the last picture (the
+     * GOP cache in h264 mode, so it shows a picture at once even if the screen is static). The viewer's
+     * `h264` answer may change the wanted mode.
+     */
     fun greet(sink: StreamSink) {
         synchronized(lock) {
             sink.onHello(info.toJson())
-            val jpeg = lastJpeg
-            if (jpeg != null) sink.onPacket(jpeg)
+            if (info.mode == MODE_H264) {
+                for (p in gop) sink.onPacket(p)
+            } else {
+                val jpeg = lastJpeg
+                if (jpeg != null) sink.onPacket(jpeg)
+            }
         }
+        recomputeMode()
     }
 
     /** Closes and unregisters every sink that has been silent for longer than [maxIdleMs]. */
@@ -105,7 +196,14 @@ class StreamHub {
         }
     }
 
+    /** Asks the encoder for a keyframe, at most once per [KEYFRAME_MIN_INTERVAL_MS]. */
     fun requestKeyframe() {
+        synchronized(lock) {
+            val now = nowMs()
+            val last = lastKeyframeRequestMs
+            if (last != null && now - last < KEYFRAME_MIN_INTERVAL_MS) return
+            lastKeyframeRequestMs = now
+        }
         keyframeRequester?.invoke()
     }
 
@@ -120,6 +218,9 @@ class StreamHub {
     companion object {
         const val PROTOCOL_VERSION = 1
         const val MODE_JPEG = "jpeg"
+        const val MODE_H264 = "h264"
+        const val MAX_GOP_PACKETS = 300
+        const val KEYFRAME_MIN_INTERVAL_MS = 500L
 
         /** Capture has stopped but the server is up; the page keeps its last picture and shows a message. */
         const val MODE_PAUSED = "paused"
