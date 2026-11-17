@@ -129,3 +129,27 @@ Full report: `docs/test-runs/20261117-205929-desk.csv` / `.json`. All 16 phases 
 - On this fast, clean link the other options make no measurable difference (97–102 ms); they are meant for the car's slower, jittery Wi-Fi, so the car runs are what matters.
 - `legacy` (all improvements off) had higher RTT (23 ms vs ~4 ms) and a worse max (122 ms).
 - `pacing-vsync` adds ~15 ms; `jpeg` 105 ms at 20 fps and ~12 Mbit/s vs ~4 Mbit/s for H.264.
+
+## Car test 3 (2026-11-18): probe + automatic test, parked and driving
+
+Reports: `docs/test-runs/20261118-000858-desk.*` (**parked** — the run was named "desk" by mistake) and `docs/test-runs/20261118-001628-driving.*`. Both runs completed all 16 phases, no reconnects, no decoder resets.
+
+**Probe (Tesla Chrome 148, https):** `VideoDecoder.isConfigSupported` true for H.264 (Baseline/Main/High), **HEVC** (`hev1`/`hvc1`, L93 and L120) and **VP9**, all also with `prefer-hardware` at 720p and 1080p. AV1 only without hardware (software decode). `isConfigSupported` does not prove real decoding works; an HEVC stream test is needed.
+
+| Phase | Parked e2e P95 (ms) | Driving e2e P95 (ms) | Notes |
+|---|---|---|---|
+| jitter-30ms | **60** (max 229, fps min 16.5) | **63** (max 67) | best in both runs; one hiccup parked |
+| default (jitter 80) | 110 | 109 | adaptive bitrate cut the target to 800–1300 kbps without visible congestion |
+| no-adaptive-bitrate | 113 | 114 | full 4 Mbit/s quality |
+| legacy (all off) | 118 | 113 | higher RTT (17–27 ms vs ~8–12 ms) |
+| other single options | 109–115 | 109–114 | within noise |
+| pacing-vsync | 125 | 127 | +15 ms |
+| jpeg | 144 | 144 | 20 fps, ~11–12 Mbit/s |
+| jitter-150ms | 183 | 183 | |
+
+**Conclusions**
+- The car's Wi-Fi link is good both parked and driving (RTT ~8–12 ms, no drops). The pipeline is ~25 ms; the jitter buffer dominates the delay.
+- Lowering the jitter buffer from 80 to 30 ms halves the delay. A small safety margin (40 ms) is suggested as the new default.
+- Adaptive bitrate lowered quality in both runs without improving delay: too sensitive and too slow to recover. Either tune or default off.
+- The automatic test does not cover the Park → Drive transition (the earlier ~2 s lag); check that manually on the next drive.
+- Next candidate: HEVC as an option (car reports hardware support; phone has a hardware HEVC encoder).
