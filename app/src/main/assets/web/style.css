@@ -15,7 +15,8 @@ body.player { padding: 0; overflow: hidden; background: #000; position: fixed; l
 .player canvas { position: absolute; left: 0; top: 0; background: #000; }
 #message { position: absolute; left: 0; right: 0; top: 40%; text-align: center; font-size: 22px; color: #9aa0a6; pointer-events: none; }
 #overlay { position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 16px; background: rgba(16, 20, 24, 0.92); font-size: 18px; }
-#overlay[hidden], #hint[hidden], #message[hidden] { display: none; }
+#overlay[hidden], #hint[hidden], #message[hidden], #notice[hidden] { display: none; }
+#notice { position: absolute; left: 0; right: 0; top: 0; padding: 10px 16px; background: rgba(16, 20, 24, 0.85); color: #fff; font-size: 20px; text-align: center; pointer-events: none; }
 #overlay .row { display: flex; align-items: center; margin: 8px 0; }
 #overlay .row > * { margin-right: 12px; }
 #overlay button { min-width: 56px; min-height: 56px; font-size: 22px; color: #e8eaed; background: #2b333c; border: 1px solid #4a525c; border-radius: 8px; }

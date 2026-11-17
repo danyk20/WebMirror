@@ -25,6 +25,8 @@
   const H264_PROBE_CODEC = 'avc1.42E01F';
   const MAX_DECODE_QUEUE = 3;      // VideoDecoder backlog that counts as overload
   const RAF_STALL_MS = 100;        // vsync pacing: no animation frame for this long = rAF is throttled, draw at once
+  const E2E_RAW_MAX = 150;         // most per-frame e2e values sent with one stats message (the phone's automatic test aggregates them)
+  const E2E_KEEP = 600;            // most e2e values kept between two stats messages
 
   // ---- elements ----
   const canvas = document.getElementById('screen');
@@ -37,6 +39,7 @@
   const delayValueEl = document.getElementById('delayValue');
   const hintEl = document.getElementById('hint');
   const fullscreenBtn = document.getElementById('fullscreen');
+  const noticeEl = document.getElementById('notice');
 
   // ---- state ----
   let ws = null;
@@ -79,6 +82,14 @@
   let netLateCount = 0;
   let skipped = 0;                // frames skipped because they were late (or replaced before vsync drawing)
   let replaced = 0;               // part of skipped: decoded frames replaced by a newer one before they were drawn
+  let decoderResets = 0;          // decoder re-created after an error or an overload (cumulative)
+  let reconnects = 0;             // connections lost after having been open (cumulative)
+  // Absolute delay (plan 2.1 ping.ts / ping.off): page clock minus phone clock in ms, from the phone's best round trip.
+  let phoneOffsetMs = null;
+  let e2eList = [];               // per drawn frame since the last stats: ms from the phone's capture time to drawing
+  let rttSum = 0;
+  let rttCount = 0;
+  let noticeTimer = null;
 
   // ---- small helpers ----
   function setStatus(text) {
@@ -153,6 +164,11 @@
   }
 
   function noteDrawn(ptsMs) {
+    if (phoneOffsetMs !== null) {
+      const e2e = performance.now() - (ptsMs + phoneOffsetMs);
+      e2eList.push(e2e);
+      if (e2eList.length > E2E_KEEP) e2eList.shift();
+    }
     if (baseMs === null) return;
     const late = performance.now() - ptsMs - baseMs - bufferMs - offsetMs;
     lateSum += late;
@@ -363,6 +379,7 @@
     }
 
     function recover() {
+      decoderResets++;
       try {
         create();
       } catch (e) {
@@ -400,6 +417,7 @@
           // backlog is gone at once, and continue at the next keyframe.
           discard(p);
           skipped++;
+          decoderResets++;
           try { create(); } catch (e) { dec = null; return; }
           askKeyframe();
           return;
@@ -445,6 +463,15 @@
     }
     updateHint();
     updateStats();
+  }
+
+  // A short message from the phone (e.g. the automatic test's progress and result), shown at the top for ttl seconds.
+  function showNotice(text, ttlS) {
+    if (noticeTimer !== null) { clearTimeout(noticeTimer); noticeTimer = null; }
+    if (!text) { noticeEl.hidden = true; return; }
+    noticeEl.textContent = text;
+    noticeEl.hidden = false;
+    noticeTimer = setTimeout(function () { noticeTimer = null; noticeEl.hidden = true; }, Math.max(1, ttlS) * 1000);
   }
 
   function updateHint() {
@@ -589,9 +616,15 @@
       applyCfg(m.cfg);
       chooseDecoder(m);
     } else if (m.t === 'ping') {
+      // Answer at once with the page clock: the phone measures the round trip and the clock offset from it.
+      if (typeof m.ts === 'number') send({ t: 'pong', ts: m.ts, pageTs: performance.now() });
+      if (typeof m.off === 'number') phoneOffsetMs = m.off / 1000;
+      if (typeof m.rtt === 'number') { rttSum += m.rtt; rttCount++; }
       serverInFlight = m.inFlight | 0;
       serverPending = m.pending | 0;
       serverTarget = typeof m.target === 'string' ? m.target : '';
+    } else if (m.t === 'notice') {
+      showNotice(typeof m.text === 'string' ? m.text : '', Number(m.ttlS) || 10);
     } else if (m.t === 'denied') {
       setStatus('Denied: ' + m.reason);
       showMessage('Access denied (' + m.reason + ')');
@@ -644,6 +677,7 @@
     socket.onopen = function () {
       if (ws !== socket) return;
       lastRxAt = performance.now();
+      socket.wmOpened = true;
       clearTimeout(connectTimer);
       setStatus('Waiting for the stream…');
       checkH264().then(function (ok) {
@@ -666,8 +700,10 @@
   function onClosed(socket) {
     if (ws !== socket) return;
     ws = null;
+    if (socket.wmOpened) reconnects++;
     clearTimeout(connectTimer);
     hello = null;
+    phoneOffsetMs = null; // the next connection measures its own offset
     paused = false;
     flushQueue();
     if (decoder) decoder.reset();
@@ -702,11 +738,37 @@
   let lastLateAvg = 0;
   let lastLateMax = 0;
   let lastNetLate = 0;
+  let lastE2eAvg = 0;
+  let lastE2eP95 = 0;
+  let lastE2eMax = 0;
+  let lastRtt = 0;
+
+  // The e2e values collected since the last stats message: average, 95th percentile (nearest rank), maximum,
+  // and at most E2E_RAW_MAX of the values themselves (evenly thinned) for the phone's aggregation.
+  function e2eSummary() {
+    const n = e2eList.length;
+    if (n === 0) return null;
+    const sorted = e2eList.slice().sort(function (a, b) { return a - b; });
+    let sum = 0;
+    for (let i = 0; i < n; i++) sum += sorted[i];
+    const raw = [];
+    const step = Math.max(1, Math.ceil(n / E2E_RAW_MAX));
+    for (let i = 0; i < n; i += step) raw.push(Math.round(e2eList[i]));
+    return {
+      n: n,
+      avg: sum / n,
+      p95: sorted[Math.min(n - 1, Math.ceil(0.95 * n) - 1)],
+      max: sorted[n - 1],
+      raw: raw
+    };
+  }
 
   function updateStats() {
     const lines = [];
     lines.push('fps ' + fps.toFixed(1) + '   dropped ' + dropped + '   skipped ' + skipped);
     lines.push('late ' + Math.round(lastLateAvg) + ' ms (max ' + Math.round(lastLateMax) + ')   net ' + Math.round(lastNetLate) + ' ms');
+    lines.push(phoneOffsetMs === null ? 'e2e: measuring the clock offset…' :
+      'e2e avg ' + Math.round(lastE2eAvg) + ' ms   p95 ' + Math.round(lastE2eP95) + '   max ' + Math.round(lastE2eMax) + '   rtt ' + lastRtt.toFixed(1) + ' ms');
     lines.push('queue ' + queue.length + '   decoder ' + inDecoderCount() + ' (queue ' + decodeQueueSize() + ')   in flight ' + serverInFlight + ' (held ' + serverPending + ')');
     if (serverTarget) lines.push('target ' + serverTarget);
     if (cfgId) lines.push('cfg ' + cfgId + '   ' + cfgSummary);
@@ -729,6 +791,16 @@
     }
     if (netLateCount > 0) lastNetLate = netLateSum / netLateCount;
     lateSum = 0; lateMax = 0; lateCount = 0; netLateSum = 0; netLateCount = 0;
+    const e2e = e2eSummary();
+    e2eList = [];
+    if (e2e) {
+      lastE2eAvg = e2e.avg;
+      lastE2eP95 = e2e.p95;
+      lastE2eMax = e2e.max;
+    }
+    if (rttCount > 0) lastRtt = rttSum / rttCount;
+    const rttMs = rttCount > 0 ? Math.round(lastRtt * 10) / 10 : 0;
+    rttSum = 0; rttCount = 0;
     updateStats();
     send({
       t: 'stats',
@@ -737,6 +809,14 @@
       dropped: dropped,
       skipped: skipped,
       replaced: replaced,
+      decoderResets: decoderResets,
+      reconnects: reconnects,
+      e2eAvg: e2e ? Math.round(e2e.avg) : null,
+      e2eP95: e2e ? Math.round(e2e.p95) : null,
+      e2eMax: e2e ? Math.round(e2e.max) : null,
+      e2eN: e2e ? e2e.n : 0,
+      e2eRaw: e2e ? e2e.raw : [],
+      rttMs: rttMs,
       bufferMs: bufferMs + offsetMs,
       cfgId: cfgId,
       lateMs: Math.round(lastLateAvg),

@@ -52,11 +52,11 @@ class StreamConfigTest {
     @Test
     fun invalidOrMissingValuesFallBackAndNumbersAreClamped() {
         val c = StreamConfig.fromMap(
-            mapOf("profile" to "bogus", "bitrateMode" to 3, "maxInFlight" to 500, "jitterBufferMs" to -5, "tcpNoDelay" to "yes"),
+            mapOf("profile" to "bogus", "bitrateMode" to 3, "maxInFlight" to 5000, "jitterBufferMs" to -5, "tcpNoDelay" to "yes"),
         )
         assertEquals("baseline", c.profile)
         assertEquals("cbr", c.bitrateMode)
-        assertEquals(30, c.maxInFlight)
+        assertEquals(200, c.maxInFlight)
         assertEquals(0, c.jitterBufferMs)
         assertTrue(c.tcpNoDelay)
         assertEquals("immediate", StreamConfig.fromMap(mapOf("pacing" to "raf")).pacing)

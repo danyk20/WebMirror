@@ -2,6 +2,7 @@ package app.webmirror.android.server
 
 import android.util.Log
 import app.webmirror.android.stream.BitrateController
+import app.webmirror.android.stream.ClockSync
 import app.webmirror.android.stream.Expirable
 import app.webmirror.android.stream.Packet
 import app.webmirror.android.stream.StreamHub
@@ -28,6 +29,9 @@ class ClientSession(
     private sealed interface Outgoing {
         class Bin(val packet: Packet) : Outgoing
         class Text(val text: String) : Outgoing
+
+        /** Liveness ping; its text (with a fresh timestamp) is made at the moment it is sent. */
+        data object Ping : Outgoing
         data object Close : Outgoing
     }
 
@@ -59,6 +63,9 @@ class ClientSession(
     override val viewBox: ViewBox? get() = viewPx
 
     private val id = nextId.incrementAndGet()
+
+    /** Clock offset to this page, from ping/pong round trips (plan 2.1). */
+    private val clock = ClockSync()
 
     /** From the page's last `stats`: cumulative skipped frames, network lateness and when it arrived. */
     @Volatile
@@ -112,12 +119,51 @@ class ClientSession(
     override fun onPing() {
         if (stopped) return
         synchronized(mon) {
-            if (control.none { it is Outgoing.Text && it.text.startsWith(PING_PREFIX) }) {
-                // The numbers let the page show how much the server holds back for it.
-                addControl(Outgoing.Text("""{"t":"ping","inFlight":${outbox.inFlightCount},"pending":${outbox.pendingCount},"target":"${hub.targetText}"}"""))
+            if (control.none { it === Outgoing.Ping }) {
+                addControl(Outgoing.Ping)
                 mon.notifyAll()
             }
         }
+    }
+
+    override fun onNotice(json: String) {
+        if (stopped) return
+        synchronized(mon) {
+            addControl(Outgoing.Text(json))
+            mon.notifyAll()
+        }
+    }
+
+    override fun disconnect() {
+        Log.i(TAG, "viewer disconnected by the server (automatic test or socket change)")
+        shutdown()
+        forceCloseSocket()
+    }
+
+    /**
+     * Caller holds [mon]. `ts` = phone clock now (µs), answered by the page with `pong`; `off` = page clock minus
+     * phone clock (µs) from the best round trip of the last 30 s; `rtt` = the last round trip in ms. The other
+     * numbers let the page show how much the server holds back for it.
+     */
+    private fun pingText(): String {
+        val nowUs = System.nanoTime() / 1000
+        val best = clock.best(nowMs())
+        val rtt = clock.lastRttUs
+        return buildString {
+            append("""{"t":"ping","ts":""").append(nowUs)
+            if (best != null) append(""","off":""").append(best.offsetUs)
+            if (rtt >= 0) append(""","rtt":""").append(rtt / 1000).append('.').append((rtt % 1000) / 100)
+            append(""","inFlight":""").append(outbox.inFlightCount)
+            append(""","pending":""").append(outbox.pendingCount)
+            append(""","target":"""").append(hub.targetText).append(""""}""")
+        }
+    }
+
+    private fun handlePong(obj: JSONObject) {
+        val ts = obj.optLong("ts", -1)
+        val pageTs = obj.optDouble("pageTs", Double.NaN)
+        if (ts < 0) return
+        clock.add(nowMs(), ts, System.nanoTime() / 1000, pageTs)
     }
 
     /** Caller holds [mon]. Text messages are tiny; when the hard limit is hit the oldest one goes. */
@@ -187,6 +233,7 @@ class ClientSession(
             val obj = JSONObject(text)
             when (obj.optString("t")) {
                 "hello" -> handleHello(obj)
+                "pong" -> handlePong(obj)
                 "kf" -> hub.requestKeyframe()
                 "view" -> handleView(obj)
                 "ack" -> handleAck(obj.optLong("pts", -1))
@@ -195,6 +242,8 @@ class ClientSession(
                     pageSkipped = obj.optLong("skipped", 0) - obj.optLong("replaced", 0) // vsync replacements are not congestion
                     pageNetLateMs = obj.optInt("netLateMs", 0)
                     pageStatsAtMs = nowMs()
+                    obj.put("vid", id)
+                    clock.best(nowMs())?.let { obj.put("clockRttMs", it.rttUs / 1000.0) }
                     synchronized(mon) {
                         obj.put("target", hub.targetText)
                         obj.put("inFlight", outbox.inFlightCount)
@@ -276,6 +325,7 @@ class ClientSession(
                     val now = nowMs()
                     if (control.isNotEmpty()) {
                         item = control.removeFirst()
+                        if (item === Outgoing.Ping) item = Outgoing.Text(pingText())
                         mon.notifyAll() // room for a blocked blast
                     } else {
                         if (outbox.checkStall(now)) askKeyframe = true
@@ -293,7 +343,12 @@ class ClientSession(
                 if (askKeyframe) hub.requestKeyframe()
                 when (val it = item) {
                     null -> Unit
-                    is Outgoing.Bin -> send(it.packet.toBytes())
+                    is Outgoing.Bin -> {
+                        val bytes = it.packet.toBytes()
+                        send(bytes)
+                        if (it.packet.type != Packet.TYPE_BLAST) hub.metrics.bytesSent.addAndGet(bytes.size.toLong())
+                    }
+                    Outgoing.Ping -> Unit
                     is Outgoing.Text -> send(it.text)
                     Outgoing.Close -> {
                         close(CloseCode.NormalClosure, "denied", false)
@@ -348,7 +403,6 @@ class ClientSession(
         private const val WAIT_MS = 200L
         private const val STATS_FRESH_MS = 3000L
         private val nextId = java.util.concurrent.atomic.AtomicInteger()
-        private const val PING_PREFIX = """{"t":"ping""""
         const val BLAST_PACKETS = 100
         const val BLAST_PACKET_BYTES = 50_000
     }

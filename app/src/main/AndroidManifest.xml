@@ -26,6 +26,24 @@
             </intent-filter>
         </activity>
 
+        <!-- Full-screen test content for the automatic test; no forced orientation. -->
+        <activity
+            android:name=".test.TestPatternActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|density"
+            android:theme="@style/Theme.WebMirror" />
+
+        <!-- Shares the saved test reports (JSON + CSV from filesDir/tests). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <service
             android:name=".MirrorService"
             android:foregroundServiceType="mediaProjection|specialUse"

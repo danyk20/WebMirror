@@ -40,6 +40,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
@@ -106,6 +107,11 @@ class MirrorService : Service() {
         }
     }
 
+    override fun onCreate() {
+        super.onCreate()
+        hubRef = hub
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -121,6 +127,7 @@ class MirrorService : Service() {
 
     override fun onDestroy() {
         if (active) stopAll(null)
+        hubRef = null
         scope.cancel()
         super.onDestroy()
     }
@@ -369,7 +376,18 @@ class MirrorService : Service() {
             }
 
             override fun onStats(json: String) {
-                _state.update { it.copy(lastStats = json) }
+                try {
+                    statsListener?.invoke(json)
+                } catch (e: Exception) {
+                    Log.w(TAG, "stats listener failed: $e")
+                }
+                // The per-frame e2e list is for the automatic test only; keep the state and log readable.
+                val shown = try {
+                    JSONObject(json).apply { remove("e2eRaw") }.toString()
+                } catch (e: Exception) {
+                    json
+                }
+                _state.update { it.copy(lastStats = shown) }
             }
 
             override fun onProbe(json: String) {
@@ -574,6 +592,20 @@ class MirrorService : Service() {
 
         private val _state = MutableStateFlow(ServiceState())
         val state: StateFlow<ServiceState> = _state.asStateFlow()
+
+        /** The running service's hub (null when no service instance exists); used by the automatic test. */
+        @Volatile
+        var hubRef: StreamHub? = null
+            private set
+
+        /** Receives every viewer `stats` message (JSON text, with `vid` and the raw `e2eRaw` list) on a session thread. */
+        @Volatile
+        var statsListener: ((String) -> Unit)? = null
+
+        /** Shows [text] on every viewer's screen for [ttlS] seconds (plan 2.1 `notice`). */
+        fun notifyViewers(text: String, ttlS: Int) {
+            hubRef?.notice(text, ttlS)
+        }
 
         /**
          * Starts mirroring with the result of the screen-capture consent dialog. The result can be used

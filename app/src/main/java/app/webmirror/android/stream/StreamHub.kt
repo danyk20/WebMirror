@@ -45,6 +45,12 @@ class StreamHub(
     private var lastKeyframeRequestMs: Long? = null
     private var forceJpegFlag = false
     private var lastWantedMode = MODE_JPEG
+    private var lastNotice: String? = null
+    private var lastNoticeAtMs = 0L
+    private var lastNoticeTtlMs = 0L
+
+    /** Totals for the automatic test (bytes sent, keyframe requests). */
+    val metrics = StreamMetrics()
 
     @Volatile
     var events: Events? = null
@@ -192,6 +198,7 @@ class StreamHub(
             gop.clear()
             lastKeyframeRequestMs = null
             lastWantedMode = MODE_JPEG
+            lastNotice = null
             targetText = ""
         }
     }
@@ -212,8 +219,31 @@ class StreamHub(
                 val jpeg = lastJpeg
                 if (jpeg != null) sink.onPacket(jpeg)
             }
+            val notice = lastNotice
+            if (notice != null) {
+                val left = lastNoticeTtlMs - (nowMs() - lastNoticeAtMs)
+                if (left > 1000) sink.onNotice(noticeJson(notice, (left / 1000).toInt()))
+            }
         }
         recomputeMode()
+    }
+
+    private fun noticeJson(text: String, ttlS: Int) = """{"t":"notice","text":${JsonText.quote(text)},"ttlS":$ttlS}"""
+
+    /** Shows [text] on every viewer's screen for [ttlS] seconds (empty text clears it); a viewer that joins meanwhile gets it too. */
+    fun notice(text: String, ttlS: Int) {
+        val json = noticeJson(text, ttlS)
+        synchronized(lock) {
+            lastNotice = text.ifEmpty { null }
+            lastNoticeAtMs = nowMs()
+            lastNoticeTtlMs = ttlS * 1000L
+            for (s in sinks) s.onNotice(json)
+        }
+    }
+
+    /** Closes every viewer connection; pages reconnect after about a second (new connections get new socket options). */
+    fun disconnectAll() {
+        for (s in sinks) s.disconnect()
     }
 
     /** Congestion signals of every viewer, for the bitrate controller. */
@@ -244,7 +274,11 @@ class StreamHub(
             if (last != null && now - last < KEYFRAME_MIN_INTERVAL_MS) return
             lastKeyframeRequestMs = now
         }
-        keyframeRequester?.invoke()
+        val request = keyframeRequester
+        if (request != null) {
+            metrics.keyframeRequests.incrementAndGet()
+            request()
+        }
     }
 
     fun reportStats(json: String) {

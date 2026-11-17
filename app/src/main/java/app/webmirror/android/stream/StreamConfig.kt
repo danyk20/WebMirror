@@ -159,8 +159,8 @@ data class StreamConfig(
         val RANGES: Map<String, IntRange> = mapOf(
             "sendBufferKb" to 0..1024,
             "keyframeIntervalS" to 1..10,
-            "maxInFlight" to 1..30,
-            "dropAfterMs" to 10..2000,
+            "maxInFlight" to 1..200,
+            "dropAfterMs" to 10..20000,
             "minBitrateKbps" to 100..20000,
             "jitterBufferMs" to 0..1000,
             "skipLateFrames" to 0..10,

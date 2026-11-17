@@ -70,6 +70,8 @@ import app.webmirror.android.stream.StreamConfig
 import app.webmirror.android.net.Ipv4
 import app.webmirror.android.net.TlsStore
 import app.webmirror.android.net.VirtualIpService
+import app.webmirror.android.test.AutoTestSection
+import app.webmirror.android.test.TestReportScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -201,6 +203,12 @@ private fun MainScreen(
 ) {
     val context = LocalContext.current
     val state by MirrorService.state.collectAsState()
+    var openReport by remember { mutableStateOf<String?>(null) }
+    val reportStem = openReport
+    if (reportStem != null) {
+        TestReportScreen(reportStem) { openReport = null }
+        return
+    }
 
     Column(
         modifier = Modifier
@@ -261,6 +269,9 @@ private fun MainScreen(
             Text("Start asks for permission to capture the screen, then starts the server and the capture together. There is no server while nothing is mirrored.")
         }
         Text("Viewers: ${state.viewerCount}", style = MaterialTheme.typography.titleMedium)
+
+        HorizontalDivider()
+        AutoTestSection(settings) { openReport = it }
 
         HorizontalDivider()
         QualitySection(settings) { MirrorService.applySettings(context) }

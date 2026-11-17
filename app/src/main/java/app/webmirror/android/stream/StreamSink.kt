@@ -8,6 +8,12 @@ interface StreamSink {
     /** Called about once a second: a chance to send a liveness message. */
     fun onPing() {}
 
+    /** A short message for the viewer's screen (plan 2.1 `notice`); [json] is the whole text message. */
+    fun onNotice(json: String) {}
+
+    /** Closes this viewer's connection (the page reconnects by itself). */
+    fun disconnect() {}
+
     /** What the viewer said in its `hello` (`h264`), or null while it has not said hello yet. */
     val h264Capable: Boolean? get() = null
 
