@@ -111,3 +111,12 @@ Probe results from the car:
 | Rotation | stream reconfigures to 1280x584 within ~10 s of rotating and the player rescales |
 
 Certificate: Let's Encrypt for `mirror.danielkosc.eu`, issued 2026-11-17, expires 2027-02-15, renewed manually with a DNS TXT record. hostcreators' `ns1` sometimes answers from a stale copy of the zone; the renewal helper therefore waits for ns2–ns4 only.
+
+## Car test 2 (2026-11-17, first real mirroring in the car)
+
+- `https://mirror.danielkosc.eu:8443` loads with a valid certificate; WebCodecs available; **H.264 plays in the car**, parked and while driving.
+- Typing the address without the scheme, or with the wrong one, fails: `http://` to 8443 gives ERR_EMPTY_RESPONSE; `https://169.254.77.1:8443` cannot work (certificate is for the name only).
+- **Freeze on shifting into Drive was the car dropping the phone's hotspot**, not a decoder block. Fixed with the Tesla Wi-Fi option "Remain connected in Drive" for the hotspot. The page kept showing "Connected, 0 fps" because nothing detected the dead connection; heartbeat + auto-reconnect being added.
+- JPEG mode (Force JPEG) also plays in Drive; started at 10–15 fps, rose to ~30 fps later.
+- **Delay phone → car is too large** (amount not yet measured); latency control being added.
+- Bluetooth audio delay offset: not yet set.
