@@ -92,3 +92,21 @@ Probe results from the car:
 - **H.264 in the car** needs HTTPS: a DNS name that resolves to `169.254.77.1` plus a real certificate for it (plan M1.3). Open question for the owner: is there a domain to use?
 - **Must fix:** the server must survive the app going to the background (foreground service, plan M2.1).
 - Not yet tested: the page while the car is in Drive.
+
+## Desk test M2/M4 on the phone (2026-11-17, Galaxy S22, Android 16, viewer on the Mac over USB forwarding)
+
+| Check | Result |
+|---|---|
+| Foreground service while mirroring | yes, type mediaProjection |
+| Stream size (Smoother preset) | 584x1280 |
+| JPEG, scrolling | 30 fps, ~69 KB/frame, ~17 Mbit/s |
+| JPEG, still screen | ~1.5 fps, <1 Mbit/s |
+| H.264 (`avc1.64001F`), scrolling | 30 fps, ~27 KB/frame, ~6.7 Mbit/s, 0 dropped in the player |
+| H.264, still screen | ~6 fps, ~0.3 Mbit/s |
+| JPEG-only viewer joins / leaves | stream switches h264 → jpeg → h264 live |
+| App in background | keeps streaming |
+| Screen locked | capture stops (Android); viewers get `paused` and stay connected; server keeps running as a specialUse foreground service |
+| HTTPS on 8443 with the imported certificate | serves `mirror.danielkosc.eu` with a valid chain |
+| Rotation, resume after pause | not yet tested |
+
+Certificate: Let's Encrypt for `mirror.danielkosc.eu`, issued 2026-11-17, expires 2027-02-15, renewed manually with a DNS TXT record. hostcreators' `ns1` sometimes answers from a stale copy of the zone; the renewal helper therefore waits for ns2–ns4 only.
