@@ -3,8 +3,9 @@ package app.webmirror.android.stream
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * Fan-out point between encoders (later) and sinks. Minimal in M0: session list, broadcast, hello.
- * Mode logic and GOP cache come in M2/M4.
+ * Fan-out point between encoders and sinks. Holds the stream description (`hello`) and the picture a new
+ * viewer needs to see something immediately. Adding H.264 later means adding a mode value, a codec string
+ * and a GOP cache next to [lastJpeg]; nothing here has to be rewritten.
  */
 class StreamHub {
 
@@ -12,14 +13,33 @@ class StreamHub {
         fun onViewerCountChanged(count: Int)
         fun onStats(json: String)
         fun onProbe(json: String)
+        fun onStreamChanged(info: HelloInfo)
+    }
+
+    /** What the phone tells the page about the stream (plan 2.1 `hello`). */
+    data class HelloInfo(
+        val mode: String = MODE_JPEG,
+        val codec: String = "",
+        val width: Int = 0,
+        val height: Int = 0,
+        val fps: Int = 0,
+        val audio: String = "off",
+    ) {
+        fun toJson(): String =
+            """{"t":"hello","v":$PROTOCOL_VERSION,"mode":"$mode","codec":"$codec","width":$width,"height":$height,"fps":$fps,"audio":"$audio"}"""
     }
 
     private val sinks = CopyOnWriteArrayList<StreamSink>()
 
+    /** Guards [info] and [lastJpeg] and keeps hello/packet ordering consistent for every sink. */
+    private val lock = Any()
+    private var info = HelloInfo()
+    private var lastJpeg: Packet? = null
+
     @Volatile
     var events: Events? = null
 
-    /** Set by the encoder owner (M2). Called when a viewer lost sync or its queue overflowed. */
+    /** Set by the encoder owner. Called when a viewer lost sync or its queue overflowed. */
     @Volatile
     var keyframeRequester: (() -> Unit)? = null
 
@@ -34,18 +54,49 @@ class StreamHub {
         if (sinks.remove(sink)) events?.onViewerCountChanged(sinks.size)
     }
 
-    fun broadcast(packet: Packet) {
-        for (s in sinks) s.onPacket(packet)
+    /** Called by encoders for every packet. JPEG packets are remembered for viewers that join later. */
+    fun onPacket(packet: Packet) {
+        synchronized(lock) {
+            if (packet.type == Packet.TYPE_JPEG) lastJpeg = packet
+            for (s in sinks) s.onPacket(packet)
+        }
     }
 
-    fun broadcastHello() {
-        val json = helloJson()
-        for (s in sinks) s.onHello(json)
+    /**
+     * Changes the stream description and, if anything changed, sends a new `hello` to every viewer.
+     * A change of picture size drops the cached JPEG (it has the old size).
+     */
+    fun update(change: (HelloInfo) -> HelloInfo) {
+        synchronized(lock) {
+            val old = info
+            val new = change(old)
+            if (new == old) return
+            info = new
+            if (new.width != old.width || new.height != old.height || new.mode != old.mode) lastJpeg = null
+            val json = new.toJson()
+            for (s in sinks) s.onHello(json)
+            events?.onStreamChanged(new)
+        }
     }
 
-    /** Phone -> page `hello` (plan 2.1). M0 has no stream yet, so the description is a placeholder. */
-    fun helloJson(): String =
-        """{"t":"hello","v":$PROTOCOL_VERSION,"mode":"jpeg","codec":"","width":0,"height":0,"fps":0,"audio":"off"}"""
+    /** Forgets everything about the previous stream (used when mirroring stops). */
+    fun reset() {
+        synchronized(lock) {
+            info = HelloInfo()
+            lastJpeg = null
+        }
+    }
+
+    fun helloJson(): String = synchronized(lock) { info.toJson() }
+
+    /** Called when a viewer's own `hello` arrived: stream description first, then the last picture. */
+    fun greet(sink: StreamSink) {
+        synchronized(lock) {
+            sink.onHello(info.toJson())
+            val jpeg = lastJpeg
+            if (jpeg != null) sink.onPacket(jpeg)
+        }
+    }
 
     /** Closes and unregisters every sink that has been silent for longer than [maxIdleMs]. */
     fun sweepIdle(maxIdleMs: Long) {
@@ -68,5 +119,6 @@ class StreamHub {
 
     companion object {
         const val PROTOCOL_VERSION = 1
+        const val MODE_JPEG = "jpeg"
     }
 }

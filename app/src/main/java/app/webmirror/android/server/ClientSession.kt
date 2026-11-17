@@ -152,7 +152,7 @@ class ClientSession(
             return
         }
         viewerH264 = obj.optBoolean("h264", false)
-        enqueueText(hub.helloJson())
+        hub.greet(this)
     }
 
     private fun enqueueClose() {

@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.net.VpnService
 import android.graphics.Bitmap
@@ -14,6 +15,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -32,6 +37,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -42,10 +48,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -56,6 +65,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
+import app.webmirror.android.capture.Preset
 import app.webmirror.android.net.Ipv4
 import app.webmirror.android.net.TlsStore
 import app.webmirror.android.net.VirtualIpService
@@ -67,8 +77,18 @@ import java.util.Date
 
 class MainActivity : ComponentActivity() {
 
+    /** Asked first on Android 13+. The answer does not matter (the service runs without a visible notification). */
     private val notificationPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* result not needed */ }
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { requestCapture() }
+
+    /** System dialog "Start recording or casting?". Its result can be used once, for one service start. */
+    private val captureConsent =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            val data = result.data
+            if (result.resultCode == RESULT_OK && data != null) {
+                MirrorService.start(this, result.resultCode, data)
+            }
+        }
 
     private lateinit var settings: Settings
 
@@ -140,8 +160,14 @@ class MainActivity : ComponentActivity() {
             PackageManager.PERMISSION_GRANTED
         ) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            requestCapture()
         }
-        MirrorService.start(this)
+    }
+
+    private fun requestCapture() {
+        val mpm = getSystemService(MediaProjectionManager::class.java)
+        captureConsent.launch(mpm.createScreenCaptureIntent())
     }
 
     /** Switch handler. The address was validated by the UI before calling with `on = true`. */
@@ -185,13 +211,15 @@ private fun MainScreen(
     ) {
         Text("WebMirror", style = MaterialTheme.typography.headlineMedium)
 
+        StatusBanner(state.running, state.stream)
+
         // ---- Server ----
         SectionTitle("Server")
         Button(
             onClick = { if (state.running) MirrorService.stop(context) else onStart() },
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text(if (state.running) "Stop" else "Start")
+            Text(if (state.running) "Stop" else "Start mirroring")
         }
         state.serverError?.let { ErrorText(it) }
         state.tlsError?.let { ErrorText(it) }
@@ -221,9 +249,15 @@ private fun MainScreen(
                 )
             }
         } else {
-            Text("Server stopped. Keep this app open on screen while testing.")
+            Text("Start asks for permission to capture the screen, then starts the server and the capture together. There is no server while nothing is mirrored.")
         }
         Text("Viewers: ${state.viewerCount}", style = MaterialTheme.typography.titleMedium)
+
+        HorizontalDivider()
+        QualitySection(settings) { MirrorService.applySettings(context) }
+
+        HorizontalDivider()
+        AudioSection(settings) { MirrorService.applySettings(context) }
 
         HorizontalDivider()
         VirtualAddressSection(settings, onVirtualIp)
@@ -249,6 +283,76 @@ private fun MainScreen(
                 Text("Share")
             }
         }
+    }
+}
+
+/** Impossible to miss: red when nothing is served, green while mirroring. */
+@Composable
+private fun StatusBanner(running: Boolean, stream: String?) {
+    val bg = if (running) ComposeColor(0xFF1B7F3B) else ComposeColor(0xFFC62828)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(bg)
+            .padding(16.dp),
+    ) {
+        Column {
+            Text(
+                if (running) "MIRRORING - server running" else "SERVER STOPPED",
+                color = ComposeColor.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 22.sp,
+            )
+            Text(
+                if (running) (stream ?: "") else "Nothing is being served. The Tesla browser cannot connect.",
+                color = ComposeColor.White,
+            )
+        }
+    }
+}
+
+@Composable
+private fun QualitySection(settings: Settings, onChanged: () -> Unit) {
+    var selected by remember { mutableStateOf(settings.preset) }
+    SectionTitle("Quality")
+    Column(Modifier.selectableGroup()) {
+        for (p in Preset.entries) {
+            ChoiceRow("${p.label} (longest side ${p.maxLongSide} px, ${p.fps} fps)", selected == p, true) {
+                selected = p
+                settings.preset = p
+                onChanged()
+            }
+        }
+    }
+}
+
+@Composable
+private fun AudioSection(settings: Settings, onChanged: () -> Unit) {
+    var selected by remember { mutableStateOf(settings.audioMode) }
+    SectionTitle("Audio")
+    Text("Bluetooth: the phone plays the sound to the car; the page delays the picture to match (set the delay in the page).")
+    Column(Modifier.selectableGroup()) {
+        for (m in AudioMode.entries) {
+            ChoiceRow(m.label, selected == m, m.available) {
+                selected = m
+                settings.audioMode = m
+                onChanged()
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChoiceRow(label: String, selected: Boolean, enabled: Boolean, onSelect: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onSelect)
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = null, enabled = enabled)
+        Text(label, modifier = Modifier.padding(start = 12.dp))
     }
 }
 
@@ -282,14 +386,14 @@ private fun VirtualAddressSection(settings: Settings, onVirtualIp: (Boolean, Str
     var fieldError by remember { mutableStateOf<String?>(null) }
 
     SectionTitle("Virtual address")
-    Text("Gives the phone an extra IPv4 address (a local VPN interface; no traffic is tunnelled). Devices on the phone's hotspot may reach the server there.")
+    Text("Link-local address that the Tesla browser accepts. Devices on the phone's hotspot reach the server there.")
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Switch(
             checked = vip.active,
             onCheckedChange = { on ->
                 val ip = text.trim()
                 if (on && !Ipv4.isValid(ip)) {
-                    fieldError = "Enter four numbers from 0 to 255 separated by dots, e.g. 198.51.100.1"
+                    fieldError = "Enter four numbers from 0 to 255 separated by dots, e.g. 169.254.77.1"
                 } else {
                     fieldError = null
                     onVirtualIp(on, ip)
@@ -314,17 +418,15 @@ private fun VirtualAddressSection(settings: Settings, onVirtualIp: (Boolean, Str
         modifier = Modifier.fillMaxWidth(),
     )
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        for (preset in listOf("198.51.100.1", "3.3.3.3")) {
-            OutlinedButton(
-                enabled = !vip.active,
-                onClick = {
-                    text = preset
-                    fieldError = null
-                    settings.virtualIp = preset
-                },
-            ) {
-                Text(preset)
-            }
+        OutlinedButton(
+            enabled = !vip.active,
+            onClick = {
+                text = Settings.DEFAULT_VIRTUAL_IP
+                fieldError = null
+                settings.virtualIp = Settings.DEFAULT_VIRTUAL_IP
+            },
+        ) {
+            Text(Settings.DEFAULT_VIRTUAL_IP)
         }
     }
     vip.error?.let { ErrorText(it) }

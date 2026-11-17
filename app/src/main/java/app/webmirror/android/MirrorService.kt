@@ -4,15 +4,25 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.app.Activity
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.drawable.Icon
 import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
+import android.net.wifi.WifiManager
+import android.media.projection.MediaProjection
+import android.media.projection.MediaProjectionManager
+import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
+import android.os.PowerManager
 import android.util.Log
+import app.webmirror.android.capture.ScreenCapture
 import app.webmirror.android.net.Addresses
 import app.webmirror.android.net.TlsStore
 import app.webmirror.android.net.VirtualIpService
@@ -46,13 +56,15 @@ data class ServiceState(
     val viewerCount: Int = 0,
     val lastStats: String? = null,
     val lastProbe: String? = null,
+    /** Size of the picture being sent, e.g. "576x1280 @30 fps", or null when not mirroring. */
+    val stream: String? = null,
 )
 
 /**
- * M0: a plain started service that only starts and stops [WebServer].
- * It deliberately does NOT call startForeground yet: the mediaProjection service type may only be used
- * after screen-capture consent (M2.1). Until then keep the app open on screen.
- * The notification is built and posted already, so M2 only has to switch to startForeground(...).
+ * Foreground service that owns everything while mirroring: the screen-capture projection, the capture and
+ * encoder, the web server, and the wake/Wi-Fi locks. "Running" means capture and server together; there is
+ * no server without capture. Start order is fixed (plan M2.1): startForeground with the mediaProjection
+ * type first, then getMediaProjection, then registerCallback, then the VirtualDisplay.
  */
 class MirrorService : Service() {
 
@@ -64,29 +76,171 @@ class MirrorService : Service() {
     private var netCallback: ConnectivityManager.NetworkCallback? = null
     private var sweeper: ScheduledExecutorService? = null
 
+    private var projection: MediaProjection? = null
+    private var capture: ScreenCapture? = null
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
+    private var active = false
+
+    private val projectionCallback = object : MediaProjection.Callback() {
+        /** The user ended capture (status bar chip) or the system revoked it: stop everything. */
+        override fun onStop() {
+            Log.i(TAG, "projection stopped by the system or the user")
+            stopAll(null)
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            stopServer()
-            stopSelf()
-            return START_NOT_STICKY
+        when (intent?.action) {
+            ACTION_START -> startMirroring(intent)
+            ACTION_STOP -> stopAll(null)
+            ACTION_REFRESH -> if (active) refreshUrls() else stopSelf()
+            ACTION_APPLY_SETTINGS -> if (active) applySettings() else stopSelf()
+            else -> if (!active) stopSelf()
         }
-        if (intent?.action == ACTION_REFRESH) {
-            if (server != null) refreshUrls()
-            return START_NOT_STICKY
-        }
-        if (server == null) startServer()
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
-        stopServer()
+        if (active) stopAll(null)
         scope.cancel()
         super.onDestroy()
     }
 
-    private fun startServer() {
+    private fun startMirroring(intent: Intent) {
+        // startForegroundService() promises startForeground() within seconds, so do it before anything
+        // else, and with the mediaProjection type (required on Android 14+ before getMediaProjection).
+        try {
+            startForeground(
+                NOTIFICATION_ID, buildNotification(),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION,
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "startForeground failed", e)
+            failStart("Cannot start the foreground service: ${e.message ?: e.javaClass.simpleName}")
+            return
+        }
+        if (active) return // duplicate start while mirroring
+        val code = intent.getIntExtra(EXTRA_CODE, Activity.RESULT_CANCELED)
+        val data = if (Build.VERSION.SDK_INT >= 33) {
+            intent.getParcelableExtra(EXTRA_DATA, Intent::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableExtra(EXTRA_DATA)
+        }
+        if (code != Activity.RESULT_OK || data == null) {
+            failStart("Screen capture was not allowed.")
+            return
+        }
+        active = true
+        val settings = Settings(this)
+        try {
+            val p = getSystemService(MediaProjectionManager::class.java).getMediaProjection(code, data)
+                ?: throw IllegalStateException("the system returned no projection")
+            projection = p
+            // Mandatory on Android 14+ before the display is created.
+            p.registerCallback(projectionCallback, Handler(Looper.getMainLooper()))
+            hub.reset()
+            bindEvents()
+            hub.update { it.copy(audio = settings.audioMode.key) }
+            val cap = ScreenCapture(this, p, hub, settings.preset)
+            capture = cap
+            cap.start()
+        } catch (e: Exception) {
+            Log.e(TAG, "cannot start capture", e)
+            stopAll("Cannot start screen capture: ${e.message ?: e.javaClass.simpleName}")
+            return
+        }
+        val error = startServer()
+        if (error != null) {
+            stopAll(error)
+            return
+        }
+        acquireLocks()
+        Log.i(TAG, "mirroring started")
+    }
+
+    /** Could not even begin: show why, and leave foreground state cleanly. */
+    private fun failStart(message: String) {
+        _state.update { it.copy(running = false, serverError = message) }
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    /** Applies preset and audio mode from [Settings] to the running stream. */
+    private fun applySettings() {
+        val settings = Settings(this)
+        capture?.setPreset(settings.preset)
+        hub.update { it.copy(audio = settings.audioMode.key) }
+    }
+
+    /** Full stop: capture, projection, server, locks, notification. [error] is shown in the UI. */
+    private fun stopAll(error: String?) {
+        if (!active) {
+            stopSelf()
+            return
+        }
+        active = false
+        capture?.stop()
+        capture = null
+        projection?.let {
+            try {
+                it.unregisterCallback(projectionCallback)
+                it.stop()
+            } catch (e: Exception) {
+                Log.w(TAG, "projection stop: $e")
+            }
+        }
+        projection = null
+        releaseLocks()
+        stopServer()
+        hub.reset()
+        _state.update { it.copy(running = false, serverError = error, stream = null) }
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+        Log.i(TAG, "mirroring stopped")
+    }
+
+    @Suppress("WakelockTimeout")
+    private fun acquireLocks() {
+        try {
+            val pm = getSystemService(PowerManager::class.java)
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "WebMirror:mirroring").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "wake lock failed: $e")
+        }
+        try {
+            val wm = applicationContext.getSystemService(WifiManager::class.java)
+            wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "WebMirror:wifi").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "wifi lock failed: $e")
+        }
+    }
+
+    private fun releaseLocks() {
+        try {
+            wakeLock?.let { if (it.isHeld) it.release() }
+        } catch (e: Exception) {
+            Log.w(TAG, "wake lock release: $e")
+        }
+        wakeLock = null
+        try {
+            wifiLock?.let { if (it.isHeld) it.release() }
+        } catch (e: Exception) {
+            Log.w(TAG, "wifi lock release: $e")
+        }
+        wifiLock = null
+    }
+
+    private fun bindEvents() {
         hub.events = object : StreamHub.Events {
             override fun onViewerCountChanged(count: Int) {
                 _state.update { it.copy(viewerCount = count) }
@@ -99,15 +253,21 @@ class MirrorService : Service() {
             override fun onProbe(json: String) {
                 _state.update { it.copy(lastProbe = json) }
             }
+
+            override fun onStreamChanged(info: StreamHub.HelloInfo) {
+                _state.update { it.copy(stream = "${info.width}x${info.height} @${info.fps} fps (${info.mode})") }
+            }
         }
+    }
+
+    /** Starts the web server and its helpers. Returns an error message, or null on success. */
+    private fun startServer(): String? {
         val s = WebServer(PORT, applicationContext.assets, hub)
         try {
             s.start(0, true) // timeout 0: idle WebSockets must not be killed by the default 5 s read timeout
         } catch (e: IOException) {
             Log.e(TAG, "cannot start server on port $PORT", e)
-            _state.update { it.copy(running = false, serverError = "Cannot start the server on port $PORT: ${e.message}") }
-            stopSelf()
-            return
+            return "Cannot start the server on port $PORT: ${e.message}"
         }
         server = s
         sweeper = Executors.newSingleThreadScheduledExecutor { r ->
@@ -130,13 +290,13 @@ class MirrorService : Service() {
             }, URL_POLL_SECONDS, URL_POLL_SECONDS, TimeUnit.SECONDS)
         }
         _state.update { it.copy(running = true, urls = Addresses.UrlList.EMPTY, viewerCount = 0, serverError = null) }
-        postNotification()
         registerNetworkCallback()
         TlsStore.refresh(this)
         scope.launch { TlsStore.state.collect { applyTls(it.info) } }
         scope.launch { VirtualIpService.state.collect { refreshUrls() } }
         refreshUrls()
         Log.i(TAG, "server started on port $PORT: ${_state.value.urls}")
+        return null
     }
 
     /** (Re)starts or stops the HTTPS server to match the stored certificate. HTTP is never affected. */
@@ -233,11 +393,10 @@ class MirrorService : Service() {
             }
         }
         hub.events = null
-        getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
         _state.update { it.copy(running = false, urls = Addresses.UrlList.EMPTY, viewerCount = 0, httpsRunning = false, tlsError = null) }
     }
 
-    private fun postNotification() {
+    private fun buildNotification(): Notification {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, getString(R.string.notification_channel_name), NotificationManager.IMPORTANCE_LOW),
@@ -250,7 +409,7 @@ class MirrorService : Service() {
             this, 1, Intent(this, MirrorService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val n = Notification.Builder(this, CHANNEL_ID)
+        return Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(getString(R.string.app_name))
             .setContentText(getString(R.string.notification_text))
@@ -264,8 +423,6 @@ class MirrorService : Service() {
                 ).build(),
             )
             .build()
-        // No-op if POST_NOTIFICATIONS was not granted. M2 replaces this with startForeground(...).
-        nm.notify(NOTIFICATION_ID, n)
     }
 
     companion object {
@@ -276,20 +433,40 @@ class MirrorService : Service() {
         private const val ACTION_REFRESH = "app.webmirror.android.REFRESH"
         private const val IDLE_TIMEOUT_MS = 10_000L
         private const val ACTION_STOP = "app.webmirror.android.STOP"
+        private const val ACTION_START = "app.webmirror.android.START"
+        private const val ACTION_APPLY_SETTINGS = "app.webmirror.android.APPLY_SETTINGS"
+        private const val EXTRA_CODE = "code"
+        private const val EXTRA_DATA = "data"
         private const val CHANNEL_ID = "webmirror"
         private const val NOTIFICATION_ID = 1
 
         private val _state = MutableStateFlow(ServiceState())
         val state: StateFlow<ServiceState> = _state.asStateFlow()
 
-        fun start(context: Context) {
-            context.startService(Intent(context, MirrorService::class.java))
+        /**
+         * Starts mirroring with the result of the screen-capture consent dialog. The result can be used
+         * once; never keep it for a later session.
+         */
+        fun start(context: Context, resultCode: Int, data: Intent) {
+            context.startForegroundService(
+                Intent(context, MirrorService::class.java)
+                    .setAction(ACTION_START)
+                    .putExtra(EXTRA_CODE, resultCode)
+                    .putExtra(EXTRA_DATA, data),
+            )
         }
 
         /** Asks a running service to recompute its URL list (e.g. when the app comes to the foreground). */
         fun refresh(context: Context) {
             if (_state.value.running) {
                 context.startService(Intent(context, MirrorService::class.java).setAction(ACTION_REFRESH))
+            }
+        }
+
+        /** Tells a running service that the preset or audio mode changed. */
+        fun applySettings(context: Context) {
+            if (_state.value.running) {
+                context.startService(Intent(context, MirrorService::class.java).setAction(ACTION_APPLY_SETTINGS))
             }
         }
 
