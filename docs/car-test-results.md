@@ -64,5 +64,31 @@ Phone: Galaxy S22 (SM-S901U1), Android 16. Mac joined to the phone's hotspot (ph
 
 | # | URL typed in the car | Loads? |
 |---|---|---|
-| 1 | `http://169.254.77.1:8080/probe.html` (virtual address, link-local) | |
+| 1 | `http://169.254.77.1:8080/probe.html` (virtual address, link-local) | **yes** (parked) |
 | 2 | `http://10-15-23-199.sslip.io:8080/probe.html` (name → hotspot address) | |
+
+### Car test 1c result (2026-11-17, parked)
+
+**`http://169.254.77.1:8080` loads in the Tesla browser.** The earlier "refused to connect" failures (car test 1 and the first try of 1c) were because WebMirror's server had stopped: Android closed the app process while it was in the background. The phone itself rejected the connections, which proves the car's requests reach the phone. Whether the plain hotspot address (`10.15.23.199`) is blocked by the car is therefore still unproven; it does not matter now.
+
+Probe results from the car:
+
+| Item | Value |
+|---|---|
+| Browser | Chrome 148 on Linux x86_64 (`Mozilla/5.0 (X11; Linux x86_64) ... Chrome/148.0.0.0`) |
+| Screen / window / DPR | 869x1391 / 856x668 / 1.38 |
+| Secure context over plain HTTP | no |
+| `VideoDecoder` (WebCodecs) | **not available** over plain HTTP |
+| `MediaSource`, `<video>` H.264 `canPlayType` | yes / "probably" (not usable: `<video>` is restricted while driving) |
+| WebSocket, `createImageBitmap`, `OffscreenCanvas`, `AudioContext` | yes |
+| `AudioWorklet` | no (needs secure context) |
+| Canvas drawing 1280x720 ImageBitmap | 59.6 fps |
+| WebSocket throughput phone to car | 38.3 Mbit/s |
+
+### Decision gate after M1 (2026-11-17)
+
+- **Car URL:** `http://169.254.77.1:8080`. The virtual address defaults to `169.254.77.1` (link-local, so Android's VPN ingress filter does not apply).
+- **Car video mode over plain HTTP:** JPEG (no WebCodecs without a secure context). Throughput and canvas speed are ample for JPEG.
+- **H.264 in the car** needs HTTPS: a DNS name that resolves to `169.254.77.1` plus a real certificate for it (plan M1.3). Open question for the owner: is there a domain to use?
+- **Must fix:** the server must survive the app going to the background (foreground service, plan M2.1).
+- Not yet tested: the page while the car is in Drive.
