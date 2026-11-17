@@ -9,6 +9,8 @@ import fi.iki.elonen.NanoHTTPD.Response
 import fi.iki.elonen.NanoWSD
 import fi.iki.elonen.NanoWSD.WebSocket
 import java.io.IOException
+import java.io.InputStream
+import java.net.Socket
 
 /**
  * HTTP server for the web client (assets/web) plus the /ws WebSocket endpoint.
@@ -26,6 +28,16 @@ class WebServer(
             return notFound()
         }
         return super.serve(session)
+    }
+
+    /**
+     * NanoHTTPD 2.3.1 calls this on its accept thread for every accepted socket (ServerRunnable.run ->
+     * createClientHandler), so it is the place to tune the socket. A small kernel send buffer keeps the
+     * data that sits in the OS, invisible to our flow control, to a few tens of milliseconds of video.
+     */
+    override fun createClientHandler(finalAccept: Socket, inputStream: InputStream): ClientHandler {
+        tuneSocket(finalAccept)
+        return super.createClientHandler(finalAccept, inputStream)
     }
 
     override fun openWebSocket(handshake: IHTTPSession): WebSocket = ClientSession(handshake, hub)
@@ -70,5 +82,15 @@ class WebServer(
 
     companion object {
         private const val TAG = "WebMirror"
+        const val SEND_BUFFER_BYTES = 64 * 1024
+
+        fun tuneSocket(s: Socket) {
+            try {
+                s.sendBufferSize = SEND_BUFFER_BYTES
+                s.tcpNoDelay = true
+            } catch (e: Exception) {
+                Log.w(TAG, "cannot tune socket: $e")
+            }
+        }
     }
 }
