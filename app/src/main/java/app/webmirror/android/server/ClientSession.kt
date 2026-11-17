@@ -77,8 +77,12 @@ class ClientSession(
     @Volatile
     private var pageStatsAtMs = 0L
 
+    /** No congestion signal before this time: a new viewer (or a new hello) is a reset, not congestion. */
+    @Volatile
+    private var graceUntilMs = nowMs() + BitrateController.GRACE_MS
+
     override fun congestion(nowMs: Long): BitrateController.ViewerSignal? {
-        if (stopped) return null
+        if (stopped || nowMs < graceUntilMs) return null
         synchronized(mon) {
             val fresh = nowMs - pageStatsAtMs < STATS_FRESH_MS
             return BitrateController.ViewerSignal(
@@ -97,6 +101,7 @@ class ClientSession(
         synchronized(mon) {
             // A new stream description invalidates everything waiting; H.264 resumes at a keyframe.
             outbox.reset(json.contains("\"mode\":\"h264\""))
+            graceUntilMs = nowMs() + BitrateController.GRACE_MS
             addControl(Outgoing.Text(json))
             mon.notifyAll()
         }
@@ -155,6 +160,7 @@ class ClientSession(
             if (rtt >= 0) append(""","rtt":""").append(rtt / 1000).append('.').append((rtt % 1000) / 100)
             append(""","inFlight":""").append(outbox.inFlightCount)
             append(""","pending":""").append(outbox.pendingCount)
+            append(""","kfw":""").append(outbox.resetDropped)
             append(""","target":"""").append(hub.targetText).append(""""}""")
         }
     }
@@ -249,6 +255,7 @@ class ClientSession(
                         obj.put("inFlight", outbox.inFlightCount)
                         obj.put("srvPending", outbox.pendingCount)
                         obj.put("srvDropped", outbox.dropped)
+                        obj.put("srvResetDropped", outbox.resetDropped)
                     }
                     hub.reportStats(obj.toString())
                 }

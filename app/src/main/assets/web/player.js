@@ -61,6 +61,8 @@
   let viewTimer = null;
   let offsetMs = 0;
   let dropped = 0;
+  let kfwait = 0;                 // frames discarded because of a deliberate reset (waiting for a keyframe, leftovers of a mode change): not congestion
+  let serverKfwait = 0;           // from the server's ping: frames it refused or dropped because of a reset
   let framesDrawn = 0;
   let framesAtLastStats = 0;
   let lastStatsAt = 0;
@@ -409,7 +411,8 @@
       submit: function (p) {
         if (!dec) return;
         if (waitingForKey && !p.key) {
-          discard(p);
+          kfwait++;
+          ack(p.raw);
           return;
         }
         if (dec.decodeQueueSize > MAX_DECODE_QUEUE) {
@@ -504,7 +507,8 @@
         const p = queue[0];
         if (p.type !== decoder.type) {
           // Leftover of a mode change.
-          discard(queue.shift());
+          kfwait++;
+          ack(queue.shift().raw);
           continue;
         }
         const due = dueTime(p);
@@ -622,6 +626,7 @@
       if (typeof m.rtt === 'number') { rttSum += m.rtt; rttCount++; }
       serverInFlight = m.inFlight | 0;
       serverPending = m.pending | 0;
+      serverKfwait = m.kfw | 0;
       serverTarget = typeof m.target === 'string' ? m.target : '';
     } else if (m.t === 'notice') {
       showNotice(typeof m.text === 'string' ? m.text : '', Number(m.ttlS) || 10);
@@ -765,7 +770,7 @@
 
   function updateStats() {
     const lines = [];
-    lines.push('fps ' + fps.toFixed(1) + '   dropped ' + dropped + '   skipped ' + skipped);
+    lines.push('fps ' + fps.toFixed(1) + '   dropped ' + dropped + (kfwait + serverKfwait > 0 ? '   kfwait ' + (kfwait + serverKfwait) : '') + '   skipped ' + skipped);
     lines.push('late ' + Math.round(lastLateAvg) + ' ms (max ' + Math.round(lastLateMax) + ')   net ' + Math.round(lastNetLate) + ' ms');
     lines.push(phoneOffsetMs === null ? 'e2e: measuring the clock offset…' :
       'e2e avg ' + Math.round(lastE2eAvg) + ' ms   p95 ' + Math.round(lastE2eP95) + '   max ' + Math.round(lastE2eMax) + '   rtt ' + lastRtt.toFixed(1) + ' ms');
@@ -807,6 +812,7 @@
       fps: Math.round(fps * 10) / 10,
       queue: queue.length,
       dropped: dropped,
+      kfwait: kfwait,
       skipped: skipped,
       replaced: replaced,
       decoderResets: decoderResets,

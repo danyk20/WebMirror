@@ -126,6 +126,31 @@ class VideoOutboxTest {
     }
 
     @Test
+    fun keyframeWaitAfterResetCountsAsResetDropsNotCongestion() {
+        val o = VideoOutbox(1)
+        o.offer(key(1), 0); o.next(0)
+        o.offer(delta(2), 1)
+        o.reset(true)
+        for (i in 3..13L) o.offer(delta(i), i)
+        assertEquals(0L, o.dropped)
+        assertEquals(12L, o.resetDropped) // 1 waiting + 11 refused
+        o.offer(key(14), 20)
+        assertFalse(o.needsKeyframe)
+    }
+
+    @Test
+    fun backlogDropsStillCountAsCongestion() {
+        val o = VideoOutbox(1, 150)
+        o.offer(key(1), 0); o.next(0)
+        o.offer(delta(2), 1)
+        o.offer(delta(3), 400) // oldest waited > dropAfter: dropped, keyframe needed
+        assertEquals(2L, o.dropped) // the waiting delta and the refused one
+        o.offer(delta(4), 401)
+        assertEquals(3L, o.dropped)
+        assertEquals(0L, o.resetDropped)
+    }
+
+    @Test
     fun defaultsAreSixInFlightAnd150Ms() {
         val o = VideoOutbox()
         assertEquals(6, o.maxInFlight)

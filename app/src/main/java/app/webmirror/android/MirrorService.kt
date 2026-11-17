@@ -275,7 +275,7 @@ class MirrorService : Service() {
         if (!diff.any) return
         Log.i(TAG, "config ${config.id} applied (changed: $diff): ${config.summary()}")
         hub.applyConfig(config)
-        if (diff.encoder || diff.fit || diff.adaptive) capture?.applyConfig(config)
+        capture?.applyConfig(config) // always: a new config resets the adaptive target
     }
 
     /** Applies preset and audio mode from [Settings] to the running stream. */

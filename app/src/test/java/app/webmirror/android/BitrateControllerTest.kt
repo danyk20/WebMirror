@@ -117,4 +117,31 @@ class BitrateControllerTest {
         assertEquals(6_000_000, c.value)
         assertNull(c.tick(500, listOf(calm()), drop))
     }
+
+    @Test
+    fun signalsInTheGracePeriodAfterAResetAreIgnored() {
+        val c = BitrateController(800_000, 4_000_000)
+        c.configure(800_000, 4_000_000, 10_000)
+        c.tick(10_000, listOf(calm()), drop)
+        // keyframe-wait style noise right after the reset: ignored
+        assertNull(c.tick(10_500, listOf(waiting(500)), drop))
+        assertNull(c.tick(11_500, listOf(calm(dropped = 11, skipped = 2)), drop))
+        assertEquals(4_000_000, c.value)
+    }
+
+    @Test
+    fun aRealBacklogAfterTheGracePeriodStillLowersTheTarget() {
+        val c = BitrateController(800_000, 4_000_000)
+        c.configure(800_000, 4_000_000, 10_000)
+        assertNull(c.tick(11_000, listOf(calm()), drop))
+        assertEquals(2_800_000, c.tick(12_500, listOf(waiting(200)), drop))
+    }
+
+    @Test
+    fun holdOffIgnoresSignalsForTwoSeconds() {
+        val c = BitrateController(800_000, 4_000_000)
+        c.holdOff(0)
+        assertNull(c.tick(1_900, listOf(waiting(500)), drop))
+        assertEquals(2_800_000, c.tick(2_500, listOf(waiting(500)), drop))
+    }
 }

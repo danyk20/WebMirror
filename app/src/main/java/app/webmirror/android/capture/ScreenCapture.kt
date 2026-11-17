@@ -102,11 +102,9 @@ class ScreenCapture(
             synchronized(this) {
                 val old = config
                 config = c
+                resetController() // any applied config: the target goes back to the ceiling, with a grace period
+                encoder?.setTarget(controller.value)
                 val rebuild = old.encoderKey != c.encoderKey && mode == StreamHub.MODE_H264
-                if (old.adaptiveBitrate != c.adaptiveBitrate || old.minBitrateKbps != c.minBitrateKbps) {
-                    resetController()
-                    encoder?.setTarget(controller.value)
-                }
                 if (rebuild || old.fitToViewer != c.fitToViewer) applyChange(forceEncoder = rebuild)
             }
         }
@@ -196,7 +194,7 @@ class ScreenCapture(
     /** The target goes back to the preset's value (new encoder, new limits, adaptive switched). */
     private fun resetController() {
         val (floor, ceiling) = limits()
-        controller.configure(floor, ceiling)
+        controller.configure(floor, ceiling, System.nanoTime() / 1_000_000)
         publishTarget()
     }
 
@@ -226,6 +224,8 @@ class ScreenCapture(
         onEncoderReport(text)
     }
 
+    private var lastViewers = 0
+
     private val adaptiveTick = object : Runnable {
         override fun run() {
             if (released) return
@@ -234,6 +234,12 @@ class ScreenCapture(
                     val enc = encoder
                     if (config.adaptiveBitrate && enc != null && !released) {
                         val now = System.nanoTime() / 1_000_000
+                        val viewers = hub.viewerCount
+                        if (viewers > 0 && lastViewers == 0) { // the first viewer connects: start at the ceiling
+                            resetController()
+                            enc.setTarget(controller.value)
+                        }
+                        lastViewers = viewers
                         val n = controller.tick(now, hub.congestionSignals(now), config.dropAfterMs)
                         if (n != null) {
                             enc.setTarget(n)

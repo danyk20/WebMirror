@@ -10,6 +10,8 @@ package app.webmirror.android.stream
  *   above [NET_LATE_LIMIT_MS]. Congestion multiplies the value by 0.7, never below [floor].
  * - After [CALM_MS] without congestion the value rises by 10 % (at least one unit), never above [ceiling],
  *   then waits another [CALM_MS] for the next step.
+ * - Grace: for [GRACE_MS] after [configure] or [holdOff] (new encoder, config applied, new viewer) all signals
+ *   are ignored (only the baselines advance): a deliberate reset is not congestion.
  * - Hysteresis: after a decrease no further decrease happens for [SETTLE_MS] (the backlog that caused it
  *   needs time to drain), and nothing changes more than once per [TICK_MS].
  */
@@ -39,10 +41,11 @@ class BitrateController(floor: Int, ceiling: Int) {
     private var calmSinceMs = 0L
     private var lastChangeMs = NEVER
     private var lastDecreaseMs = NEVER
+    private var holdUntilMs = NEVER
     private val baselines = HashMap<Int, LongArray>()
 
     /** New limits (preset, mode or config change): the target goes back to the ceiling. */
-    fun configure(floor: Int, ceiling: Int) {
+    fun configure(floor: Int, ceiling: Int, nowMs: Long = NEVER) {
         this.ceiling = ceiling
         this.floor = minOf(floor, ceiling)
         value = ceiling
@@ -50,6 +53,13 @@ class BitrateController(floor: Int, ceiling: Int) {
         lastChangeMs = NEVER
         lastDecreaseMs = NEVER
         baselines.clear()
+        if (nowMs != NEVER) holdOff(nowMs)
+    }
+
+    /** Ignores every signal for [GRACE_MS] from [nowMs] (a reset happened: keyframe waits are no congestion). */
+    fun holdOff(nowMs: Long) {
+        holdUntilMs = nowMs + GRACE_MS
+        calmSinceMs = nowMs
     }
 
     /** True if any of [signals] shows congestion. Also advances the per-viewer baselines. */
@@ -75,7 +85,7 @@ class BitrateController(floor: Int, ceiling: Int) {
 
     /** Evaluates one tick at [nowMs]; returns the new target when it changed, else null. */
     fun tick(nowMs: Long, signals: List<ViewerSignal>, dropAfterMs: Int): Int? {
-        val bad = congested(signals, dropAfterMs)
+        val bad = congested(signals, dropAfterMs) && nowMs >= holdUntilMs
         if (nowMs - lastChangeMs < TICK_MS) {
             if (bad) calmSinceMs = nowMs
             return null
@@ -103,6 +113,7 @@ class BitrateController(floor: Int, ceiling: Int) {
         const val TICK_MS = 500L
         const val CALM_MS = 4000L
         const val SETTLE_MS = 1000L
+        const val GRACE_MS = 2000L
         const val NET_LATE_LIMIT_MS = 150
         const val DECREASE_FACTOR = 0.7
         const val INCREASE_FACTOR = 1.1

@@ -35,7 +35,19 @@ class VideoOutbox(
     var needsKeyframe = false
         private set
 
+    /** Why the viewer waits for a keyframe: a deliberate [reset] (not congestion) or a congestion drop. */
+    private var waitIsReset = false
+
+    /** Frames lost to congestion (a slow viewer). This is what the bitrate controller sees. */
     var dropped = 0L
+        private set
+
+    /**
+     * Frames lost because of a deliberate reset (new viewer, new hello, encoder rebuild, mode switch):
+     * waiting packets thrown away by [reset] and deltas refused while the viewer waits for its first
+     * keyframe. Not congestion.
+     */
+    var resetDropped = 0L
         private set
 
     val inFlightCount: Int get() = inFlight.size
@@ -51,20 +63,22 @@ class VideoOutbox(
         if (p.type == Packet.TYPE_H264 &&
             ((head != null && nowMs - head.atMs > dropAfterMs) || pending.size >= MAX_PENDING)
         ) {
-            dropPending()
+            dropPending(false)
             needsKeyframe = true
+            waitIsReset = false
             wantKeyframe = true
         }
         if (p.type == Packet.TYPE_H264) {
             if (p.isKeyframe) {
-                dropPending()
+                dropPending(false)
                 needsKeyframe = false
+                waitIsReset = false
             } else if (needsKeyframe) {
-                dropped++
+                if (waitIsReset) resetDropped++ else dropped++
                 return true
             }
         } else {
-            dropPending() // JPEG: newest frame wins
+            dropPending(false) // JPEG: newest frame wins
         }
         pending.addLast(Entry(p, nowMs))
         return wantKeyframe
@@ -91,8 +105,9 @@ class VideoOutbox(
         inFlight.clear()
         progressMs = nowMs
         if (pending.any { it.packet.type == Packet.TYPE_H264 }) {
-            dropPending()
+            dropPending(false)
             needsKeyframe = true
+            waitIsReset = false
             return true
         }
         return false
@@ -100,13 +115,14 @@ class VideoOutbox(
 
     /** New stream description: forget everything waiting; an H.264 viewer resumes at the next keyframe. */
     fun reset(h264: Boolean) {
-        dropPending()
+        dropPending(true)
         inFlight.clear()
         needsKeyframe = h264
+        waitIsReset = h264
     }
 
-    private fun dropPending() {
-        dropped += pending.size
+    private fun dropPending(byReset: Boolean) {
+        if (byReset) resetDropped += pending.size else dropped += pending.size
         pending.clear()
     }
 
