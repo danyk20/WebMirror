@@ -33,4 +33,13 @@ class AvcUtilTest {
         assertNull(AvcUtil.codecString(ByteArray(0)))
         assertNull(AvcUtil.codecString(bytes(0, 0, 0, 1, 0x67, 0x42)))
     }
+
+    @Test
+    fun profileNames() {
+        assertEquals("constrained baseline", AvcUtil.profileName("avc1.42C01F"))
+        assertEquals("baseline", AvcUtil.profileName("avc1.42001F"))
+        assertEquals("main", AvcUtil.profileName("avc1.4D401F"))
+        assertEquals("high", AvcUtil.profileName("avc1.64001F"))
+        assertEquals("unknown", AvcUtil.profileName("garbage"))
+    }
 }

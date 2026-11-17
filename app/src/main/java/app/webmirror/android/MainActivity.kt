@@ -66,6 +66,7 @@ import androidx.core.content.ContextCompat
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 import app.webmirror.android.capture.Preset
+import app.webmirror.android.stream.StreamConfig
 import app.webmirror.android.net.Ipv4
 import app.webmirror.android.net.TlsStore
 import app.webmirror.android.net.VirtualIpService
@@ -271,6 +272,9 @@ private fun MainScreen(
         AudioSection(settings) { MirrorService.applySettings(context) }
 
         HorizontalDivider()
+        AdvancedSection(settings, state.encoder, state.running)
+
+        HorizontalDivider()
         VirtualAddressSection(settings, onVirtualIp)
 
         HorizontalDivider()
@@ -388,6 +392,91 @@ private fun AudioSection(settings: Settings, onChanged: () -> Unit) {
             }
         }
     }
+}
+
+/** Every latency/smoothness option of [StreamConfig]; collapsed by default, changes apply live. */
+@Composable
+private fun AdvancedSection(settings: Settings, encoder: String?, running: Boolean) {
+    val context = LocalContext.current
+    var expanded by remember { mutableStateOf(false) }
+    var cfg by remember { mutableStateOf(settings.streamConfig) }
+    var resetToken by remember { mutableStateOf(0) }
+    fun change(next: StreamConfig) {
+        cfg = next
+        MirrorService.applyConfig(context, next)
+    }
+    val labels = StreamConfig.LABELS
+
+    SectionTitle("Advanced streaming options")
+    OutlinedButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth()) {
+        Text(if (expanded) "Hide options" else "Show options (config ${cfg.id})")
+    }
+    if (!expanded) return
+
+    Text("Changes apply live. Socket options affect new connections only: reload the page to use them.", style = MaterialTheme.typography.bodySmall)
+    SwitchRow(labels.getValue("tcpNoDelay"), cfg.tcpNoDelay) { change(cfg.copy(tcpNoDelay = it)) }
+    NumberRow("sendBufferKb", cfg.sendBufferKb, resetToken) { change(cfg.copy(sendBufferKb = it)) }
+    SwitchRow(labels.getValue("lowLatencyEncoder"), cfg.lowLatencyEncoder) { change(cfg.copy(lowLatencyEncoder = it)) }
+    Text(labels.getValue("profile"), style = MaterialTheme.typography.labelLarge)
+    Column(Modifier.selectableGroup()) {
+        for (p in StreamConfig.PROFILES) {
+            ChoiceRow(p, cfg.profile == p, true) { change(cfg.copy(profile = p)) }
+        }
+    }
+    Text(labels.getValue("bitrateMode"), style = MaterialTheme.typography.labelLarge)
+    Column(Modifier.selectableGroup()) {
+        for (m in StreamConfig.BITRATE_MODES) {
+            ChoiceRow(m, cfg.bitrateMode == m, true) { change(cfg.copy(bitrateMode = m)) }
+        }
+    }
+    SwitchRow(labels.getValue("intraRefresh"), cfg.intraRefresh) { change(cfg.copy(intraRefresh = it)) }
+    NumberRow("keyframeIntervalS", cfg.keyframeIntervalS, resetToken) { change(cfg.copy(keyframeIntervalS = it)) }
+    SwitchRow(labels.getValue("fitToViewer"), cfg.fitToViewer) { change(cfg.copy(fitToViewer = it)) }
+    NumberRow("maxInFlight", cfg.maxInFlight, resetToken) { change(cfg.copy(maxInFlight = it)) }
+    NumberRow("dropAfterMs", cfg.dropAfterMs, resetToken) { change(cfg.copy(dropAfterMs = it)) }
+    NumberRow("jitterBufferMs", cfg.jitterBufferMs, resetToken) { change(cfg.copy(jitterBufferMs = it)) }
+    NumberRow("skipLateFrames", cfg.skipLateFrames, resetToken) { change(cfg.copy(skipLateFrames = it)) }
+    OutlinedButton(onClick = { resetToken++; change(StreamConfig()) }, modifier = Modifier.fillMaxWidth()) {
+        Text("Reset to defaults")
+    }
+
+    Text("Effective encoder state", style = MaterialTheme.typography.titleMedium)
+    Text(
+        text = if (running) encoder ?: "(no encoder yet)" else "(not mirroring)",
+        fontFamily = FontFamily.Monospace,
+        fontSize = 12.sp,
+    )
+}
+
+@Composable
+private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Switch(checked = checked, onCheckedChange = onChange)
+        Text(label, modifier = Modifier.padding(start = 12.dp))
+    }
+}
+
+/** Number field for a ranged field of [StreamConfig]; applies when the text is a valid in-range number. */
+@Composable
+private fun NumberRow(key: String, value: Int, resetToken: Int, onValue: (Int) -> Unit) {
+    val range = StreamConfig.RANGES.getValue(key)
+    var text by remember(resetToken) { mutableStateOf(value.toString()) }
+    val parsed = text.toIntOrNull()
+    val valid = parsed != null && parsed in range
+    OutlinedTextField(
+        value = text,
+        onValueChange = {
+            text = it.filter { c -> c.isDigit() }.take(5)
+            val n = text.toIntOrNull()
+            if (n != null && n in range) onValue(n)
+        },
+        label = { Text(StreamConfig.LABELS.getValue(key)) },
+        supportingText = { Text("${range.first} to ${range.last}") },
+        isError = !valid,
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 @Composable

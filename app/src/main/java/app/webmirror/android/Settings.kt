@@ -3,6 +3,7 @@ package app.webmirror.android
 import android.content.Context
 import android.content.SharedPreferences
 import app.webmirror.android.capture.Preset
+import app.webmirror.android.stream.StreamConfig
 
 /** Small SharedPreferences wrapper for the user's persistent choices. */
 class Settings(context: Context) {
@@ -40,7 +41,13 @@ class Settings(context: Context) {
         get() = prefs.getBoolean(KEY_FORCE_JPEG, false)
         set(value) = prefs.edit().putBoolean(KEY_FORCE_JPEG, value).apply()
 
+    /** All latency/smoothness tunables, stored as one JSON text (see [StreamConfig]). */
+    var streamConfig: StreamConfig
+        get() = StreamConfig.fromJson(prefs.getString(KEY_STREAM_CONFIG, null))
+        set(value) = prefs.edit().putString(KEY_STREAM_CONFIG, value.toJson().toString()).apply()
+
     companion object {
+        private const val KEY_STREAM_CONFIG = "streamConfig"
         private const val KEY_KEEP_SCREEN_ON = "keepScreenOn"
         private const val KEY_FORCE_JPEG = "forceJpeg"
         private const val FILE = "webmirror"

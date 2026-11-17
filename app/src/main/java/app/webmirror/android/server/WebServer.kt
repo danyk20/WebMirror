@@ -2,6 +2,7 @@ package app.webmirror.android.server
 
 import android.content.res.AssetManager
 import android.util.Log
+import app.webmirror.android.stream.StreamConfig
 import app.webmirror.android.stream.StreamHub
 import fi.iki.elonen.NanoHTTPD
 import fi.iki.elonen.NanoHTTPD.IHTTPSession
@@ -74,11 +75,11 @@ class WebServer(
 
     /**
      * NanoHTTPD 2.3.1 calls this on its accept thread for every accepted socket (ServerRunnable.run ->
-     * createClientHandler), so it is the place to tune the socket. A small kernel send buffer keeps the
+     * createClientHandler), so it is the place to tune the socket. A small kernel send buffer (StreamConfig.sendBufferKb) keeps the
      * data that sits in the OS, invisible to our flow control, to a few tens of milliseconds of video.
      */
     override fun createClientHandler(finalAccept: Socket, inputStream: InputStream): ClientHandler {
-        tuneSocket(finalAccept)
+        tuneSocket(finalAccept, hub.config)
         return SniffingHandler(finalAccept)
     }
 
@@ -204,7 +205,6 @@ class WebServer(
 
     companion object {
         private const val TAG = "WebMirror"
-        const val SEND_BUFFER_BYTES = 64 * 1024
         private const val SNIFF_TIMEOUT_MS = 10_000
 
         /**
@@ -220,10 +220,11 @@ class WebServer(
             null
         }
 
-        fun tuneSocket(s: Socket) {
+        /** Socket options of [StreamConfig]; applies to connections accepted from now on. */
+        fun tuneSocket(s: Socket, cfg: StreamConfig) {
             try {
-                s.sendBufferSize = SEND_BUFFER_BYTES
-                s.tcpNoDelay = true
+                if (cfg.sendBufferKb > 0) s.sendBufferSize = cfg.sendBufferKb * 1024
+                s.tcpNoDelay = cfg.tcpNoDelay
             } catch (e: Exception) {
                 Log.w(TAG, "cannot tune socket: $e")
             }

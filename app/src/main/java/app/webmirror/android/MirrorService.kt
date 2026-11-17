@@ -27,6 +27,7 @@ import app.webmirror.android.net.Addresses
 import app.webmirror.android.net.TlsStore
 import app.webmirror.android.net.VirtualIpService
 import app.webmirror.android.server.WebServer
+import app.webmirror.android.stream.StreamConfig
 import app.webmirror.android.stream.StreamHub
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -60,6 +61,8 @@ data class ServiceState(
     val lastProbe: String? = null,
     /** Size of the picture being sent, e.g. "576x1280 @30 fps", or null when not mirroring. */
     val stream: String? = null,
+    /** What the encoder actually accepted (profile, low latency, ...), multi-line, or null when not mirroring. */
+    val encoder: String? = null,
 )
 
 /**
@@ -91,6 +94,9 @@ class MirrorService : Service() {
 
     /** The server is up (capturing or paused). */
     private var active = false
+
+    /** The configuration currently applied (what [applyConfig] diffs against). */
+    private var appliedConfig = StreamConfig()
 
     private val projectionCallback = object : MediaProjection.Callback() {
         /** Capture ended (screen lock, status-bar chip, system): keep the server, show "paused". */
@@ -158,7 +164,12 @@ class MirrorService : Service() {
             }
             hub.update { it.copy(audio = settings.audioMode.key) }
             hub.forceJpeg = settings.forceJpeg
-            val cap = ScreenCapture(this, p, hub, settings.preset)
+            val cfg = settings.streamConfig
+            appliedConfig = cfg
+            hub.applyConfig(cfg)
+            val cap = ScreenCapture(this, p, hub, settings.preset, cfg) { report ->
+                _state.update { it.copy(encoder = report) }
+            }
             capture = cap
             cap.start()
         } catch (e: Exception) {
@@ -225,7 +236,7 @@ class MirrorService : Service() {
         if (!active || capture == null && projection == null) return
         endCapture()
         hub.update { it.copy(mode = StreamHub.MODE_PAUSED) }
-        _state.update { it.copy(paused = true, stream = null) }
+        _state.update { it.copy(paused = true, stream = null, encoder = null) }
         enterPausedForeground()
         Log.i(TAG, "capture paused, server still running")
     }
@@ -245,12 +256,28 @@ class MirrorService : Service() {
         _state.update { it.copy(paused = true, stream = null) }
     }
 
+    /**
+     * The one entry point for the stream tunables: applies only what changed. Encoder fields rebuild the
+     * encoder (new encoder, `setSurface` on the same VirtualDisplay); flow-control and socket fields are read
+     * live by sessions and the server (socket options only affect new connections); page fields go to every
+     * viewer in a new `hello.cfg`.
+     */
+    private fun applyConfig(config: StreamConfig) {
+        val diff = appliedConfig.diff(config)
+        appliedConfig = config
+        if (!diff.any) return
+        Log.i(TAG, "config ${config.id} applied (changed: $diff): ${config.summary()}")
+        hub.applyConfig(config)
+        if (diff.encoder || diff.fit) capture?.applyConfig(config)
+    }
+
     /** Applies preset and audio mode from [Settings] to the running stream. */
     private fun applySettings() {
         val settings = Settings(this)
         hub.forceJpeg = settings.forceJpeg
         capture?.setPreset(settings.preset)
         hub.update { it.copy(audio = settings.audioMode.key) }
+        applyConfig(settings.streamConfig)
         if (capture != null) {
             if (settings.keepScreenOn) acquireScreenLock() else releaseScreenLock()
         }
@@ -267,7 +294,7 @@ class MirrorService : Service() {
         releaseLocks()
         stopServer()
         hub.reset()
-        _state.update { it.copy(running = false, paused = false, serverError = error, stream = null) }
+        _state.update { it.copy(running = false, paused = false, serverError = error, stream = null, encoder = null) }
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
         Log.i(TAG, "mirroring stopped")
@@ -566,6 +593,15 @@ class MirrorService : Service() {
             if (_state.value.running) {
                 context.startService(Intent(context, MirrorService::class.java).setAction(ACTION_REFRESH))
             }
+        }
+
+        /**
+         * Stores [config] as the current one and applies it live (only what changed). Safe to call while
+         * nothing is mirroring: it is then used at the next start.
+         */
+        fun applyConfig(context: Context, config: StreamConfig) {
+            Settings(context).streamConfig = config
+            applySettings(context)
         }
 
         /** Tells a running service that the preset or audio mode changed. */

@@ -12,6 +12,7 @@ import android.view.Display
 import app.webmirror.android.encode.FrameEncoder
 import app.webmirror.android.encode.H264Encoder
 import app.webmirror.android.encode.JpegEncoder
+import app.webmirror.android.stream.StreamConfig
 import app.webmirror.android.stream.StreamHub
 
 /**
@@ -27,6 +28,9 @@ class ScreenCapture(
     private val projection: MediaProjection,
     private val hub: StreamHub,
     initialPreset: Preset,
+    initialConfig: StreamConfig = StreamConfig(),
+    /** Called with a multi-line description of the encoder state whenever it is (re)built or learns more. */
+    private val onEncoderReport: (String?) -> Unit = {},
 ) {
     private val appContext = context.applicationContext
     private val displayManager = appContext.getSystemService(DisplayManager::class.java)
@@ -34,6 +38,7 @@ class ScreenCapture(
     private val handler = Handler(thread.looper)
 
     private var preset = initialPreset
+    private var config = initialConfig
     private var virtualDisplay: VirtualDisplay? = null
     private var encoder: FrameEncoder? = null
     private var mode = StreamHub.MODE_JPEG
@@ -64,6 +69,7 @@ class ScreenCapture(
         publish()
         hub.keyframeRequester = { encoder?.requestKeyframe() }
         hub.modeRequester = { m -> setMode(m) }
+        hub.viewListener = { if (config.fitToViewer) reconfigure() }
         displayManager.registerDisplayListener(displayListener, handler)
         Log.i(TAG, "capture started ${size.width}x${size.height} ${preset.label}")
     }
@@ -75,6 +81,21 @@ class ScreenCapture(
                 if (preset == p) return@synchronized
                 preset = p
                 applyChange(forceEncoder = true)
+            }
+        }
+    }
+
+    /**
+     * Applies a new configuration live: a changed encoder option rebuilds the encoder (H.264 mode only, JPEG
+     * ignores them); a changed "fit to viewer" only re-evaluates the size. Same display, new surface.
+     */
+    fun applyConfig(c: StreamConfig) {
+        handler.post {
+            synchronized(this) {
+                val old = config
+                config = c
+                val rebuild = old.encoderKey != c.encoderKey && mode == StreamHub.MODE_H264
+                if (rebuild || old.fitToViewer != c.fitToViewer) applyChange(forceEncoder = rebuild)
             }
         }
     }
@@ -101,6 +122,7 @@ class ScreenCapture(
         released = true
         hub.modeRequester = null
         hub.keyframeRequester = null
+        hub.viewListener = null
         try {
             displayManager.unregisterDisplayListener(displayListener)
         } catch (e: Exception) {
@@ -143,8 +165,9 @@ class ScreenCapture(
 
     private fun newEncoder(s: CaptureSize.Size): FrameEncoder =
         if (mode == StreamHub.MODE_H264) {
-            H264Encoder(s.width, s.height, preset.fps, preset.h264Bitrate, hub)
+            H264Encoder(s.width, s.height, preset.fps, preset.h264Bitrate, hub, config) { onEncoderReport(it) }
         } else {
+            onEncoderReport("JPEG ${s.width}x${s.height} @${preset.jpegFps} fps, quality ${preset.jpegQuality}\n(H.264 encoder options do not apply in JPEG mode)")
             JpegEncoder(s.width, s.height, preset.jpegFps, preset.jpegQuality, hub)
         }
 
@@ -170,7 +193,11 @@ class ScreenCapture(
 
     private fun targetSize(): CaptureSize.Size {
         val real = realScreenSize()
-        return CaptureSize.compute(real.x, real.y, preset.maxLongSide)
+        val box = if (config.fitToViewer) hub.viewerBox() else null
+        if (box == null) return CaptureSize.compute(real.x, real.y, preset.maxLongSide)
+        val fit = CaptureSize.fit(real.x, real.y, preset.maxLongSide, box.width, box.height)
+        // Only re-encode when the viewer's window changed the size by more than 10%.
+        return CaptureSize.keepIfClose(size.takeIf { it.width > 0 }, fit)
     }
 
     /**

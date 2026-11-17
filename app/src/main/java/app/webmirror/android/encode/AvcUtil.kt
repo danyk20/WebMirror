@@ -25,4 +25,22 @@ object AvcUtil {
         }
         return null
     }
+
+    /** Readable profile of an `avc1.PPCCLL` codec string, e.g. "constrained baseline", "main", "high". */
+    fun profileName(codec: String): String {
+        val hex = codec.substringAfter("avc1.", "")
+        if (hex.length < 6) return "unknown"
+        val profile = hex.substring(0, 2).toIntOrNull(16) ?: return "unknown"
+        val constraints = hex.substring(2, 4).toIntOrNull(16) ?: 0
+        return when (profile) {
+            66 -> if (constraints and 0x40 != 0) "constrained baseline" else "baseline"
+            77 -> "main"
+            88 -> "extended"
+            100 -> if (constraints and 0x08 != 0) "constrained high" else "high"
+            110 -> "high 10"
+            122 -> "high 4:2:2"
+            244 -> "high 4:4:4"
+            else -> "profile $profile"
+        }
+    }
 }

@@ -4,10 +4,11 @@
   'use strict';
 
   // ---- constants ----
-  const BUFFER_MS = 80;            // network jitter buffer (plan 2.4)
+  const DEFAULT_BUFFER_MS = 80;    // network jitter buffer (plan 2.4); the phone's hello.cfg.jitterBufferMs overrides it
   const BASE_WINDOW_MS = 2000;     // clock mapping = minimum over the last 2 s (re-adapts when the network speeds up)
   const MAX_QUEUE = 200;           // hard cap of waiting packets
-  const LATE_SKIP_INTERVALS = 2;   // a frame later than this many frame intervals is skipped
+  const DEFAULT_LATE_SKIP = 2;     // a frame later than this many frame intervals is skipped (hello.cfg.skipLateFrames; 0 = never)
+  const VIEW_DEBOUNCE_MS = 300;    // window resizes are reported to the phone after this quiet time
   const SKIP_HOLDOFF_MS = 1000;    // after a skip, do not skip again for this long (no skip spiral)
   const KF_MIN_INTERVAL_MS = 500;  // at most one keyframe request per this time
   const DEAD_MS = 3000;            // nothing received (not even the server ping) for this long = dead link
@@ -45,6 +46,11 @@
   let queue = [];                 // waiting packets: { type, key, pts (ms), data }
   let baseSamples = [];           // recent { t: arrival time, v: arrival - pts }, ms
   let baseMs = null;
+  let bufferMs = DEFAULT_BUFFER_MS;   // active jitter buffer, from hello.cfg
+  let lateSkip = DEFAULT_LATE_SKIP;   // active late-skip threshold in frame intervals, from hello.cfg
+  let cfgId = '';                     // short id of the phone's active configuration (hello.cfg.id)
+  let cfgSummary = '';
+  let viewTimer = null;
   let offsetMs = 0;
   let dropped = 0;
   let framesDrawn = 0;
@@ -111,7 +117,7 @@
   // browser (decoder, throttled timers) shows up, not only network delay.
   function noteDrawn(ptsMs) {
     if (baseMs === null) return;
-    const late = performance.now() - ptsMs - baseMs - BUFFER_MS - offsetMs;
+    const late = performance.now() - ptsMs - baseMs - bufferMs - offsetMs;
     lateSum += late;
     lateCount++;
     if (late > lateMax) lateMax = late;
@@ -176,7 +182,7 @@
   }
 
   function dueTime(p) {
-    return p.pts + baseMs + BUFFER_MS + offsetMs;
+    return p.pts + baseMs + bufferMs + offsetMs;
   }
 
   function flushQueue() {
@@ -420,7 +426,7 @@
     if (decoder && baseMs !== null) {
       const now = performance.now();
       const interval = frameIntervalMs();
-      const lateLimit = interval * LATE_SKIP_INTERVALS;
+      const lateLimit = lateSkip > 0 ? interval * lateSkip : Infinity; // Infinity: never skip
       while (queue.length > 0) {
         const p = queue[0];
         if (p.type !== decoder.type) {
@@ -432,7 +438,7 @@
         if (due > now) break;
         if (decoder.droppable) {
           queue.shift();
-          // JPEG: skip a frame that is more than 2 intervals late when a newer one is due as well.
+          // JPEG: skip a frame that is more than lateSkip intervals late when a newer one is due as well.
           if (now - due > lateLimit && queue.length > 0 &&
               queue[0].type === p.type && dueTime(queue[0]) <= now) {
             skipped++;
@@ -475,6 +481,27 @@
     window.requestAnimationFrame(rafTick);
   }
 
+  // ---- configuration from the phone (hello.cfg) ----
+  function applyCfg(c) {
+    if (!c || typeof c !== 'object') return;
+    const j = Number(c.jitterBufferMs);
+    if (j >= 0 && j <= 5000) bufferMs = j;
+    const k = Number(c.skipLateFrames);
+    if (k >= 0 && k <= 100) lateSkip = k;
+    cfgId = typeof c.id === 'string' ? c.id : '';
+    cfgSummary = typeof c.summary === 'string' ? c.summary : '';
+  }
+
+  // The window size, so the phone can pick a stream size (config fitToViewer). CSS pixels + pixel ratio.
+  function sendView() {
+    send({ t: 'view', w: window.innerWidth, h: window.innerHeight, dpr: window.devicePixelRatio || 1 });
+  }
+
+  function scheduleView() {
+    if (viewTimer !== null) clearTimeout(viewTimer);
+    viewTimer = setTimeout(function () { viewTimer = null; sendView(); }, VIEW_DEBOUNCE_MS);
+  }
+
   // ---- messages ----
   function onBinary(buf) {
     if (buf.byteLength < HEADER) return;
@@ -509,6 +536,7 @@
     try { m = JSON.parse(text); } catch (e) { return; }
     if (m.t === 'hello') {
       hello = m;
+      applyCfg(m.cfg);
       chooseDecoder(m);
     } else if (m.t === 'ping') {
       serverInFlight = m.inFlight | 0;
@@ -568,7 +596,10 @@
       clearTimeout(connectTimer);
       setStatus('Waiting for the stream…');
       checkH264().then(function (ok) {
-        if (ws === socket) send({ t: 'hello', v: 1, h264: ok, pin: '' });
+        if (ws === socket) {
+          send({ t: 'hello', v: 1, h264: ok, pin: '' });
+          sendView();
+        }
       });
     };
     socket.onmessage = function (ev) {
@@ -626,6 +657,7 @@
     lines.push('fps ' + fps.toFixed(1) + '   dropped ' + dropped + '   skipped ' + skipped);
     lines.push('late ' + Math.round(lastLateAvg) + ' ms (max ' + Math.round(lastLateMax) + ')   net ' + Math.round(lastNetLate) + ' ms');
     lines.push('queue ' + queue.length + '   decoder ' + inDecoderCount() + ' (queue ' + decodeQueueSize() + ')   in flight ' + serverInFlight + ' (held ' + serverPending + ')');
+    if (cfgId) lines.push('cfg ' + cfgId + '   ' + cfgSummary);
     if (hello) {
       lines.push(hello.width + 'x' + hello.height + '   mode ' + hello.mode + '   audio ' + hello.audio);
     }
@@ -652,7 +684,8 @@
       queue: queue.length,
       dropped: dropped,
       skipped: skipped,
-      bufferMs: BUFFER_MS + offsetMs,
+      bufferMs: bufferMs + offsetMs,
+      cfgId: cfgId,
       lateMs: Math.round(lastLateAvg),
       lateMaxMs: Math.round(lastLateMax),
       netLateMs: Math.round(lastNetLate),
@@ -699,7 +732,7 @@
     } catch (e) { /* not allowed here */ }
   });
 
-  window.addEventListener('resize', layout);
+  window.addEventListener('resize', function () { layout(); scheduleView(); });
   document.addEventListener('visibilitychange', function () {
     if (!document.hidden) {
       flushQueue(); // the queue may hold stale packets after a long hidden period

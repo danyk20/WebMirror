@@ -73,16 +73,38 @@ Rules that keep future features cheap:
 | Direction | `t` | Fields | Meaning |
 |---|---|---|---|
 | page → phone | `hello` | `v:1, h264:boolean, pin:string` | First message. `h264` = result of the capability check. |
-| phone → page | `hello` | `v:1, mode:"h264"\|"jpeg"\|"paused", codec:"avc1.xxxxxx", width, height, fps, audio:"bluetooth"\|"browser"\|"off"` | Stream description. Sent again whenever anything in it changes (rotation, preset, mode). `mode:"paused"`: screen capture ended on the phone (screen lock, status-bar chip, system) but the server and the viewer connections stay up; no packets follow until a normal `hello` arrives after the user taps Start again. The page keeps its last picture and shows "Paused on the phone. Open WebMirror and tap Start." Other fields are the last known values and may be ignored. |
+| phone → page | `hello` | `v:1, mode:"h264"\|"jpeg"\|"paused", codec:"avc1.xxxxxx", width, height, fps, audio:"bluetooth"\|"browser"\|"off", cfg:{id, summary, jitterBufferMs, skipLateFrames}` | Stream description. Sent again whenever anything in it changes (rotation, preset, mode). `mode:"paused"`: screen capture ended on the phone (screen lock, status-bar chip, system) but the server and the viewer connections stay up; no packets follow until a normal `hello` arrives after the user taps Start again. The page keeps its last picture and shows "Paused on the phone. Open WebMirror and tap Start." Other fields are the last known values and may be ignored. |
 | phone → page | `denied` | `reason:"pin"\|"version"` | Then the phone closes the socket. |
 | phone → page | `ping` | `inFlight, pending` | Every 1 s to every viewer (liveness; the numbers are the phone's flow-control state for this viewer, shown in the overlay). The page reconnects if it received nothing, text or binary, for 3 s, showing "Reconnecting…" over the last picture. |
 | page → phone | `kf` | — | "I lost sync, send a keyframe." |
-| page → phone | `ack` | `pts` | Flow control. Sent for every video frame the page is finished with, drawn or discarded (cumulative: all frames up to `pts`, in µs of the frame's header pts). The phone counts frames sent but not yet acknowledged per viewer and sends no new video while 3 are in flight. While held back, newer frames replace older ones: JPEG keeps only the newest; H.264 drops everything waiting after one frame interval and resumes at the next keyframe. If no ack arrives for 1.5 s the count is reset. |
-| page → phone | `stats` | `fps, queue, dropped, skipped, bufferMs, lateMs, lateMaxMs, netLateMs, decodeQueue, inDecoder, srvInFlight, ua` | Every 2 s. Also acts as keep-alive. `lateMs` = average over the interval of how much later than its due time a frame reached the screen (measured from the phone's pts, so a backlog inside the browser counts); `netLateMs` = same for arrival only. The phone adds `inFlight, srvPending, srvDropped` before logging it. |
+| page → phone | `ack` | `pts` | Flow control. Sent for every video frame the page is finished with, drawn or discarded (cumulative: all frames up to `pts`, in µs of the frame's header pts). The phone counts frames sent but not yet acknowledged per viewer and sends no new video while `maxInFlight` (config, default 6) are in flight. While held back, newer frames replace older ones: JPEG keeps only the newest; H.264 drops everything waiting once the oldest has waited longer than `dropAfterMs` (config, default 150) and resumes at the next keyframe. If no ack arrives for 1.5 s the count is reset. |
+| page → phone | `view` | `w, h, dpr` | The page's window in CSS pixels and `devicePixelRatio`. Sent after `hello` and (debounced 300 ms) on resize. Used only when `fitToViewer` is on. |
+| page → phone | `stats` | `cfgId, fps, queue, dropped, skipped, bufferMs, lateMs, lateMaxMs, netLateMs, decodeQueue, inDecoder, srvInFlight, ua` | Every 2 s. Also acts as keep-alive. `lateMs` = average over the interval of how much later than its due time a frame reached the screen (measured from the phone's pts, so a backlog inside the browser counts); `netLateMs` = same for arrival only. `cfgId` = `hello.cfg.id`, so stats can be attributed to a configuration. The phone adds `inFlight, srvPending, srvDropped` before logging it. |
 | page → phone | `probe` | `results:{...}` | Probe page results (M0). |
 | page → phone | `blast` | — | M0 throughput test: phone sends 100 binary packets of type `0` (50 000 bytes payload each), then `blastDone`. |
 | phone → page | `blastDone` | `packets, bytes` | End marker of a `blast`. |
 | page → phone | `input` | reserved for future touch/typing | Not implemented. Phone ignores unknown `t`. |
+
+### 2.1.1 Stream configuration (`StreamConfig`)
+
+One object (`stream/StreamConfig.kt`, persisted in `Settings`) holds every latency/smoothness tunable. `MirrorService.applyConfig` applies a change live and only what changed: encoder fields rebuild the encoder (new encoder, `setSurface` on the same VirtualDisplay); `fitToViewer` re-evaluates the size; flow-control fields are read live by the sessions; socket fields apply to new connections; page fields travel to every viewer in `hello.cfg` (`id` = CRC32 of the whole config, 8 hex digits; `summary` = one line for the overlay; `jitterBufferMs`; `skipLateFrames`). The page echoes `id` as `stats.cfgId`.
+
+| Field | Default | Meaning |
+|---|---|---|
+| `tcpNoDelay` | true | TCP_NODELAY on accepted sockets (new connections) |
+| `sendBufferKb` | 64 | socket send buffer; 0 = system default (new connections) |
+| `lowLatencyEncoder` | true | API 30+: `KEY_LATENCY=1`, `KEY_PRIORITY=0`, plus `KEY_LOW_LATENCY=1` if `FEATURE_LowLatency` is supported |
+| `profile` | baseline | baseline (Constrained Baseline, else Baseline) / main / high / auto; requested only if listed in `profileLevels`, else auto (logged); `KEY_MAX_B_FRAMES=0` always |
+| `bitrateMode` | cbr | cbr / vbr, only if `isBitrateModeSupported` |
+| `intraRefresh` | false | if `FEATURE_IntraRefresh`: `KEY_INTRA_REFRESH_PERIOD`=fps and a 10 s keyframe interval; keyframes on request still work |
+| `keyframeIntervalS` | 2 | `KEY_I_FRAME_INTERVAL` when intra refresh is off |
+| `fitToViewer` | false | encoded size = largest size inside the viewers' physical window (`w*dpr` x `h*dpr`; the largest viewer wins), phone aspect, capped by the preset's long side, multiples of 16; re-encode only if the size changes by more than 10% |
+| `maxInFlight` | 6 | frames sent but not acknowledged (VideoOutbox) |
+| `dropAfterMs` | 150 | H.264: drop waiting packets and wait for a keyframe only if the oldest waited longer |
+| `jitterBufferMs` | 80 | page: buffer added to the due time (plan 2.4) |
+| `skipLateFrames` | 2 | page: skip frames later than this many frame intervals; 0 = never |
+
+The UI ("Advanced streaming options") shows the effective encoder state (profile from the SPS, which options the encoder accepted, encoded size); the same text is logged at INFO ("encoder state").
 
 ### 2.2 Video modes
 The phone can only attach one output to the screen capture at a time (Android 14+ allows one virtual display per capture session). So the server runs in **one mode for all viewers**:

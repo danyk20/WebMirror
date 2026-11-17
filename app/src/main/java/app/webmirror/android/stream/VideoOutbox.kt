@@ -6,14 +6,24 @@ package app.webmirror.android.stream
  *
  * - At most [maxInFlight] frames are sent but not yet acknowledged by the player.
  * - While blocked, newer packets replace older ones: JPEG keeps only the newest waiting frame; H.264 cannot
- *   skip deltas, so when something has waited longer than one frame interval everything waiting is dropped
+ *   skip deltas, so when something has waited longer than [dropAfterMs] everything waiting is dropped
  *   and the viewer needs a keyframe ([needsKeyframe]); deltas are refused until one arrives.
  * - A new H.264 keyframe makes everything waiting before it useless, so it replaces the waiting packets too.
  * - Acknowledgements carry the pts of the newest frame the player has finished with (drawn or discarded);
  *   every in-flight frame up to that pts counts as acknowledged. If no ack arrives for [ACK_STALL_MS] while
  *   frames are in flight, the accounting is reset (lost acks, stuck page) so the stream cannot deadlock.
  */
-class VideoOutbox(private val maxInFlight: Int = DEFAULT_MAX_IN_FLIGHT) {
+class VideoOutbox(
+    maxInFlight: Int = DEFAULT_MAX_IN_FLIGHT,
+    dropAfterMs: Int = DEFAULT_DROP_AFTER_MS,
+) {
+
+    /** Frames sent but not yet acknowledged before [next] holds back. May be changed at any time. */
+    var maxInFlight: Int = maxInFlight
+
+    /** H.264: waiting packets are dropped only when the oldest has waited longer than this. */
+    var dropAfterMs: Int = dropAfterMs
+
 
     private class Entry(val packet: Packet, val atMs: Long)
 
@@ -32,11 +42,11 @@ class VideoOutbox(private val maxInFlight: Int = DEFAULT_MAX_IN_FLIGHT) {
     val pendingCount: Int get() = pending.size
 
     /** Adds a packet. Returns true when the caller should ask the encoder for a keyframe. */
-    fun offer(p: Packet, nowMs: Long, frameIntervalMs: Long): Boolean {
+    fun offer(p: Packet, nowMs: Long): Boolean {
         var wantKeyframe = false
         val head = pending.firstOrNull()
         if (p.type == Packet.TYPE_H264 &&
-            ((head != null && nowMs - head.atMs > frameIntervalMs) || pending.size >= MAX_PENDING)
+            ((head != null && nowMs - head.atMs > dropAfterMs) || pending.size >= MAX_PENDING)
         ) {
             dropPending()
             needsKeyframe = true
@@ -99,7 +109,8 @@ class VideoOutbox(private val maxInFlight: Int = DEFAULT_MAX_IN_FLIGHT) {
 
     companion object {
         /** Frames sent but not yet acknowledged before the server holds back. */
-        const val DEFAULT_MAX_IN_FLIGHT = 3
+        const val DEFAULT_MAX_IN_FLIGHT = 6
+        const val DEFAULT_DROP_AFTER_MS = 150
         const val ACK_STALL_MS = 1500L
         const val MAX_PENDING = 60
     }

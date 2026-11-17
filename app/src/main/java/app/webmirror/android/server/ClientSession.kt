@@ -6,6 +6,7 @@ import app.webmirror.android.stream.Packet
 import app.webmirror.android.stream.StreamHub
 import app.webmirror.android.stream.StreamSink
 import app.webmirror.android.stream.VideoOutbox
+import app.webmirror.android.stream.ViewBox
 import fi.iki.elonen.NanoHTTPD
 import fi.iki.elonen.NanoWSD
 import fi.iki.elonen.NanoWSD.WebSocketFrame
@@ -36,7 +37,7 @@ class ClientSession(
     private val control = ArrayDeque<Outgoing>()
 
     /** Video: flow-controlled, never piles up (see [VideoOutbox]). */
-    private val outbox = VideoOutbox(MAX_IN_FLIGHT)
+    private val outbox = VideoOutbox(hub.config.maxInFlight, hub.config.dropAfterMs)
     private var writer: Thread? = null
     private var lastKeyframeAskMs = 0L
 
@@ -50,6 +51,11 @@ class ClientSession(
     private var viewerH264: Boolean? = null
 
     override val h264Capable: Boolean? get() = viewerH264
+
+    @Volatile
+    private var viewPx: ViewBox? = null
+
+    override val viewBox: ViewBox? get() = viewPx
 
     private fun nowMs(): Long = System.nanoTime() / 1_000_000
 
@@ -70,7 +76,10 @@ class ClientSession(
         if (stopped) return
         val wantKeyframe: Boolean
         synchronized(mon) {
-            wantKeyframe = outbox.offer(p, nowMs(), hub.frameIntervalMs())
+            val cfg = hub.config
+            outbox.maxInFlight = cfg.maxInFlight
+            outbox.dropAfterMs = cfg.dropAfterMs
+            wantKeyframe = outbox.offer(p, nowMs())
             mon.notifyAll()
         }
         if (wantKeyframe) hub.requestKeyframe()
@@ -155,6 +164,7 @@ class ClientSession(
             when (obj.optString("t")) {
                 "hello" -> handleHello(obj)
                 "kf" -> hub.requestKeyframe()
+                "view" -> handleView(obj)
                 "ack" -> handleAck(obj.optLong("pts", -1))
                 "stats" -> {
                     // Add what only the server knows, so one log line tells the whole story.
@@ -175,6 +185,16 @@ class ClientSession(
         } catch (e: Exception) {
             Log.w(TAG, "bad message ignored: $e")
         }
+    }
+
+    /** `{t:"view", w, h, dpr}`: the page's window in CSS pixels and the device pixel ratio. */
+    private fun handleView(obj: JSONObject) {
+        val dpr = obj.optDouble("dpr", 1.0).let { if (it.isNaN() || it < 0.5 || it > 8.0) 1.0 else it }
+        val w = obj.optDouble("w", 0.0) * dpr
+        val h = obj.optDouble("h", 0.0) * dpr
+        if (w < 16 || h < 16 || w > 16384 || h > 16384) return
+        viewPx = ViewBox(w.toInt(), h.toInt())
+        hub.viewChanged()
     }
 
     private fun handleHello(obj: JSONObject) {
@@ -297,8 +317,6 @@ class ClientSession(
         /** Hard safety limit of queued text messages. Video never waits in a queue (see [VideoOutbox]). */
         const val MAX_QUEUE = 120
 
-        /** Frames sent but not yet acknowledged by the player before the server holds video back. */
-        const val MAX_IN_FLIGHT = VideoOutbox.DEFAULT_MAX_IN_FLIGHT
         private const val WAIT_MS = 200L
         private const val PING_PREFIX = """{"t":"ping""""
         const val BLAST_PACKETS = 100

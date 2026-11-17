@@ -28,9 +28,11 @@ class StreamHub(
         val height: Int = 0,
         val fps: Int = 0,
         val audio: String = "off",
+        /** The page-side part of [StreamConfig] as a JSON object text (`hello.cfg`). */
+        val cfg: String = StreamConfig().pageJson(),
     ) {
         fun toJson(): String =
-            """{"t":"hello","v":$PROTOCOL_VERSION,"mode":"$mode","codec":"$codec","width":$width,"height":$height,"fps":$fps,"audio":"$audio"}"""
+            """{"t":"hello","v":$PROTOCOL_VERSION,"mode":"$mode","codec":"$codec","width":$width,"height":$height,"fps":$fps,"audio":"$audio","cfg":$cfg}"""
     }
 
     private val sinks = CopyOnWriteArrayList<StreamSink>()
@@ -46,6 +48,29 @@ class StreamHub(
 
     @Volatile
     var events: Events? = null
+
+    /** The active stream configuration. Read live by sessions (flow control) and the server (socket options). */
+    @Volatile
+    var config: StreamConfig = StreamConfig()
+        private set
+
+    /** Makes [c] the active configuration and sends its page-side part to every viewer in a new `hello`. */
+    fun applyConfig(c: StreamConfig) {
+        config = c
+        update { it.copy(cfg = c.pageJson()) }
+    }
+
+    /** Set by the capture owner: a viewer's reported window changed (for "fit to viewer"). */
+    @Volatile
+    var viewListener: (() -> Unit)? = null
+
+    /** The largest (by area) window reported by any viewer, or null. */
+    fun viewerBox(): ViewBox? = sinks.mapNotNull { it.viewBox }.maxByOrNull { it.width.toLong() * it.height }
+
+    /** A viewer reported a new window size. */
+    fun viewChanged() {
+        viewListener?.invoke()
+    }
 
     /** Set by the encoder owner. Called when a viewer lost sync or its queue overflowed. */
     @Volatile
@@ -108,6 +133,7 @@ class StreamHub(
         if (sinks.remove(sink)) {
             events?.onViewerCountChanged(sinks.size)
             recomputeMode()
+            viewChanged()
         }
     }
 
@@ -161,7 +187,7 @@ class StreamHub(
     /** Forgets everything about the previous stream (used when mirroring stops). */
     fun reset() {
         synchronized(lock) {
-            info = HelloInfo()
+            info = HelloInfo(cfg = config.pageJson())
             lastJpeg = null
             gop.clear()
             lastKeyframeRequestMs = null
@@ -192,12 +218,6 @@ class StreamHub(
     /** Sends the liveness ping to every viewer (the page reconnects when it hears nothing for 3 s). */
     fun pingAll() {
         for (s in sinks) s.onPing()
-    }
-
-    /** Length of one frame of the current stream in ms (33 when unknown). */
-    fun frameIntervalMs(): Long {
-        val fps = synchronized(lock) { info.fps }
-        return if (fps > 0) 1000L / fps else 33L
     }
 
     /** Closes and unregisters every sink that has been silent for longer than [maxIdleMs]. */

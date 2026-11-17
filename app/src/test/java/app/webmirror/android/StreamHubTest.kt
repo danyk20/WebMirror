@@ -1,6 +1,7 @@
 package app.webmirror.android
 
 import app.webmirror.android.stream.Packet
+import app.webmirror.android.stream.StreamConfig
 import app.webmirror.android.stream.StreamHub
 import app.webmirror.android.stream.StreamSink
 import org.junit.Assert.assertEquals
@@ -21,9 +22,20 @@ class StreamHubTest {
         val hub = StreamHub()
         hub.update { it.copy(width = 576, height = 1280, fps = 30, audio = "bluetooth") }
         assertEquals(
-            """{"t":"hello","v":1,"mode":"jpeg","codec":"","width":576,"height":1280,"fps":30,"audio":"bluetooth"}""",
+            """{"t":"hello","v":1,"mode":"jpeg","codec":"","width":576,"height":1280,"fps":30,"audio":"bluetooth","cfg":${StreamConfig().pageJson()}}""",
             hub.helloJson(),
         )
+    }
+
+    @Test
+    fun applyConfigSendsPageFieldsInHelloAndKeepsThemAfterReset() {
+        val hub = StreamHub()
+        hub.applyConfig(StreamConfig(jitterBufferMs = 200, skipLateFrames = 0))
+        assertTrue(hub.helloJson().contains(""""jitterBufferMs":200"""))
+        assertTrue(hub.helloJson().contains(""""skipLateFrames":0"""))
+        assertEquals(200, hub.config.jitterBufferMs)
+        hub.reset()
+        assertTrue(hub.helloJson().contains(""""jitterBufferMs":200"""))
     }
 
     @Test
