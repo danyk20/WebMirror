@@ -73,7 +73,7 @@ Rules that keep future features cheap:
 | Direction | `t` | Fields | Meaning |
 |---|---|---|---|
 | page → phone | `hello` | `v:1, h264:boolean, pin:string` | First message. `h264` = result of the capability check. |
-| phone → page | `hello` | `v:1, mode:"h264"\|"jpeg", codec:"avc1.xxxxxx", width, height, fps, audio:"bluetooth"\|"browser"\|"off"` | Stream description. Sent again whenever anything in it changes (rotation, preset, mode). |
+| phone → page | `hello` | `v:1, mode:"h264"\|"jpeg"\|"paused", codec:"avc1.xxxxxx", width, height, fps, audio:"bluetooth"\|"browser"\|"off"` | Stream description. Sent again whenever anything in it changes (rotation, preset, mode). `mode:"paused"`: screen capture ended on the phone (screen lock, status-bar chip, system) but the server and the viewer connections stay up; no packets follow until a normal `hello` arrives after the user taps Start again. The page keeps its last picture and shows "Paused on the phone. Open WebMirror and tap Start." Other fields are the last known values and may be ignored. |
 | phone → page | `denied` | `reason:"pin"\|"version"` | Then the phone closes the socket. |
 | page → phone | `kf` | — | "I lost sync, send a keyframe." |
 | page → phone | `stats` | `fps, queue, dropped, bufferMs, ua` | Every 2 s. Also acts as keep-alive. |

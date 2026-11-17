@@ -120,5 +120,8 @@ class StreamHub {
     companion object {
         const val PROTOCOL_VERSION = 1
         const val MODE_JPEG = "jpeg"
+
+        /** Capture has stopped but the server is up; the page keeps its last picture and shows a message. */
+        const val MODE_PAUSED = "paused"
     }
 }

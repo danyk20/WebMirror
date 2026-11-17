@@ -30,7 +30,19 @@ class Settings(context: Context) {
         get() = AudioMode.fromKey(prefs.getString(KEY_AUDIO, null))
         set(value) = prefs.edit().putString(KEY_AUDIO, value.key).apply()
 
+    /** Hold a dim wake lock while mirroring, so the screen lock does not stop the capture (plan M3.5). */
+    var keepScreenOn: Boolean
+        get() = prefs.getBoolean(KEY_KEEP_SCREEN_ON, true)
+        set(value) = prefs.edit().putBoolean(KEY_KEEP_SCREEN_ON, value).apply()
+
+    /** Always send JPEG, even when every viewer could decode H.264 (plan M4.4). */
+    var forceJpeg: Boolean
+        get() = prefs.getBoolean(KEY_FORCE_JPEG, false)
+        set(value) = prefs.edit().putBoolean(KEY_FORCE_JPEG, value).apply()
+
     companion object {
+        private const val KEY_KEEP_SCREEN_ON = "keepScreenOn"
+        private const val KEY_FORCE_JPEG = "forceJpeg"
         private const val FILE = "webmirror"
         private const val KEY_VIRTUAL_IP = "virtualIp"
         private const val KEY_VIRTUAL_IP_ENABLED = "virtualIpEnabled"

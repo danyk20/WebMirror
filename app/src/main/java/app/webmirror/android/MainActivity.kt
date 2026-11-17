@@ -211,15 +211,23 @@ private fun MainScreen(
     ) {
         Text("WebMirror", style = MaterialTheme.typography.headlineMedium)
 
-        StatusBanner(state.running, state.stream)
+        StatusBanner(state.running, state.paused, state.stream)
 
         // ---- Server ----
         SectionTitle("Server")
-        Button(
-            onClick = { if (state.running) MirrorService.stop(context) else onStart() },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(if (state.running) "Stop" else "Start mirroring")
+        if (state.paused) {
+            // Server and viewers are still up; a new consent resumes the capture.
+            Button(onClick = onStart, modifier = Modifier.fillMaxWidth()) { Text("Start mirroring (resume)") }
+            OutlinedButton(onClick = { MirrorService.stop(context) }, modifier = Modifier.fillMaxWidth()) {
+                Text("Stop server")
+            }
+        } else {
+            Button(
+                onClick = { if (state.running) MirrorService.stop(context) else onStart() },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (state.running) "Stop" else "Start mirroring")
+            }
         }
         state.serverError?.let { ErrorText(it) }
         state.tlsError?.let { ErrorText(it) }
@@ -257,6 +265,9 @@ private fun MainScreen(
         QualitySection(settings) { MirrorService.applySettings(context) }
 
         HorizontalDivider()
+        DisplaySection(settings) { MirrorService.applySettings(context) }
+
+        HorizontalDivider()
         AudioSection(settings) { MirrorService.applySettings(context) }
 
         HorizontalDivider()
@@ -288,8 +299,12 @@ private fun MainScreen(
 
 /** Impossible to miss: red when nothing is served, green while mirroring. */
 @Composable
-private fun StatusBanner(running: Boolean, stream: String?) {
-    val bg = if (running) ComposeColor(0xFF1B7F3B) else ComposeColor(0xFFC62828)
+private fun StatusBanner(running: Boolean, paused: Boolean, stream: String?) {
+    val bg = when {
+        paused -> ComposeColor(0xFFB26A00)
+        running -> ComposeColor(0xFF1B7F3B)
+        else -> ComposeColor(0xFFC62828)
+    }
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -298,13 +313,21 @@ private fun StatusBanner(running: Boolean, stream: String?) {
     ) {
         Column {
             Text(
-                if (running) "MIRRORING - server running" else "SERVER STOPPED",
+                when {
+                    paused -> "PAUSED - server running"
+                    running -> "MIRRORING - server running"
+                    else -> "SERVER STOPPED"
+                },
                 color = ComposeColor.White,
                 fontWeight = FontWeight.Bold,
                 fontSize = 22.sp,
             )
             Text(
-                if (running) (stream ?: "") else "Nothing is being served. The Tesla browser cannot connect.",
+                when {
+                    paused -> "Screen capture ended. Viewers stay connected; tap Start to resume."
+                    running -> stream ?: ""
+                    else -> "Nothing is being served. The Tesla browser cannot connect."
+                },
                 color = ComposeColor.White,
             )
         }
@@ -324,6 +347,21 @@ private fun QualitySection(settings: Settings, onChanged: () -> Unit) {
             }
         }
     }
+}
+
+@Composable
+private fun DisplaySection(settings: Settings, onChanged: () -> Unit) {
+    var keepOn by remember { mutableStateOf(settings.keepScreenOn) }
+    SectionTitle("Screen")
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Switch(checked = keepOn, onCheckedChange = {
+            keepOn = it
+            settings.keepScreenOn = it
+            onChanged()
+        })
+        Text("Keep screen on", modifier = Modifier.padding(start = 12.dp))
+    }
+    Text("Capture stops if the phone screen locks.", style = MaterialTheme.typography.bodySmall)
 }
 
 @Composable

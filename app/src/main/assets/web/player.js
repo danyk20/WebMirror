@@ -10,6 +10,8 @@
   const MAX_QUEUE = 200;           // hard cap of waiting packets
   const STATS_INTERVAL_MS = 2000;  // also the keep-alive (server drops viewers silent for 10 s)
   const RECONNECT_MS = 1000;
+  const MAX_PUMP_MS = 50;          // longest wait between two pump runs
+  const PAUSED_TEXT = 'Paused on the phone. Open WebMirror and tap Start.';
   const CONNECT_TIMEOUT_MS = 5000;
   const DELAY_KEY = 'webmirror.delayMs';
   const HEADER = 12;
@@ -43,6 +45,8 @@
   let framesAtLastStats = 0;
   let lastStatsAt = 0;
   let fps = 0;
+  let pumpTimer = null;
+  let paused = false;             // latest hello said mode "paused"
 
   // ---- small helpers ----
   function setStatus(text) {
@@ -184,16 +188,14 @@
       type: TYPE_JPEG,
       start: function () { pending = null; },
       reset: function () { pending = null; },
-      // Called with every packet that is due, oldest first. Only the newest is worth showing.
-      submit: function (list) {
-        if (list.length === 0) return;
-        dropped += list.length - 1;
-        const newest = list[list.length - 1];
+      droppable: true,
+      // Called with one due packet at a time. While a decode runs only the newest waiting one is kept.
+      submit: function (p) {
         if (busy) {
           if (pending) dropped++;
-          pending = newest;
+          pending = p;
         } else {
-          decode(newest);
+          decode(p);
         }
       },
       resync: function () {}
@@ -201,6 +203,16 @@
   })();
 
   function chooseDecoder(h) {
+    if (h.mode === 'paused') {
+      // Capture ended on the phone: keep the decoder and the last picture, tell the viewer why.
+      paused = true;
+      setStatus('Paused');
+      showMessage(PAUSED_TEXT);
+      updateHint();
+      updateStats();
+      return;
+    }
+    paused = false;
     const next = decoders[h.mode];
     if (decoder && decoder !== next) decoder.reset();
     decoder = next || null;
@@ -221,21 +233,52 @@
   }
 
   // ---- pump: hand due packets to the decoder ----
+  // Driven by setTimeout to the next packet's due time (0..MAX_PUMP_MS), because some browsers throttle
+  // requestAnimationFrame to about 1 call/s when the page is not visible. rAF is only an extra trigger.
+  function schedulePump(delay) {
+    if (pumpTimer !== null) clearTimeout(pumpTimer);
+    pumpTimer = setTimeout(pump, Math.max(0, Math.min(MAX_PUMP_MS, delay)));
+  }
+
+  function frameIntervalMs() {
+    return hello && hello.fps > 0 ? 1000 / hello.fps : 33;
+  }
+
   function pump() {
+    if (pumpTimer !== null) {
+      clearTimeout(pumpTimer);
+      pumpTimer = null;
+    }
     if (decoder && baseMs !== null) {
       const now = performance.now();
-      const due = [];
-      while (queue.length > 0 && queue[0].type === decoder.type && dueTime(queue[0]) <= now) {
-        due.push(queue.shift());
-      }
-      // Packets of another type than the current mode are leftovers of a mode change.
-      while (queue.length > 0 && queue[0].type !== decoder.type) {
+      const interval = frameIntervalMs();
+      while (queue.length > 0) {
+        const p = queue[0];
+        if (p.type !== decoder.type) {
+          // Leftover of a mode change.
+          queue.shift();
+          dropped++;
+          continue;
+        }
+        const due = dueTime(p);
+        if (due > now) break;
         queue.shift();
-        dropped++;
+        // Drop only when genuinely late: more than one frame interval past due and a newer one is due too.
+        if (decoder.droppable && now - due > interval && queue.length > 0 &&
+            queue[0].type === p.type && dueTime(queue[0]) <= now) {
+          dropped++;
+          continue;
+        }
+        decoder.submit(p);
       }
-      if (due.length > 0) decoder.submit(due);
     }
-    window.requestAnimationFrame(pump);
+    const next = queue.length > 0 && baseMs !== null ? dueTime(queue[0]) - performance.now() : MAX_PUMP_MS;
+    schedulePump(next);
+  }
+
+  function rafTick() {
+    pump();
+    window.requestAnimationFrame(rafTick);
   }
 
   // ---- messages ----
@@ -259,6 +302,7 @@
       queue.shift();
       dropped++;
     }
+    if (queue.length === 1) schedulePump(dueTime(queue[0]) - performance.now());
   }
 
   function onText(text) {
@@ -313,6 +357,7 @@
     ws = null;
     clearTimeout(connectTimer);
     hello = null;
+    paused = false;
     flushQueue();
     if (decoder) decoder.reset();
     setStatus('Reconnecting…');
@@ -401,6 +446,7 @@
   setDelay(loadDelay());
   layout();
   setInterval(sendStats, STATS_INTERVAL_MS);
-  window.requestAnimationFrame(pump);
+  schedulePump(0);
+  window.requestAnimationFrame(rafTick);
   connect();
 })();

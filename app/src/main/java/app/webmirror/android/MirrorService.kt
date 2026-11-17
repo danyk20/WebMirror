@@ -54,6 +54,8 @@ data class ServiceState(
     /** Why the HTTP server could not start, or null. */
     val serverError: String? = null,
     val viewerCount: Int = 0,
+    /** True while the server runs but screen capture has ended (screen lock, status-bar chip, ...). */
+    val paused: Boolean = false,
     val lastStats: String? = null,
     val lastProbe: String? = null,
     /** Size of the picture being sent, e.g. "576x1280 @30 fps", or null when not mirroring. */
@@ -62,9 +64,14 @@ data class ServiceState(
 
 /**
  * Foreground service that owns everything while mirroring: the screen-capture projection, the capture and
- * encoder, the web server, and the wake/Wi-Fi locks. "Running" means capture and server together; there is
- * no server without capture. Start order is fixed (plan M2.1): startForeground with the mediaProjection
- * type first, then getMediaProjection, then registerCallback, then the VirtualDisplay.
+ * encoder, the web server, and the wake/Wi-Fi locks. The server outlives the capture: when the projection
+ * ends (screen lock, status-bar chip) the service goes to a "paused" state in which the server, the virtual
+ * address and the viewers stay up (hello `mode:"paused"`) until the user taps Start again (new consent) or
+ * Stop. Start order is fixed (plan M2.1): startForeground with the mediaProjection type first, then
+ * getMediaProjection, then registerCallback, then the VirtualDisplay.
+ *
+ * Foreground type: mediaProjection while capturing; specialUse while paused (a mediaProjection service
+ * without a projection is not a documented state, so the type is dropped when the projection ends).
  */
 class MirrorService : Service() {
 
@@ -80,13 +87,16 @@ class MirrorService : Service() {
     private var capture: ScreenCapture? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
+    private var screenLock: PowerManager.WakeLock? = null
+
+    /** The server is up (capturing or paused). */
     private var active = false
 
     private val projectionCallback = object : MediaProjection.Callback() {
-        /** The user ended capture (status bar chip) or the system revoked it: stop everything. */
+        /** Capture ended (screen lock, status-bar chip, system): keep the server, show "paused". */
         override fun onStop() {
             Log.i(TAG, "projection stopped by the system or the user")
-            stopAll(null)
+            pauseCapture()
         }
     }
 
@@ -112,17 +122,18 @@ class MirrorService : Service() {
     private fun startMirroring(intent: Intent) {
         // startForegroundService() promises startForeground() within seconds, so do it before anything
         // else, and with the mediaProjection type (required on Android 14+ before getMediaProjection).
+        val resuming = active
+        if (resuming && capture != null) return // duplicate start while mirroring
         try {
             startForeground(
-                NOTIFICATION_ID, buildNotification(),
+                NOTIFICATION_ID, buildNotification(false),
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION,
             )
         } catch (e: Exception) {
             Log.e(TAG, "startForeground failed", e)
-            failStart("Cannot start the foreground service: ${e.message ?: e.javaClass.simpleName}")
+            failStart("Cannot start the foreground service: ${e.message ?: e.javaClass.simpleName}", resuming)
             return
         }
-        if (active) return // duplicate start while mirroring
         val code = intent.getIntExtra(EXTRA_CODE, Activity.RESULT_CANCELED)
         val data = if (Build.VERSION.SDK_INT >= 33) {
             intent.getParcelableExtra(EXTRA_DATA, Intent::class.java)
@@ -131,10 +142,9 @@ class MirrorService : Service() {
             intent.getParcelableExtra(EXTRA_DATA)
         }
         if (code != Activity.RESULT_OK || data == null) {
-            failStart("Screen capture was not allowed.")
+            failStart("Screen capture was not allowed.", resuming)
             return
         }
-        active = true
         val settings = Settings(this)
         try {
             val p = getSystemService(MediaProjectionManager::class.java).getMediaProjection(code, data)
@@ -142,47 +152,59 @@ class MirrorService : Service() {
             projection = p
             // Mandatory on Android 14+ before the display is created.
             p.registerCallback(projectionCallback, Handler(Looper.getMainLooper()))
-            hub.reset()
-            bindEvents()
+            if (!resuming) {
+                hub.reset()
+                bindEvents()
+            }
             hub.update { it.copy(audio = settings.audioMode.key) }
             val cap = ScreenCapture(this, p, hub, settings.preset)
             capture = cap
             cap.start()
         } catch (e: Exception) {
             Log.e(TAG, "cannot start capture", e)
-            stopAll("Cannot start screen capture: ${e.message ?: e.javaClass.simpleName}")
+            val message = "Cannot start screen capture: ${e.message ?: e.javaClass.simpleName}"
+            if (resuming) {
+                endCapture()
+                enterPausedForeground()
+                _state.update { it.copy(serverError = message) }
+            } else {
+                active = true
+                stopAll(message)
+            }
             return
         }
-        val error = startServer()
-        if (error != null) {
-            stopAll(error)
-            return
+        if (!resuming) {
+            val error = startServer()
+            if (error != null) {
+                active = true
+                stopAll(error)
+                return
+            }
+            active = true
+            acquireLocks()
         }
-        acquireLocks()
-        Log.i(TAG, "mirroring started")
+        acquireScreenLock()
+        _state.update { it.copy(paused = false, serverError = null) }
+        Log.i(TAG, if (resuming) "mirroring resumed" else "mirroring started")
     }
 
-    /** Could not even begin: show why, and leave foreground state cleanly. */
-    private fun failStart(message: String) {
+    /**
+     * Could not even begin: show why. A first start leaves foreground state; a resume goes back to the
+     * paused state so the server and viewers survive a refused consent.
+     */
+    private fun failStart(message: String, resuming: Boolean) {
+        if (resuming) {
+            enterPausedForeground()
+            _state.update { it.copy(serverError = message) }
+            return
+        }
         _state.update { it.copy(running = false, serverError = message) }
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
-    /** Applies preset and audio mode from [Settings] to the running stream. */
-    private fun applySettings() {
-        val settings = Settings(this)
-        capture?.setPreset(settings.preset)
-        hub.update { it.copy(audio = settings.audioMode.key) }
-    }
-
-    /** Full stop: capture, projection, server, locks, notification. [error] is shown in the UI. */
-    private fun stopAll(error: String?) {
-        if (!active) {
-            stopSelf()
-            return
-        }
-        active = false
+    /** Tears down capture and projection only; the server, locks and viewers stay. */
+    private fun endCapture() {
         capture?.stop()
         capture = null
         projection?.let {
@@ -194,10 +216,56 @@ class MirrorService : Service() {
             }
         }
         projection = null
+        releaseScreenLock()
+    }
+
+    /** Capture ended but the server keeps running: tell the viewers and change the notification. */
+    private fun pauseCapture() {
+        if (!active || capture == null && projection == null) return
+        endCapture()
+        hub.update { it.copy(mode = StreamHub.MODE_PAUSED) }
+        _state.update { it.copy(paused = true, stream = null) }
+        enterPausedForeground()
+        Log.i(TAG, "capture paused, server still running")
+    }
+
+    /** Foreground type specialUse (no projection any more) with the "Paused" notification text. */
+    private fun enterPausedForeground() {
+        val n = buildNotification(true)
+        try {
+            if (Build.VERSION.SDK_INT >= 34) {
+                startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            } else {
+                getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, n)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "cannot enter paused foreground state: $e")
+        }
+        _state.update { it.copy(paused = true, stream = null) }
+    }
+
+    /** Applies preset and audio mode from [Settings] to the running stream. */
+    private fun applySettings() {
+        val settings = Settings(this)
+        capture?.setPreset(settings.preset)
+        hub.update { it.copy(audio = settings.audioMode.key) }
+        if (capture != null) {
+            if (settings.keepScreenOn) acquireScreenLock() else releaseScreenLock()
+        }
+    }
+
+    /** Full stop: capture, projection, server, locks, notification. [error] is shown in the UI. */
+    private fun stopAll(error: String?) {
+        if (!active) {
+            stopSelf()
+            return
+        }
+        active = false
+        endCapture()
         releaseLocks()
         stopServer()
         hub.reset()
-        _state.update { it.copy(running = false, serverError = error, stream = null) }
+        _state.update { it.copy(running = false, paused = false, serverError = error, stream = null) }
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
         Log.i(TAG, "mirroring stopped")
@@ -225,7 +293,32 @@ class MirrorService : Service() {
         }
     }
 
+    /** Keeps the screen on while capturing (plan M3.5): Android stops the projection when the screen locks. */
+    @Suppress("DEPRECATION", "WakelockTimeout")
+    private fun acquireScreenLock() {
+        if (!Settings(this).keepScreenOn || screenLock?.isHeld == true) return
+        try {
+            val pm = getSystemService(PowerManager::class.java)
+            screenLock = pm.newWakeLock(PowerManager.SCREEN_DIM_WAKE_LOCK, "WebMirror:screen").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "screen wake lock failed: $e")
+        }
+    }
+
+    private fun releaseScreenLock() {
+        try {
+            screenLock?.let { if (it.isHeld) it.release() }
+        } catch (e: Exception) {
+            Log.w(TAG, "screen wake lock release: $e")
+        }
+        screenLock = null
+    }
+
     private fun releaseLocks() {
+        releaseScreenLock()
         try {
             wakeLock?.let { if (it.isHeld) it.release() }
         } catch (e: Exception) {
@@ -393,10 +486,10 @@ class MirrorService : Service() {
             }
         }
         hub.events = null
-        _state.update { it.copy(running = false, urls = Addresses.UrlList.EMPTY, viewerCount = 0, httpsRunning = false, tlsError = null) }
+        _state.update { it.copy(running = false, paused = false, urls = Addresses.UrlList.EMPTY, viewerCount = 0, httpsRunning = false, tlsError = null) }
     }
 
-    private fun buildNotification(): Notification {
+    private fun buildNotification(paused: Boolean): Notification {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, getString(R.string.notification_channel_name), NotificationManager.IMPORTANCE_LOW),
@@ -412,7 +505,7 @@ class MirrorService : Service() {
         return Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(getString(R.string.app_name))
-            .setContentText(getString(R.string.notification_text))
+            .setContentText(getString(if (paused) R.string.notification_paused else R.string.notification_text))
             .setOngoing(true)
             .setContentIntent(openApp)
             .addAction(
