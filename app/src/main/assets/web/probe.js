@@ -13,6 +13,9 @@ function fmt(v) {
   if (v === null) return 'null';
   if (v === undefined) return 'undefined';
   if (typeof v === 'object') {
+    if (v.nodeType === undefined && !Array.isArray(v) && v['avc1.42E01F 1280x720'] !== undefined) {
+      return Object.keys(v).map(function (k) { return k + ': ' + v[k]; }).join('\n');
+    }
     try { return JSON.stringify(v); } catch (e) { return String(v); }
   }
   return String(v);
@@ -26,6 +29,7 @@ function render() {
     const td = document.createElement('td');
     th.textContent = key;
     td.textContent = fmt(results[key]);
+    td.style.whiteSpace = 'pre-wrap';
     if (results[key] === true) td.className = 'ok';
     if (results[key] === false) td.className = 'bad';
     tr.appendChild(th);
@@ -91,21 +95,29 @@ async function codecChecks() {
     set('VideoDecoder.isConfigSupported', 'n/a (no VideoDecoder)');
     return;
   }
-  const codecs = ['avc1.42E01F', 'avc1.4D401F', 'avc1.640028'];
+  const codecs = [
+    'avc1.42E01F', 'avc1.4D401F', 'avc1.640028',
+    'hev1.1.6.L93.B0', 'hvc1.1.6.L93.B0', 'hev1.1.6.L120.B0',
+    'vp09.00.31.08', 'av01.0.08M.08'
+  ];
   const sizes = [[1280, 720], [1920, 1080]];
+  const accels = [null, 'prefer-hardware'];
   const out = {};
   for (let i = 0; i < codecs.length; i++) {
     for (let j = 0; j < sizes.length; j++) {
-      const key = codecs[i] + ' ' + sizes[j][0] + 'x' + sizes[j][1];
-      try {
-        const r = await VideoDecoder.isConfigSupported({
-          codec: codecs[i], codedWidth: sizes[j][0], codedHeight: sizes[j][1]
-        });
-        out[key] = r.supported;
-      } catch (e) {
-        out[key] = 'ERROR: ' + e;
+      for (let k = 0; k < accels.length; k++) {
+        // No-acceleration keys keep the old "codec WxH" form; hardware ones add " hw".
+        const key = codecs[i] + ' ' + sizes[j][0] + 'x' + sizes[j][1] + (accels[k] ? ' hw' : '');
+        try {
+          const cfg = { codec: codecs[i], codedWidth: sizes[j][0], codedHeight: sizes[j][1] };
+          if (accels[k]) cfg.hardwareAcceleration = accels[k];
+          const r = await VideoDecoder.isConfigSupported(cfg);
+          out[key] = r.supported;
+        } catch (e) {
+          out[key] = 'ERROR: ' + e;
+        }
+        set('VideoDecoder.isConfigSupported', out);
       }
-      set('VideoDecoder.isConfigSupported', out);
     }
   }
 }
