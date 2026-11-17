@@ -41,6 +41,9 @@ class VideoOutbox(
     val inFlightCount: Int get() = inFlight.size
     val pendingCount: Int get() = pending.size
 
+    /** How long the oldest waiting frame has waited, 0 when nothing waits. */
+    fun oldestPendingWaitMs(nowMs: Long): Long = pending.firstOrNull()?.let { nowMs - it.atMs } ?: 0L
+
     /** Adds a packet. Returns true when the caller should ask the encoder for a keyframe. */
     fun offer(p: Packet, nowMs: Long): Boolean {
         var wantKeyframe = false

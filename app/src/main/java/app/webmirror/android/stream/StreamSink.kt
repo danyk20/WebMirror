@@ -11,6 +11,9 @@ interface StreamSink {
     /** What the viewer said in its `hello` (`h264`), or null while it has not said hello yet. */
     val h264Capable: Boolean? get() = null
 
+    /** This viewer's congestion signals for the bitrate controller, or null if it has none. */
+    fun congestion(nowMs: Long): BitrateController.ViewerSignal? = null
+
     /** The viewer's window in physical pixels (from its `view` message), or null while unknown. */
     val viewBox: ViewBox? get() = null
 }

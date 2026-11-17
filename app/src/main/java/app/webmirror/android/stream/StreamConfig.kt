@@ -26,10 +26,17 @@ data class StreamConfig(
     // ---- server flow control (live) ----
     val maxInFlight: Int = 6,
     val dropAfterMs: Int = 150,
+    // ---- adaptive bitrate (live) ----
+    /** Lower the H.264 bitrate (JPEG: quality) when a viewer falls behind, raise it again when it recovers. */
+    val adaptiveBitrate: Boolean = true,
+    /** Lowest H.264 bitrate the controller may choose, kbit/s (JPEG: quality never goes below 30). */
+    val minBitrateKbps: Int = 800,
     // ---- page (sent in hello.cfg) ----
     val jitterBufferMs: Int = 80,
     /** The player skips frames later than this many frame intervals; 0 = never. */
     val skipLateFrames: Int = 2,
+    /** "immediate" = draw each decoded frame at once; "vsync" = draw the newest decoded frame once per screen refresh. */
+    val pacing: String = PACING_IMMEDIATE,
 ) {
 
     /** The fields whose change needs a new encoder. */
@@ -51,8 +58,9 @@ data class StreamConfig(
         val socket: Boolean,
         val outbox: Boolean,
         val page: Boolean,
+        val adaptive: Boolean = false,
     ) {
-        val any: Boolean get() = encoder || fit || socket || outbox || page
+        val any: Boolean get() = encoder || fit || socket || outbox || page || adaptive
     }
 
     fun diff(newer: StreamConfig): Diff = Diff(
@@ -60,7 +68,8 @@ data class StreamConfig(
         fit = fitToViewer != newer.fitToViewer,
         socket = tcpNoDelay != newer.tcpNoDelay || sendBufferKb != newer.sendBufferKb,
         outbox = maxInFlight != newer.maxInFlight || dropAfterMs != newer.dropAfterMs,
-        page = jitterBufferMs != newer.jitterBufferMs || skipLateFrames != newer.skipLateFrames,
+        page = jitterBufferMs != newer.jitterBufferMs || skipLateFrames != newer.skipLateFrames || pacing != newer.pacing,
+        adaptive = adaptiveBitrate != newer.adaptiveBitrate || minBitrateKbps != newer.minBitrateKbps,
     )
 
     /** Field name to value, in display order. The JSON form and the id are derived from it. */
@@ -75,8 +84,11 @@ data class StreamConfig(
         "fitToViewer" to fitToViewer,
         "maxInFlight" to maxInFlight,
         "dropAfterMs" to dropAfterMs,
+        "adaptiveBitrate" to adaptiveBitrate,
+        "minBitrateKbps" to minBitrateKbps,
         "jitterBufferMs" to jitterBufferMs,
         "skipLateFrames" to skipLateFrames,
+        "pacing" to pacing,
     )
 
     fun toJson(): JSONObject = JSONObject(toMap())
@@ -99,13 +111,15 @@ data class StreamConfig(
         append(" buf").append(if (sendBufferKb == 0) "sys" else "${sendBufferKb}K")
         append(" inflight").append(maxInFlight)
         append(" drop").append(dropAfterMs).append("ms")
+        if (adaptiveBitrate) append(" adapt>=").append(minBitrateKbps).append('k') else append(" fixed-rate")
         append(" | jitter").append(jitterBufferMs).append("ms")
         append(" skip").append(skipLateFrames)
+        append(' ').append(pacing)
     }
 
     /** What the page needs, as the `cfg` object of `hello` (the summary contains no characters needing escapes). */
     fun pageJson(): String =
-        """{"id":"$id","summary":"${summary()}","jitterBufferMs":$jitterBufferMs,"skipLateFrames":$skipLateFrames}"""
+        """{"id":"$id","summary":"${summary()}","jitterBufferMs":$jitterBufferMs,"skipLateFrames":$skipLateFrames,"pacing":"$pacing"}"""
 
     companion object {
         const val PROFILE_BASELINE = "baseline"
@@ -115,6 +129,10 @@ data class StreamConfig(
         const val BITRATE_CBR = "cbr"
         const val BITRATE_VBR = "vbr"
 
+        const val PACING_IMMEDIATE = "immediate"
+        const val PACING_VSYNC = "vsync"
+
+        val PACINGS = listOf(PACING_IMMEDIATE, PACING_VSYNC)
         val PROFILES = listOf(PROFILE_BASELINE, PROFILE_MAIN, PROFILE_HIGH, PROFILE_AUTO)
         val BITRATE_MODES = listOf(BITRATE_CBR, BITRATE_VBR)
 
@@ -130,8 +148,11 @@ data class StreamConfig(
             "fitToViewer" to "Fit stream size to the viewer window",
             "maxInFlight" to "Frames in flight before the phone waits",
             "dropAfterMs" to "H.264: drop waiting frames after, ms",
+            "adaptiveBitrate" to "Adaptive bitrate (lower it when the viewer falls behind)",
+            "minBitrateKbps" to "Adaptive bitrate floor, kbit/s",
             "jitterBufferMs" to "Player jitter buffer, ms",
             "skipLateFrames" to "Player skips frames late by N intervals (0 = never)",
+            "pacing" to "Player frame pacing",
         )
 
         /** Allowed range of each numeric field. */
@@ -140,6 +161,7 @@ data class StreamConfig(
             "keyframeIntervalS" to 1..10,
             "maxInFlight" to 1..30,
             "dropAfterMs" to 10..2000,
+            "minBitrateKbps" to 100..20000,
             "jitterBufferMs" to 0..1000,
             "skipLateFrames" to 0..10,
         )
@@ -154,6 +176,7 @@ data class StreamConfig(
             }
             fun bool(key: String, def: Boolean): Boolean = m[key] as? Boolean ?: def
             val profile = (m["profile"] as? String)?.takeIf { it in PROFILES } ?: d.profile
+            val pacing = (m["pacing"] as? String)?.takeIf { it in PACINGS } ?: d.pacing
             val mode = (m["bitrateMode"] as? String)?.takeIf { it in BITRATE_MODES } ?: d.bitrateMode
             return StreamConfig(
                 tcpNoDelay = bool("tcpNoDelay", d.tcpNoDelay),
@@ -166,8 +189,11 @@ data class StreamConfig(
                 fitToViewer = bool("fitToViewer", d.fitToViewer),
                 maxInFlight = num("maxInFlight", d.maxInFlight),
                 dropAfterMs = num("dropAfterMs", d.dropAfterMs),
+                adaptiveBitrate = bool("adaptiveBitrate", d.adaptiveBitrate),
+                minBitrateKbps = num("minBitrateKbps", d.minBitrateKbps),
                 jitterBufferMs = num("jitterBufferMs", d.jitterBufferMs),
                 skipLateFrames = num("skipLateFrames", d.skipLateFrames),
+                pacing = pacing,
             )
         }
 

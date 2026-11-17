@@ -14,4 +14,7 @@ interface FrameEncoder {
 
     /** Ask for a keyframe as soon as possible. A no-op for JPEG, where every frame is complete. */
     fun requestKeyframe()
+
+    /** Changes the quality target on the fly: H.264 bit/s, JPEG quality points. No rebuild. */
+    fun setTarget(value: Int)
 }

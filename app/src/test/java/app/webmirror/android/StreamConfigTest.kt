@@ -27,6 +27,9 @@ class StreamConfigTest {
         assertEquals(150, c.dropAfterMs)
         assertEquals(80, c.jitterBufferMs)
         assertEquals(2, c.skipLateFrames)
+        assertTrue(c.adaptiveBitrate)
+        assertEquals(800, c.minBitrateKbps)
+        assertEquals("immediate", c.pacing)
     }
 
     @Test
@@ -34,11 +37,11 @@ class StreamConfigTest {
         val c = StreamConfig(
             tcpNoDelay = false, sendBufferKb = 0, lowLatencyEncoder = false, profile = "high", bitrateMode = "vbr",
             intraRefresh = true, keyframeIntervalS = 5, fitToViewer = true, maxInFlight = 2, dropAfterMs = 400,
-            jitterBufferMs = 10, skipLateFrames = 0,
+            jitterBufferMs = 10, skipLateFrames = 0, adaptiveBitrate = false, minBitrateKbps = 1500, pacing = "vsync",
         )
         assertEquals(c, StreamConfig.fromMap(c.toMap()))
         assertEquals(StreamConfig(), StreamConfig.fromMap(StreamConfig().toMap()))
-        assertEquals(12, c.toMap().size)
+        assertEquals(15, c.toMap().size)
     }
 
     @Test
@@ -56,6 +59,9 @@ class StreamConfigTest {
         assertEquals(30, c.maxInFlight)
         assertEquals(0, c.jitterBufferMs)
         assertTrue(c.tcpNoDelay)
+        assertEquals("immediate", StreamConfig.fromMap(mapOf("pacing" to "raf")).pacing)
+        assertEquals(20000, StreamConfig.fromMap(mapOf("minBitrateKbps" to 99999)).minBitrateKbps)
+        assertEquals(100, StreamConfig.fromMap(mapOf("minBitrateKbps" to 1)).minBitrateKbps)
         assertEquals(StreamConfig(), StreamConfig.fromMap(emptyMap()))
         assertEquals(StreamConfig(), StreamConfig.fromJson(null as String?))
         assertEquals(StreamConfig(), StreamConfig.fromJson("   "))
@@ -75,6 +81,9 @@ class StreamConfigTest {
         assertEquals(StreamConfig.Diff(false, false, false, true, false), a.diff(a.copy(dropAfterMs = 50)))
         assertEquals(StreamConfig.Diff(false, false, false, false, true), a.diff(a.copy(jitterBufferMs = 120)))
         assertEquals(StreamConfig.Diff(false, false, false, false, true), a.diff(a.copy(skipLateFrames = 0)))
+        assertEquals(StreamConfig.Diff(false, false, false, false, false, true), a.diff(a.copy(adaptiveBitrate = false)))
+        assertEquals(StreamConfig.Diff(false, false, false, false, false, true), a.diff(a.copy(minBitrateKbps = 500)))
+        assertEquals(StreamConfig.Diff(false, false, false, false, true), a.diff(a.copy(pacing = "vsync")))
         val many = a.diff(a.copy(profile = "high", maxInFlight = 2, jitterBufferMs = 0))
         assertTrue(many.encoder && many.outbox && many.page && !many.socket && !many.fit)
     }
@@ -95,6 +104,8 @@ class StreamConfigTest {
         assertTrue(j.contains(""""id":"${c.id}""""))
         assertTrue(j.contains(""""jitterBufferMs":120"""))
         assertTrue(j.contains(""""skipLateFrames":3"""))
+        assertTrue(j.contains("""pacing":"immediate""""))
+        assertTrue(StreamConfig(pacing = "vsync").pageJson().contains("""pacing":"vsync""""))
         assertFalse(j.contains("profile"))
     }
 

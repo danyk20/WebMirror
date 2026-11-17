@@ -25,7 +25,7 @@ class JpegEncoder(
     private val width: Int,
     private val height: Int,
     private val fps: Int,
-    private val quality: Int,
+    quality: Int,
     private val hub: StreamHub,
 ) : FrameEncoder {
     private val thread = HandlerThread("jpeg-encoder").apply { start() }
@@ -34,6 +34,13 @@ class JpegEncoder(
 
     /** Where the VirtualDisplay must draw. */
     override val surface: Surface get() = reader.surface
+
+    @Volatile
+    private var quality = quality
+
+    override fun setTarget(value: Int) {
+        quality = value.coerceIn(1, 100)
+    }
 
     private val minIntervalMs = 1000L / fps
     private val out = ReusableStream()

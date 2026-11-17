@@ -1,6 +1,7 @@
 package app.webmirror.android.server
 
 import android.util.Log
+import app.webmirror.android.stream.BitrateController
 import app.webmirror.android.stream.Expirable
 import app.webmirror.android.stream.Packet
 import app.webmirror.android.stream.StreamHub
@@ -57,6 +58,29 @@ class ClientSession(
 
     override val viewBox: ViewBox? get() = viewPx
 
+    private val id = nextId.incrementAndGet()
+
+    /** From the page's last `stats`: cumulative skipped frames, network lateness and when it arrived. */
+    @Volatile
+    private var pageSkipped = 0L
+
+    @Volatile
+    private var pageNetLateMs = 0
+
+    @Volatile
+    private var pageStatsAtMs = 0L
+
+    override fun congestion(nowMs: Long): BitrateController.ViewerSignal? {
+        if (stopped) return null
+        synchronized(mon) {
+            val fresh = nowMs - pageStatsAtMs < STATS_FRESH_MS
+            return BitrateController.ViewerSignal(
+                id, outbox.oldestPendingWaitMs(nowMs), outbox.dropped, pageSkipped,
+                if (fresh) pageNetLateMs else 0,
+            )
+        }
+    }
+
     private fun nowMs(): Long = System.nanoTime() / 1_000_000
 
     // ---- StreamSink (called from producer threads) ----
@@ -90,7 +114,7 @@ class ClientSession(
         synchronized(mon) {
             if (control.none { it is Outgoing.Text && it.text.startsWith(PING_PREFIX) }) {
                 // The numbers let the page show how much the server holds back for it.
-                addControl(Outgoing.Text("""{"t":"ping","inFlight":${outbox.inFlightCount},"pending":${outbox.pendingCount}}"""))
+                addControl(Outgoing.Text("""{"t":"ping","inFlight":${outbox.inFlightCount},"pending":${outbox.pendingCount},"target":"${hub.targetText}"}"""))
                 mon.notifyAll()
             }
         }
@@ -168,7 +192,11 @@ class ClientSession(
                 "ack" -> handleAck(obj.optLong("pts", -1))
                 "stats" -> {
                     // Add what only the server knows, so one log line tells the whole story.
+                    pageSkipped = obj.optLong("skipped", 0) - obj.optLong("replaced", 0) // vsync replacements are not congestion
+                    pageNetLateMs = obj.optInt("netLateMs", 0)
+                    pageStatsAtMs = nowMs()
                     synchronized(mon) {
+                        obj.put("target", hub.targetText)
                         obj.put("inFlight", outbox.inFlightCount)
                         obj.put("srvPending", outbox.pendingCount)
                         obj.put("srvDropped", outbox.dropped)
@@ -318,6 +346,8 @@ class ClientSession(
         const val MAX_QUEUE = 120
 
         private const val WAIT_MS = 200L
+        private const val STATS_FRESH_MS = 3000L
+        private val nextId = java.util.concurrent.atomic.AtomicInteger()
         private const val PING_PREFIX = """{"t":"ping""""
         const val BLAST_PACKETS = 100
         const val BLAST_PACKET_BYTES = 50_000

@@ -1,0 +1,115 @@
+package app.webmirror.android.stream
+
+/**
+ * Adaptive bitrate controller (plan 2.1.1 `adaptiveBitrate`). Pure logic: the caller feeds it one
+ * [ViewerSignal] per viewer every [TICK_MS] and applies the returned value. The unit of [value] is whatever
+ * the caller adjusts: bit/s for H.264, JPEG quality points for JPEG.
+ *
+ * - Congestion (any viewer): the oldest waiting frame waited longer than half of `dropAfterMs`, or the
+ *   outbox dropped frames / the page skipped frames since the last tick, or the page's network lateness is
+ *   above [NET_LATE_LIMIT_MS]. Congestion multiplies the value by 0.7, never below [floor].
+ * - After [CALM_MS] without congestion the value rises by 10 % (at least one unit), never above [ceiling],
+ *   then waits another [CALM_MS] for the next step.
+ * - Hysteresis: after a decrease no further decrease happens for [SETTLE_MS] (the backlog that caused it
+ *   needs time to drain), and nothing changes more than once per [TICK_MS].
+ */
+class BitrateController(floor: Int, ceiling: Int) {
+
+    /** What the server knows about one viewer at one moment. Totals are cumulative. */
+    data class ViewerSignal(
+        val id: Int,
+        /** How long the oldest frame still waiting in the outbox has waited, 0 if none waits. */
+        val oldestWaitMs: Long,
+        val dropped: Long,
+        /** Frames the page reported as skipped (cumulative, from its `stats`). */
+        val skipped: Long,
+        /** The page's last reported `netLateMs` (0 when unknown or stale). */
+        val netLateMs: Int,
+    )
+
+    var floor: Int = minOf(floor, ceiling)
+        private set
+    var ceiling: Int = ceiling
+        private set
+
+    /** The current target. */
+    var value: Int = ceiling
+        private set
+
+    private var calmSinceMs = 0L
+    private var lastChangeMs = NEVER
+    private var lastDecreaseMs = NEVER
+    private val baselines = HashMap<Int, LongArray>()
+
+    /** New limits (preset, mode or config change): the target goes back to the ceiling. */
+    fun configure(floor: Int, ceiling: Int) {
+        this.ceiling = ceiling
+        this.floor = minOf(floor, ceiling)
+        value = ceiling
+        calmSinceMs = 0
+        lastChangeMs = NEVER
+        lastDecreaseMs = NEVER
+        baselines.clear()
+    }
+
+    /** True if any of [signals] shows congestion. Also advances the per-viewer baselines. */
+    private fun congested(signals: List<ViewerSignal>, dropAfterMs: Int): Boolean {
+        var result = false
+        val seen = HashSet<Int>()
+        for (s in signals) {
+            seen.add(s.id)
+            val base = baselines[s.id]
+            if (base == null) {
+                baselines[s.id] = longArrayOf(s.dropped, s.skipped) // first sight: no history to compare
+            } else {
+                if (s.dropped > base[0] || s.skipped > base[1]) result = true
+                base[0] = s.dropped
+                base[1] = s.skipped
+            }
+            if (s.oldestWaitMs > dropAfterMs / 2) result = true
+            if (s.netLateMs > NET_LATE_LIMIT_MS) result = true
+        }
+        baselines.keys.retainAll(seen)
+        return result
+    }
+
+    /** Evaluates one tick at [nowMs]; returns the new target when it changed, else null. */
+    fun tick(nowMs: Long, signals: List<ViewerSignal>, dropAfterMs: Int): Int? {
+        val bad = congested(signals, dropAfterMs)
+        if (nowMs - lastChangeMs < TICK_MS) {
+            if (bad) calmSinceMs = nowMs
+            return null
+        }
+        if (bad) {
+            calmSinceMs = nowMs
+            if (value > floor && nowMs - lastDecreaseMs >= SETTLE_MS) {
+                value = maxOf(floor, minOf(value - 1, Math.round(value * DECREASE_FACTOR).toInt()))
+                lastChangeMs = nowMs
+                lastDecreaseMs = nowMs
+                return value
+            }
+            return null
+        }
+        if (value < ceiling && nowMs - calmSinceMs >= CALM_MS) {
+            value = minOf(ceiling, maxOf(value + 1, Math.round(value * INCREASE_FACTOR).toInt()))
+            lastChangeMs = nowMs
+            calmSinceMs = nowMs
+            return value
+        }
+        return null
+    }
+
+    companion object {
+        const val TICK_MS = 500L
+        const val CALM_MS = 4000L
+        const val SETTLE_MS = 1000L
+        const val NET_LATE_LIMIT_MS = 150
+        const val DECREASE_FACTOR = 0.7
+        const val INCREASE_FACTOR = 1.1
+
+        /** JPEG quality never goes below this. */
+        const val MIN_JPEG_QUALITY = 30
+
+        private const val NEVER = -1_000_000_000L
+    }
+}

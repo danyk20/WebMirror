@@ -434,8 +434,16 @@ private fun AdvancedSection(settings: Settings, encoder: String?, running: Boole
     SwitchRow(labels.getValue("fitToViewer"), cfg.fitToViewer) { change(cfg.copy(fitToViewer = it)) }
     NumberRow("maxInFlight", cfg.maxInFlight, resetToken) { change(cfg.copy(maxInFlight = it)) }
     NumberRow("dropAfterMs", cfg.dropAfterMs, resetToken) { change(cfg.copy(dropAfterMs = it)) }
+    SwitchRow(labels.getValue("adaptiveBitrate"), cfg.adaptiveBitrate) { change(cfg.copy(adaptiveBitrate = it)) }
+    NumberRow("minBitrateKbps", cfg.minBitrateKbps, resetToken) { change(cfg.copy(minBitrateKbps = it)) }
     NumberRow("jitterBufferMs", cfg.jitterBufferMs, resetToken) { change(cfg.copy(jitterBufferMs = it)) }
     NumberRow("skipLateFrames", cfg.skipLateFrames, resetToken) { change(cfg.copy(skipLateFrames = it)) }
+    Text(labels.getValue("pacing"), style = MaterialTheme.typography.labelLarge)
+    Column(Modifier.selectableGroup()) {
+        for (p in StreamConfig.PACINGS) {
+            ChoiceRow(p, cfg.pacing == p, true) { change(cfg.copy(pacing = p)) }
+        }
+    }
     OutlinedButton(onClick = { resetToken++; change(StreamConfig()) }, modifier = Modifier.fillMaxWidth()) {
         Text("Reset to defaults")
     }

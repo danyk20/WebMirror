@@ -24,6 +24,7 @@
   const TYPE_JPEG = 2;
   const H264_PROBE_CODEC = 'avc1.42E01F';
   const MAX_DECODE_QUEUE = 3;      // VideoDecoder backlog that counts as overload
+  const RAF_STALL_MS = 100;        // vsync pacing: no animation frame for this long = rAF is throttled, draw at once
 
   // ---- elements ----
   const canvas = document.getElementById('screen');
@@ -50,6 +51,10 @@
   let lateSkip = DEFAULT_LATE_SKIP;   // active late-skip threshold in frame intervals, from hello.cfg
   let cfgId = '';                     // short id of the phone's active configuration (hello.cfg.id)
   let cfgSummary = '';
+  let pacing = 'immediate';           // 'immediate' or 'vsync', from hello.cfg.pacing
+  let held = null;                    // vsync pacing: newest decoded frame not drawn yet { draw, close }
+  let lastRafAt = 0;                  // when the last animation-frame callback ran
+  let serverTarget = '';              // from the server's ping: current adaptive bitrate / quality target
   let viewTimer = null;
   let offsetMs = 0;
   let dropped = 0;
@@ -72,7 +77,8 @@
   let lateCount = 0;
   let netLateSum = 0;
   let netLateCount = 0;
-  let skipped = 0;                // frames skipped because they were late
+  let skipped = 0;                // frames skipped because they were late (or replaced before vsync drawing)
+  let replaced = 0;               // part of skipped: decoded frames replaced by a newer one before they were drawn
 
   // ---- small helpers ----
   function setStatus(text) {
@@ -115,6 +121,37 @@
   // Lateness of a frame that reaches the screen: how much later than its due time (best recent network
   // path + buffer + user offset) it is drawn. Measured from the phone's pts, so a backlog inside the
   // browser (decoder, throttled timers) shows up, not only network delay.
+  // Every decoded picture goes through here. Immediate pacing draws it at once. Vsync pacing keeps only the
+  // newest one and the animation-frame loop draws it once per screen refresh; a picture replaced before it
+  // was drawn counts as skipped (the newer one's ack covers it). If rAF is throttled (hidden pane), draw at once.
+  function present(draw, close) {
+    if (pacing !== 'vsync' || performance.now() - lastRafAt > RAF_STALL_MS) {
+      dropHeld();
+      try { draw(); } finally { close(); }
+      return;
+    }
+    if (held) {
+      held.close();
+      skipped++;
+      replaced++; // counted in skipped too; the phone does not treat these as congestion
+    }
+    held = { draw: draw, close: close };
+  }
+
+  function drawHeld() {
+    if (!held) return;
+    const h = held;
+    held = null;
+    try { h.draw(); } finally { h.close(); }
+  }
+
+  function dropHeld() {
+    if (!held) return;
+    const h = held;
+    held = null;
+    h.close();
+  }
+
   function noteDrawn(ptsMs) {
     if (baseMs === null) return;
     const late = performance.now() - ptsMs - baseMs - bufferMs - offsetMs;
@@ -186,6 +223,7 @@
   }
 
   function flushQueue() {
+    dropHeld();
     if (queue.length > 0) ack(queue[queue.length - 1].raw);
     queue = [];
     baseSamples = [];
@@ -224,8 +262,11 @@
       const blob = new Blob([p.data], { type: 'image/jpeg' });
       if (haveBitmap) {
         window.createImageBitmap(blob).then(function (bmp) {
-          drawn(p, bmp.width, bmp.height, bmp);
-          if (bmp.close) bmp.close();
+          present(function () {
+            drawn(p, bmp.width, bmp.height, bmp);
+          }, function () {
+            if (bmp.close) bmp.close();
+          });
           finish();
         }, function () {
           ack(p.raw);
@@ -235,8 +276,11 @@
         const url = URL.createObjectURL(blob);
         const img = new Image();
         img.onload = function () {
-          drawn(p, img.naturalWidth, img.naturalHeight, img);
-          URL.revokeObjectURL(url);
+          present(function () {
+            drawn(p, img.naturalWidth, img.naturalHeight, img);
+          }, function () {
+            URL.revokeObjectURL(url);
+          });
           finish();
         };
         img.onerror = function () {
@@ -278,18 +322,19 @@
     let submitted = 0;
     let output = 0;
 
+    function drawFrame(frame) {
+      setCanvasSize(frame.displayWidth, frame.displayHeight);
+      ctx.drawImage(frame, 0, 0);
+      framesDrawn++;
+      noteDrawn(frame.timestamp / 1000);
+      ack(frame.timestamp);
+      showMessage('');
+    }
+
     function onFrame(frame) {
-      try {
-        setCanvasSize(frame.displayWidth, frame.displayHeight);
-        ctx.drawImage(frame, 0, 0);
-        framesDrawn++;
-        output++;
-        noteDrawn(frame.timestamp / 1000);
-        ack(frame.timestamp);
-        showMessage('');
-      } finally {
-        frame.close(); // forgetting this leaks GPU memory and freezes the page
-      }
+      output++;
+      // present() always closes the frame, drawn or replaced; forgetting that leaks GPU memory and freezes the page.
+      present(function () { drawFrame(frame); }, function () { frame.close(); });
     }
 
     function closeDecoder() {
@@ -423,6 +468,7 @@
       clearTimeout(pumpTimer);
       pumpTimer = null;
     }
+    if (held && performance.now() - lastRafAt > RAF_STALL_MS) drawHeld(); // rAF throttled: do not hold the last picture
     if (decoder && baseMs !== null) {
       const now = performance.now();
       const interval = frameIntervalMs();
@@ -477,6 +523,8 @@
   }
 
   function rafTick() {
+    lastRafAt = performance.now();
+    drawHeld();
     pump();
     window.requestAnimationFrame(rafTick);
   }
@@ -488,6 +536,8 @@
     if (j >= 0 && j <= 5000) bufferMs = j;
     const k = Number(c.skipLateFrames);
     if (k >= 0 && k <= 100) lateSkip = k;
+    pacing = c.pacing === 'vsync' ? 'vsync' : 'immediate';
+    if (pacing !== 'vsync') drawHeld();
     cfgId = typeof c.id === 'string' ? c.id : '';
     cfgSummary = typeof c.summary === 'string' ? c.summary : '';
   }
@@ -541,6 +591,7 @@
     } else if (m.t === 'ping') {
       serverInFlight = m.inFlight | 0;
       serverPending = m.pending | 0;
+      serverTarget = typeof m.target === 'string' ? m.target : '';
     } else if (m.t === 'denied') {
       setStatus('Denied: ' + m.reason);
       showMessage('Access denied (' + m.reason + ')');
@@ -657,6 +708,7 @@
     lines.push('fps ' + fps.toFixed(1) + '   dropped ' + dropped + '   skipped ' + skipped);
     lines.push('late ' + Math.round(lastLateAvg) + ' ms (max ' + Math.round(lastLateMax) + ')   net ' + Math.round(lastNetLate) + ' ms');
     lines.push('queue ' + queue.length + '   decoder ' + inDecoderCount() + ' (queue ' + decodeQueueSize() + ')   in flight ' + serverInFlight + ' (held ' + serverPending + ')');
+    if (serverTarget) lines.push('target ' + serverTarget);
     if (cfgId) lines.push('cfg ' + cfgId + '   ' + cfgSummary);
     if (hello) {
       lines.push(hello.width + 'x' + hello.height + '   mode ' + hello.mode + '   audio ' + hello.audio);
@@ -684,6 +736,7 @@
       queue: queue.length,
       dropped: dropped,
       skipped: skipped,
+      replaced: replaced,
       bufferMs: bufferMs + offsetMs,
       cfgId: cfgId,
       lateMs: Math.round(lastLateAvg),

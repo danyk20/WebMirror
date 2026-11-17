@@ -292,6 +292,15 @@ class H264Encoder(
         }
     }
 
+    override fun setTarget(value: Int) {
+        if (stopped) return
+        try {
+            codec.setParameters(Bundle().apply { putInt(MediaCodec.PARAMETER_KEY_VIDEO_BITRATE, value) })
+        } catch (e: Exception) {
+            Log.w(TAG, "bitrate change failed: $e")
+        }
+    }
+
     override fun pause() {
         paused = true
     }

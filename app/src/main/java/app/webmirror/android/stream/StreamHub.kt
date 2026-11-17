@@ -192,6 +192,7 @@ class StreamHub(
             gop.clear()
             lastKeyframeRequestMs = null
             lastWantedMode = MODE_JPEG
+            targetText = ""
         }
     }
 
@@ -214,6 +215,14 @@ class StreamHub(
         }
         recomputeMode()
     }
+
+    /** Congestion signals of every viewer, for the bitrate controller. */
+    fun congestionSignals(nowMs: Long = nowMs()): List<BitrateController.ViewerSignal> =
+        sinks.mapNotNull { it.congestion(nowMs) }
+
+    /** Current adaptive target as short text ("3200/4000 kbps", "40/50 quality"), empty when none; shown to viewers. */
+    @Volatile
+    var targetText: String = ""
 
     /** Sends the liveness ping to every viewer (the page reconnects when it hears nothing for 3 s). */
     fun pingAll() {

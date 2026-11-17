@@ -12,6 +12,7 @@ import android.view.Display
 import app.webmirror.android.encode.FrameEncoder
 import app.webmirror.android.encode.H264Encoder
 import app.webmirror.android.encode.JpegEncoder
+import app.webmirror.android.stream.BitrateController
 import app.webmirror.android.stream.StreamConfig
 import app.webmirror.android.stream.StreamHub
 
@@ -36,6 +37,12 @@ class ScreenCapture(
     private val displayManager = appContext.getSystemService(DisplayManager::class.java)
     private val thread = HandlerThread("capture").apply { start() }
     private val handler = Handler(thread.looper)
+
+    /** Adaptive bitrate (H.264) / quality (JPEG): evaluated every [BitrateController.TICK_MS] on [handler]. */
+    private val controller = BitrateController(0, 0)
+    private val reportLock = Any()
+    private var baseReport: String? = null
+    private var lastTargetLogMs = 0L
 
     private var preset = initialPreset
     private var config = initialConfig
@@ -67,6 +74,7 @@ class ScreenCapture(
             enc.surface, null, handler,
         )
         publish()
+        handler.postDelayed(adaptiveTick, BitrateController.TICK_MS)
         hub.keyframeRequester = { encoder?.requestKeyframe() }
         hub.modeRequester = { m -> setMode(m) }
         hub.viewListener = { if (config.fitToViewer) reconfigure() }
@@ -95,6 +103,10 @@ class ScreenCapture(
                 val old = config
                 config = c
                 val rebuild = old.encoderKey != c.encoderKey && mode == StreamHub.MODE_H264
+                if (old.adaptiveBitrate != c.adaptiveBitrate || old.minBitrateKbps != c.minBitrateKbps) {
+                    resetController()
+                    encoder?.setTarget(controller.value)
+                }
                 if (rebuild || old.fitToViewer != c.fitToViewer) applyChange(forceEncoder = rebuild)
             }
         }
@@ -165,11 +177,80 @@ class ScreenCapture(
 
     private fun newEncoder(s: CaptureSize.Size): FrameEncoder =
         if (mode == StreamHub.MODE_H264) {
-            H264Encoder(s.width, s.height, preset.fps, preset.h264Bitrate, hub, config) { onEncoderReport(it) }
+            resetController()
+            H264Encoder(s.width, s.height, preset.fps, controller.value, hub, config) { setBaseReport(it) }
         } else {
-            onEncoderReport("JPEG ${s.width}x${s.height} @${preset.jpegFps} fps, quality ${preset.jpegQuality}\n(H.264 encoder options do not apply in JPEG mode)")
-            JpegEncoder(s.width, s.height, preset.jpegFps, preset.jpegQuality, hub)
+            resetController()
+            setBaseReport("JPEG ${s.width}x${s.height} @${preset.jpegFps} fps, quality ${preset.jpegQuality}\n(H.264 encoder options do not apply in JPEG mode)")
+            JpegEncoder(s.width, s.height, preset.jpegFps, controller.value, hub)
         }
+
+    /** Floor and ceiling of the adaptive target for the current mode: bit/s for H.264, quality for JPEG. */
+    private fun limits(): Pair<Int, Int> =
+        if (mode == StreamHub.MODE_H264) {
+            Pair(config.minBitrateKbps * 1000, preset.h264Bitrate)
+        } else {
+            Pair(BitrateController.MIN_JPEG_QUALITY, preset.jpegQuality)
+        }
+
+    /** The target goes back to the preset's value (new encoder, new limits, adaptive switched). */
+    private fun resetController() {
+        val (floor, ceiling) = limits()
+        controller.configure(floor, ceiling)
+        publishTarget()
+    }
+
+    private fun targetText(): String {
+        val unit = if (mode == StreamHub.MODE_H264) "kbps" else "quality"
+        val div = if (mode == StreamHub.MODE_H264) 1000 else 1
+        val text = "${controller.value / div}/${controller.ceiling / div} $unit"
+        return if (config.adaptiveBitrate) text else "$text fixed"
+    }
+
+    /** Makes the current target visible: to viewers (ping), and in the app's encoder state. */
+    private fun publishTarget() {
+        hub.targetText = targetText()
+        emitReport()
+    }
+
+    private fun setBaseReport(text: String) {
+        synchronized(reportLock) { baseReport = text }
+        emitReport()
+    }
+
+    private fun emitReport() {
+        val text = synchronized(reportLock) {
+            val base = baseReport ?: return
+            "$base\ntarget: ${hub.targetText}" + if (config.adaptiveBitrate) " (adaptive, floor ${controller.floor / (if (mode == StreamHub.MODE_H264) 1000 else 1)})" else ""
+        }
+        onEncoderReport(text)
+    }
+
+    private val adaptiveTick = object : Runnable {
+        override fun run() {
+            if (released) return
+            try {
+                synchronized(this@ScreenCapture) {
+                    val enc = encoder
+                    if (config.adaptiveBitrate && enc != null && !released) {
+                        val now = System.nanoTime() / 1_000_000
+                        val n = controller.tick(now, hub.congestionSignals(now), config.dropAfterMs)
+                        if (n != null) {
+                            enc.setTarget(n)
+                            publishTarget()
+                            if (now - lastTargetLogMs >= TARGET_LOG_MS) {
+                                lastTargetLogMs = now
+                                Log.i(TAG, "adaptive target now ${hub.targetText}")
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "adaptive tick failed: $e")
+            }
+            handler.postDelayed(this, BitrateController.TICK_MS)
+        }
+    }
 
     /** A device without a usable H.264 encoder falls back to JPEG instead of failing the capture. */
     private fun newEncoderOrFallback(s: CaptureSize.Size): FrameEncoder =
@@ -216,5 +297,6 @@ class ScreenCapture(
 
     companion object {
         private const val TAG = "WebMirror"
+        private const val TARGET_LOG_MS = 2000L
     }
 }
