@@ -107,6 +107,7 @@ Probe results from the car:
 | App in background | keeps streaming |
 | Screen locked | capture stops (Android); viewers get `paused` and stay connected; server keeps running as a specialUse foreground service |
 | HTTPS on 8443 with the imported certificate | serves `mirror.danielkosc.eu` with a valid chain |
-| Rotation, resume after pause | not yet tested |
+| Resume after pause (new consent) | works; service back to type mediaProjection, viewers get the stream again |
+| Rotation | stream reconfigures to 1280x584 within ~10 s of rotating and the player rescales |
 
 Certificate: Let's Encrypt for `mirror.danielkosc.eu`, issued 2026-11-17, expires 2027-02-15, renewed manually with a DNS TXT record. hostcreators' `ns1` sometimes answers from a stale copy of the zone; the renewal helper therefore waits for ns2–ns4 only.
