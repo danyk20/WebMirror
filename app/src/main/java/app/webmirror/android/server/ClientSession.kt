@@ -5,19 +5,18 @@ import app.webmirror.android.stream.Expirable
 import app.webmirror.android.stream.Packet
 import app.webmirror.android.stream.StreamHub
 import app.webmirror.android.stream.StreamSink
+import app.webmirror.android.stream.VideoOutbox
 import fi.iki.elonen.NanoHTTPD
 import fi.iki.elonen.NanoWSD
 import fi.iki.elonen.NanoWSD.WebSocketFrame
 import fi.iki.elonen.NanoWSD.WebSocketFrame.CloseCode
 import org.json.JSONObject
 import java.io.IOException
-import java.util.concurrent.LinkedBlockingDeque
-import java.util.concurrent.TimeUnit
 
 /**
- * One connected viewer. All outgoing messages (binary packets and text control messages) go through
- * one bounded queue drained by exactly one writer thread, so frames never interleave and a slow
- * viewer cannot block the producer.
+ * One connected viewer. Exactly one writer thread sends everything, so frames never interleave and a slow
+ * viewer cannot block the producer. Text messages go through a small FIFO; video goes through a
+ * [VideoOutbox] (ack-based flow control, newest frame wins) so it can never build up latency.
  */
 class ClientSession(
     handshake: NanoHTTPD.IHTTPSession,
@@ -30,11 +29,16 @@ class ClientSession(
         data object Close : Outgoing
     }
 
-    private val queue = LinkedBlockingDeque<Outgoing>(MAX_QUEUE)
-    private var writer: Thread? = null
+    /** Guards [control] and [outbox]; the writer thread waits on it. */
+    private val mon = Object()
 
-    @Volatile
-    private var needsKeyframe = false
+    /** Text messages (and blast dummies, which are not video): FIFO, hard safety limit [MAX_QUEUE]. */
+    private val control = ArrayDeque<Outgoing>()
+
+    /** Video: flow-controlled, never piles up (see [VideoOutbox]). */
+    private val outbox = VideoOutbox(MAX_IN_FLIGHT)
+    private var writer: Thread? = null
+    private var lastKeyframeAskMs = 0L
 
     @Volatile
     private var stopped = false
@@ -47,35 +51,53 @@ class ClientSession(
 
     override val h264Capable: Boolean? get() = viewerH264
 
+    private fun nowMs(): Long = System.nanoTime() / 1_000_000
+
     // ---- StreamSink (called from producer threads) ----
 
     override fun onHello(json: String) {
-        enqueueText(json)
+        if (stopped) return
+        synchronized(mon) {
+            // A new stream description invalidates everything waiting; H.264 resumes at a keyframe.
+            outbox.reset(json.contains("\"mode\":\"h264\""))
+            addControl(Outgoing.Text(json))
+            mon.notifyAll()
+        }
+        hub.requestKeyframe()
     }
 
     override fun onPacket(p: Packet) {
         if (stopped) return
-        if (p.type == Packet.TYPE_H264 && needsKeyframe) {
-            if (!p.isKeyframe) return
-            needsKeyframe = false
+        val wantKeyframe: Boolean
+        synchronized(mon) {
+            wantKeyframe = outbox.offer(p, nowMs(), hub.frameIntervalMs())
+            mon.notifyAll()
         }
-        if (queue.offerLast(Outgoing.Bin(p))) return
+        if (wantKeyframe) hub.requestKeyframe()
+    }
 
-        // Queue full: drop every queued packet (keep text messages), wait for the next keyframe.
-        queue.removeIf { it is Outgoing.Bin }
-        hub.requestKeyframe()
-        if (p.type == Packet.TYPE_H264 && !p.isKeyframe) {
-            needsKeyframe = true
-        } else {
-            queue.offerLast(Outgoing.Bin(p))
+    override fun onPing() {
+        if (stopped) return
+        synchronized(mon) {
+            if (control.none { it is Outgoing.Text && it.text.startsWith(PING_PREFIX) }) {
+                // The numbers let the page show how much the server holds back for it.
+                addControl(Outgoing.Text("""{"t":"ping","inFlight":${outbox.inFlightCount},"pending":${outbox.pendingCount}}"""))
+                mon.notifyAll()
+            }
         }
     }
 
-    private fun enqueueText(text: String) {
-        if (stopped) return
-        if (!queue.offerLast(Outgoing.Text(text))) {
-            queue.removeIf { it is Outgoing.Bin }
-            queue.offerLast(Outgoing.Text(text))
+    /** Caller holds [mon]. Text messages are tiny; when the hard limit is hit the oldest one goes. */
+    private fun addControl(item: Outgoing) {
+        if (control.size >= MAX_QUEUE) control.removeFirst()
+        control.addLast(item)
+    }
+
+    private fun handleAck(ptsUs: Long) {
+        if (ptsUs < 0) return
+        synchronized(mon) {
+            outbox.ack(ptsUs, nowMs())
+            mon.notifyAll()
         }
     }
 
@@ -133,7 +155,16 @@ class ClientSession(
             when (obj.optString("t")) {
                 "hello" -> handleHello(obj)
                 "kf" -> hub.requestKeyframe()
-                "stats" -> hub.reportStats(text)
+                "ack" -> handleAck(obj.optLong("pts", -1))
+                "stats" -> {
+                    // Add what only the server knows, so one log line tells the whole story.
+                    synchronized(mon) {
+                        obj.put("inFlight", outbox.inFlightCount)
+                        obj.put("srvPending", outbox.pendingCount)
+                        obj.put("srvDropped", outbox.dropped)
+                    }
+                    hub.reportStats(obj.toString())
+                }
                 "probe" -> {
                     val results = obj.optJSONObject("results")
                     hub.reportProbe(results?.toString(2) ?: text)
@@ -148,32 +179,42 @@ class ClientSession(
 
     private fun handleHello(obj: JSONObject) {
         if (obj.optInt("v", -1) != StreamHub.PROTOCOL_VERSION) {
-            enqueueText("""{"t":"denied","reason":"version"}""")
-            enqueueClose()
+            synchronized(mon) {
+                addControl(Outgoing.Text("""{"t":"denied","reason":"version"}"""))
+                addControl(Outgoing.Close)
+                mon.notifyAll()
+            }
             return
         }
         viewerH264 = obj.optBoolean("h264", false)
         hub.greet(this)
     }
 
-    private fun enqueueClose() {
-        if (!queue.offerLast(Outgoing.Close)) {
-            queue.clear()
-            queue.offerLast(Outgoing.Close)
-        }
-    }
-
     /** M0.9 throughput test: 100 dummy packets of 50 000 bytes payload = 5 MB, then a text marker. */
     private fun blast() {
         val dummy = Packet(Packet.TYPE_BLAST, 0, 0, ByteArray(BLAST_PACKET_BYTES))
         for (i in 0 until BLAST_PACKETS) {
-            // Blocking offer: the blast must not be dropped, but never wait forever for a dead writer.
-            if (stopped || !queue.offerLast(Outgoing.Bin(dummy), 5, TimeUnit.SECONDS)) return
+            if (!offerBlocking(Outgoing.Bin(dummy))) return
         }
-        queue.offerLast(
+        offerBlocking(
             Outgoing.Text("""{"t":"blastDone","packets":$BLAST_PACKETS,"bytes":${BLAST_PACKETS * BLAST_PACKET_BYTES}}"""),
-            5, TimeUnit.SECONDS,
         )
+    }
+
+    /** Waits (at most 5 s) for room in the control queue; the blast must not be dropped. */
+    private fun offerBlocking(item: Outgoing): Boolean {
+        val deadline = nowMs() + 5000
+        synchronized(mon) {
+            while (control.size >= MAX_QUEUE) {
+                val left = deadline - nowMs()
+                if (stopped || left <= 0) return false
+                mon.wait(left)
+            }
+            if (stopped) return false
+            control.addLast(item)
+            mon.notifyAll()
+            return true
+        }
     }
 
     // ---- The single writer ----
@@ -181,14 +222,37 @@ class ClientSession(
     private fun writeLoop() {
         try {
             while (!stopped) {
-                when (val item = queue.take()) {
-                    is Outgoing.Bin -> send(item.packet.toBytes())
-                    is Outgoing.Text -> send(item.text)
+                var item: Outgoing? = null
+                var askKeyframe = false
+                synchronized(mon) {
+                    val now = nowMs()
+                    if (control.isNotEmpty()) {
+                        item = control.removeFirst()
+                        mon.notifyAll() // room for a blocked blast
+                    } else {
+                        if (outbox.checkStall(now)) askKeyframe = true
+                        val p = outbox.next(now)
+                        if (p != null) {
+                            item = Outgoing.Bin(p)
+                        } else {
+                            // The hub rate-limits requests, so asking again while waiting is cheap and
+                            // covers a request that was swallowed (static screen, nothing else arrives).
+                            if (outbox.needsKeyframe) askKeyframe = true
+                            if (!askKeyframe) mon.wait(WAIT_MS)
+                        }
+                    }
+                }
+                if (askKeyframe) hub.requestKeyframe()
+                when (val it = item) {
+                    null -> Unit
+                    is Outgoing.Bin -> send(it.packet.toBytes())
+                    is Outgoing.Text -> send(it.text)
                     Outgoing.Close -> {
                         close(CloseCode.NormalClosure, "denied", false)
                         break
                     }
                 }
+                if (askKeyframe && item == null) synchronized(mon) { mon.wait(WAIT_MS) }
             }
         } catch (e: InterruptedException) {
             // shutdown
@@ -220,13 +284,23 @@ class ClientSession(
         if (stopped) return
         stopped = true
         hub.unregister(this)
-        queue.clear()
+        synchronized(mon) {
+            control.clear()
+            outbox.reset(false)
+            mon.notifyAll()
+        }
         writer?.interrupt()
     }
 
     companion object {
         private const val TAG = "WebMirror"
+        /** Hard safety limit of queued text messages. Video never waits in a queue (see [VideoOutbox]). */
         const val MAX_QUEUE = 120
+
+        /** Frames sent but not yet acknowledged by the player before the server holds video back. */
+        const val MAX_IN_FLIGHT = VideoOutbox.DEFAULT_MAX_IN_FLIGHT
+        private const val WAIT_MS = 200L
+        private const val PING_PREFIX = """{"t":"ping""""
         const val BLAST_PACKETS = 100
         const val BLAST_PACKET_BYTES = 50_000
     }

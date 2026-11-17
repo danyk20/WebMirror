@@ -5,8 +5,11 @@
 
   // ---- constants ----
   const BUFFER_MS = 80;            // network jitter buffer (plan 2.4)
-  const BASE_WINDOW = 200;         // packets used for the clock mapping
+  const BASE_WINDOW_MS = 2000;     // clock mapping = minimum over the last 2 s (re-adapts when the network speeds up)
   const MAX_QUEUE = 200;           // hard cap of waiting packets
+  const LATE_SKIP_INTERVALS = 2;   // a frame later than this many frame intervals is skipped
+  const SKIP_HOLDOFF_MS = 1000;    // after a skip, do not skip again for this long (no skip spiral)
+  const KF_MIN_INTERVAL_MS = 500;  // at most one keyframe request per this time
   const STATS_INTERVAL_MS = 2000;  // also the keep-alive (server drops viewers silent for 10 s)
   const RECONNECT_MS = 1000;
   const MAX_PUMP_MS = 50;          // longest wait between two pump runs
@@ -17,7 +20,7 @@
   const TYPE_H264 = 1;
   const TYPE_JPEG = 2;
   const H264_PROBE_CODEC = 'avc1.42E01F';
-  const MAX_DECODE_QUEUE = 10;     // VideoDecoder backlog that counts as overload
+  const MAX_DECODE_QUEUE = 3;      // VideoDecoder backlog that counts as overload
 
   // ---- elements ----
   const canvas = document.getElementById('screen');
@@ -38,7 +41,7 @@
   let hello = null;               // latest hello from the phone
   let decoder = null;             // decoder object for hello.mode
   let queue = [];                 // waiting packets: { type, key, pts (ms), data }
-  let baseSamples = [];           // recent (arrival - pts) values, ms
+  let baseSamples = [];           // recent { t: arrival time, v: arrival - pts }, ms
   let baseMs = null;
   let offsetMs = 0;
   let dropped = 0;
@@ -50,6 +53,17 @@
   let h264Supported = false;      // VideoDecoder exists and isConfigSupported said yes
   let h264Check = null;           // promise of that check, run once
   let paused = false;             // latest hello said mode "paused"
+  let lastKfAt = -100000;         // when a keyframe was last requested
+  let skipHoldoffUntil = 0;
+  let serverInFlight = 0;         // from the server's ping: frames sent to this viewer, not yet acknowledged
+  let serverPending = 0;          // from the server's ping: frames the server holds back for this viewer
+  // measured since the last stats message
+  let lateSum = 0;
+  let lateMax = 0;
+  let lateCount = 0;
+  let netLateSum = 0;
+  let netLateCount = 0;
+  let skipped = 0;                // frames skipped because they were late
 
   // ---- small helpers ----
   function setStatus(text) {
@@ -69,6 +83,35 @@
     if (ws && ws.readyState === 1) {
       try { ws.send(JSON.stringify(obj)); } catch (e) { /* closing */ }
     }
+  }
+
+  // The server holds back video when too many frames are unacknowledged, so every frame the page is done
+  // with (drawn or discarded) must be acknowledged; the ack is cumulative (all frames up to this pts).
+  function ack(rawPts) {
+    send({ t: 'ack', pts: rawPts });
+  }
+
+  function discard(p) {
+    dropped++;
+    ack(p.raw);
+  }
+
+  function askKeyframe() {
+    const now = performance.now();
+    if (now - lastKfAt < KF_MIN_INTERVAL_MS) return;
+    lastKfAt = now;
+    send({ t: 'kf' });
+  }
+
+  // Lateness of a frame that reaches the screen: how much later than its due time (best recent network
+  // path + buffer + user offset) it is drawn. Measured from the phone's pts, so a backlog inside the
+  // browser (decoder, throttled timers) shows up, not only network delay.
+  function noteDrawn(ptsMs) {
+    if (baseMs === null) return;
+    const late = performance.now() - ptsMs - baseMs - BUFFER_MS - offsetMs;
+    lateSum += late;
+    lateCount++;
+    if (late > lateMax) lateMax = late;
   }
 
   function loadDelay() {
@@ -116,13 +159,17 @@
 
   // ---- jitter buffer (plan 2.4) ----
   function noteArrival(ptsMs) {
-    baseSamples.push(performance.now() - ptsMs);
-    if (baseSamples.length > BASE_WINDOW) baseSamples.shift();
-    let m = baseSamples[0];
+    const now = performance.now();
+    const v = now - ptsMs;
+    baseSamples.push({ t: now, v: v });
+    while (baseSamples.length > 1 && now - baseSamples[0].t > BASE_WINDOW_MS) baseSamples.shift();
+    let m = baseSamples[0].v;
     for (let i = 1; i < baseSamples.length; i++) {
-      if (baseSamples[i] < m) m = baseSamples[i];
+      if (baseSamples[i].v < m) m = baseSamples[i].v;
     }
     baseMs = m;
+    netLateSum += v - m; // network lateness of this packet against the best path of the last 2 s
+    netLateCount++;
   }
 
   function dueTime(p) {
@@ -130,6 +177,7 @@
   }
 
   function flushQueue() {
+    if (queue.length > 0) ack(queue[queue.length - 1].raw);
     queue = [];
     baseSamples = [];
     baseMs = null;
@@ -144,10 +192,12 @@
     let pending = null;
     const haveBitmap = typeof window.createImageBitmap === 'function';
 
-    function drawn(w, h, source) {
+    function drawn(p, w, h, source) {
       setCanvasSize(w, h);
       ctx.drawImage(source, 0, 0);
       framesDrawn++;
+      noteDrawn(p.pts);
+      ack(p.raw);
       showMessage('');
     }
 
@@ -165,22 +215,24 @@
       const blob = new Blob([p.data], { type: 'image/jpeg' });
       if (haveBitmap) {
         window.createImageBitmap(blob).then(function (bmp) {
-          drawn(bmp.width, bmp.height, bmp);
+          drawn(p, bmp.width, bmp.height, bmp);
           if (bmp.close) bmp.close();
           finish();
         }, function () {
+          ack(p.raw);
           finish();
         });
       } else {
         const url = URL.createObjectURL(blob);
         const img = new Image();
         img.onload = function () {
-          drawn(img.naturalWidth, img.naturalHeight, img);
+          drawn(p, img.naturalWidth, img.naturalHeight, img);
           URL.revokeObjectURL(url);
           finish();
         };
         img.onerror = function () {
           URL.revokeObjectURL(url);
+          ack(p.raw);
           finish();
         };
         img.src = url;
@@ -192,10 +244,13 @@
       start: function () { pending = null; },
       reset: function () { pending = null; },
       droppable: true,
+      isWaiting: function () { return false; },
+      decodeQueue: function () { return pending ? 1 : 0; },
+      inDecoder: function () { return (busy ? 1 : 0) + (pending ? 1 : 0); },
       // Called with one due packet at a time. While a decode runs only the newest waiting one is kept.
       submit: function (p) {
         if (busy) {
-          if (pending) dropped++;
+          if (pending) discard(pending);
           pending = p;
         } else {
           decode(p);
@@ -211,12 +266,17 @@
     let codec = '';
     let size = '';
     let waitingForKey = true;
+    let submitted = 0;
+    let output = 0;
 
     function onFrame(frame) {
       try {
         setCanvasSize(frame.displayWidth, frame.displayHeight);
         ctx.drawImage(frame, 0, 0);
         framesDrawn++;
+        output++;
+        noteDrawn(frame.timestamp / 1000);
+        ack(frame.timestamp);
         showMessage('');
       } finally {
         frame.close(); // forgetting this leaks GPU memory and freezes the page
@@ -234,6 +294,8 @@
     function create() {
       closeDecoder();
       waitingForKey = true;
+      submitted = 0;
+      output = 0;
       const mine = new VideoDecoder({
         output: onFrame,
         error: function (e) {
@@ -252,12 +314,15 @@
       } catch (e) {
         dec = null;
       }
-      send({ t: 'kf' });
+      askKeyframe();
     }
 
     return {
       type: TYPE_H264,
       droppable: false,
+      isWaiting: function () { return waitingForKey; },
+      decodeQueue: function () { return dec ? dec.decodeQueueSize : 0; },
+      inDecoder: function () { return Math.max(0, submitted - output); },
       start: function (h, resync) {
         const changed = !dec || h.codec !== codec || size !== h.width + 'x' + h.height;
         codec = h.codec;
@@ -273,17 +338,20 @@
       submit: function (p) {
         if (!dec) return;
         if (waitingForKey && !p.key) {
-          dropped++;
+          discard(p);
           return;
         }
         if (dec.decodeQueueSize > MAX_DECODE_QUEUE) {
-          // Overloaded: skip to the next keyframe.
-          dropped++;
-          waitingForKey = true;
-          send({ t: 'kf' });
+          // Overloaded (slow or throttled browser): throw away what the decoder still holds, so the
+          // backlog is gone at once, and continue at the next keyframe.
+          discard(p);
+          skipped++;
+          try { create(); } catch (e) { dec = null; return; }
+          askKeyframe();
           return;
         }
         if (p.key) waitingForKey = false;
+        submitted++;
         try {
           dec.decode(new EncodedVideoChunk({
             type: p.key ? 'key' : 'delta',
@@ -349,23 +417,49 @@
     if (decoder && baseMs !== null) {
       const now = performance.now();
       const interval = frameIntervalMs();
+      const lateLimit = interval * LATE_SKIP_INTERVALS;
       while (queue.length > 0) {
         const p = queue[0];
         if (p.type !== decoder.type) {
           // Leftover of a mode change.
-          queue.shift();
-          dropped++;
+          discard(queue.shift());
           continue;
         }
         const due = dueTime(p);
         if (due > now) break;
-        queue.shift();
-        // Drop only when genuinely late: more than one frame interval past due and a newer one is due too.
-        if (decoder.droppable && now - due > interval && queue.length > 0 &&
-            queue[0].type === p.type && dueTime(queue[0]) <= now) {
-          dropped++;
+        if (decoder.droppable) {
+          queue.shift();
+          // JPEG: skip a frame that is more than 2 intervals late when a newer one is due as well.
+          if (now - due > lateLimit && queue.length > 0 &&
+              queue[0].type === p.type && dueTime(queue[0]) <= now) {
+            skipped++;
+            discard(p);
+            continue;
+          }
+          decoder.submit(p);
           continue;
         }
+        // H.264: deltas cannot be skipped one by one, only a whole GOP: jump to the newest keyframe
+        // waiting (or, if none is waiting, drop everything and ask for one).
+        if (now - due > lateLimit && now >= skipHoldoffUntil && !decoder.isWaiting()) {
+          skipHoldoffUntil = now + SKIP_HOLDOFF_MS;
+          skipped++;
+          let k = -1;
+          for (let i = queue.length - 1; i >= 0; i--) {
+            if (queue[i].type === p.type && queue[i].key) { k = i; break; }
+          }
+          if (k < 0) {
+            dropped += queue.length;
+            ack(queue[queue.length - 1].raw);
+            queue = [];
+            decoder.resync();
+            askKeyframe();
+            break;
+          }
+          for (let i = 0; i < k; i++) discard(queue.shift());
+          continue; // the keyframe is now the head; the hold-off lets it through
+        }
+        queue.shift();
         decoder.submit(p);
       }
     }
@@ -393,11 +487,16 @@
       type: type,
       key: (view.getUint8(1) & 1) !== 0,
       pts: ptsMs,
+      raw: hi * 4294967296 + lo,
       data: new Uint8Array(buf, HEADER)
     });
-    while (queue.length > MAX_QUEUE) {
-      queue.shift();
-      dropped++;
+    if (queue.length > MAX_QUEUE) {
+      // Hard limit. H.264 cannot continue after a gap: drop all and resume at a keyframe.
+      ack(queue[queue.length - 1].raw);
+      dropped += queue.length;
+      queue = [];
+      if (decoder) decoder.resync();
+      askKeyframe();
     }
     if (queue.length === 1) schedulePump(dueTime(queue[0]) - performance.now());
   }
@@ -408,6 +507,9 @@
     if (m.t === 'hello') {
       hello = m;
       chooseDecoder(m);
+    } else if (m.t === 'ping') {
+      serverInFlight = m.inFlight | 0;
+      serverPending = m.pending | 0;
     } else if (m.t === 'denied') {
       setStatus('Denied: ' + m.reason);
       showMessage('Access denied (' + m.reason + ')');
@@ -492,9 +594,23 @@
   }
 
   // ---- stats ----
+  function decodeQueueSize() {
+    return decoder && decoder.decodeQueue ? decoder.decodeQueue() : 0;
+  }
+
+  function inDecoderCount() {
+    return decoder && decoder.inDecoder ? decoder.inDecoder() : 0;
+  }
+
+  let lastLateAvg = 0;
+  let lastLateMax = 0;
+  let lastNetLate = 0;
+
   function updateStats() {
     const lines = [];
-    lines.push('fps ' + fps.toFixed(1) + '   dropped ' + dropped + '   queue ' + queue.length);
+    lines.push('fps ' + fps.toFixed(1) + '   dropped ' + dropped + '   skipped ' + skipped);
+    lines.push('late ' + Math.round(lastLateAvg) + ' ms (max ' + Math.round(lastLateMax) + ')   net ' + Math.round(lastNetLate) + ' ms');
+    lines.push('queue ' + queue.length + '   decoder ' + inDecoderCount() + ' (queue ' + decodeQueueSize() + ')   in flight ' + serverInFlight + ' (held ' + serverPending + ')');
     if (hello) {
       lines.push(hello.width + 'x' + hello.height + '   mode ' + hello.mode + '   audio ' + hello.audio);
     }
@@ -508,13 +624,26 @@
     }
     lastStatsAt = now;
     framesAtLastStats = framesDrawn;
+    if (lateCount > 0) {
+      lastLateAvg = lateSum / lateCount;
+      lastLateMax = lateMax;
+    }
+    if (netLateCount > 0) lastNetLate = netLateSum / netLateCount;
+    lateSum = 0; lateMax = 0; lateCount = 0; netLateSum = 0; netLateCount = 0;
     updateStats();
     send({
       t: 'stats',
       fps: Math.round(fps * 10) / 10,
       queue: queue.length,
       dropped: dropped,
+      skipped: skipped,
       bufferMs: BUFFER_MS + offsetMs,
+      lateMs: Math.round(lastLateAvg),
+      lateMaxMs: Math.round(lastLateMax),
+      netLateMs: Math.round(lastNetLate),
+      decodeQueue: decodeQueueSize(),
+      inDecoder: inDecoderCount(),
+      srvInFlight: serverInFlight,
       ua: navigator.userAgent
     });
   }
@@ -560,7 +689,7 @@
     if (!document.hidden) {
       flushQueue(); // the queue may hold stale packets after a long hidden period
       if (decoder) decoder.resync();
-      send({ t: 'kf' });
+      askKeyframe();
     }
   });
 

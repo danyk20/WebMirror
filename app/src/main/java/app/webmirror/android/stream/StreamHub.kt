@@ -189,6 +189,12 @@ class StreamHub(
         recomputeMode()
     }
 
+    /** Length of one frame of the current stream in ms (33 when unknown). */
+    fun frameIntervalMs(): Long {
+        val fps = synchronized(lock) { info.fps }
+        return if (fps > 0) 1000L / fps else 33L
+    }
+
     /** Closes and unregisters every sink that has been silent for longer than [maxIdleMs]. */
     fun sweepIdle(maxIdleMs: Long) {
         for (s in sinks) {
