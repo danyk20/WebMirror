@@ -145,7 +145,7 @@ class ScreenCapture(
         if (mode == StreamHub.MODE_H264) {
             H264Encoder(s.width, s.height, preset.fps, preset.h264Bitrate, hub)
         } else {
-            JpegEncoder(s.width, s.height, preset.fps, preset.jpegQuality, hub)
+            JpegEncoder(s.width, s.height, preset.jpegFps, preset.jpegQuality, hub)
         }
 
     /** A device without a usable H.264 encoder falls back to JPEG instead of failing the capture. */
@@ -165,7 +165,7 @@ class ScreenCapture(
      */
     private fun publish() {
         if (mode == StreamHub.MODE_H264) return
-        hub.update { it.copy(mode = StreamHub.MODE_JPEG, codec = "", width = size.width, height = size.height, fps = preset.fps) }
+        hub.update { it.copy(mode = StreamHub.MODE_JPEG, codec = "", width = size.width, height = size.height, fps = preset.jpegFps) }
     }
 
     private fun targetSize(): CaptureSize.Size {

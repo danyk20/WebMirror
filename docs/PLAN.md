@@ -91,8 +91,8 @@ Every page implements both decoders and follows the `mode` in the latest `hello`
 ### 2.3 Quality presets (starting values, tuned after car test M3)
 | Preset | Longest side of the image | Max fps | H.264 bitrate | JPEG quality |
 |---|---|---|---|---|
-| Sharper | 1920 px | 15 | 6 Mbit/s | 80 |
-| Smoother | 1280 px | 30 | 4 Mbit/s | 65 |
+| Sharper | 1920 px | 15 | 6 Mbit/s | 70 |
+| Smoother | 1280 px | 30 (JPEG: 20) | 4 Mbit/s | 50 |
 
 Size rule: scale the real screen size so the longest side equals the preset value (never upscale), keep aspect ratio, round each side **down to a multiple of 8**.
 

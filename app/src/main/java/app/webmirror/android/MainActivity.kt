@@ -340,7 +340,7 @@ private fun QualitySection(settings: Settings, onChanged: () -> Unit) {
     SectionTitle("Quality")
     Column(Modifier.selectableGroup()) {
         for (p in Preset.entries) {
-            ChoiceRow("${p.label} (longest side ${p.maxLongSide} px, ${p.fps} fps)", selected == p, true) {
+            ChoiceRow("${p.label} (longest side ${p.maxLongSide} px, ${p.fps} fps, JPEG ${p.jpegFps} fps)", selected == p, true) {
                 selected = p
                 settings.preset = p
                 onChanged()
