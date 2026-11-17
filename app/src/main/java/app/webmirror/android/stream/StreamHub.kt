@@ -189,6 +189,11 @@ class StreamHub(
         recomputeMode()
     }
 
+    /** Sends the liveness ping to every viewer (the page reconnects when it hears nothing for 3 s). */
+    fun pingAll() {
+        for (s in sinks) s.onPing()
+    }
+
     /** Length of one frame of the current stream in ms (33 when unknown). */
     fun frameIntervalMs(): Long {
         val fps = synchronized(lock) { info.fps }

@@ -10,6 +10,8 @@
   const LATE_SKIP_INTERVALS = 2;   // a frame later than this many frame intervals is skipped
   const SKIP_HOLDOFF_MS = 1000;    // after a skip, do not skip again for this long (no skip spiral)
   const KF_MIN_INTERVAL_MS = 500;  // at most one keyframe request per this time
+  const DEAD_MS = 3000;            // nothing received (not even the server ping) for this long = dead link
+  const WATCHDOG_MS = 500;
   const STATS_INTERVAL_MS = 2000;  // also the keep-alive (server drops viewers silent for 10 s)
   const RECONNECT_MS = 1000;
   const MAX_PUMP_MS = 50;          // longest wait between two pump runs
@@ -53,6 +55,7 @@
   let h264Supported = false;      // VideoDecoder exists and isConfigSupported said yes
   let h264Check = null;           // promise of that check, run once
   let paused = false;             // latest hello said mode "paused"
+  let lastRxAt = 0;               // when anything was last received on the socket
   let lastKfAt = -100000;         // when a keyframe was last requested
   let skipHoldoffUntil = 0;
   let serverInFlight = 0;         // from the server's ping: frames sent to this viewer, not yet acknowledged
@@ -561,6 +564,7 @@
     }, CONNECT_TIMEOUT_MS);
     socket.onopen = function () {
       if (ws !== socket) return;
+      lastRxAt = performance.now();
       clearTimeout(connectTimer);
       setStatus('Waiting for the stream…');
       checkH264().then(function (ok) {
@@ -569,6 +573,7 @@
     };
     socket.onmessage = function (ev) {
       if (ws !== socket) return;
+      lastRxAt = performance.now();
       if (typeof ev.data === 'string') onText(ev.data);
       else onBinary(ev.data);
     };
@@ -587,6 +592,16 @@
     setStatus('Reconnecting…');
     showMessage('Reconnecting…');
     scheduleReconnect();
+  }
+
+  // Dead-connection watchdog: the server pings every second, so 3 s of silence means the link is gone
+  // (e.g. the car dropped Wi-Fi). The old socket may never report it, so it is abandoned right here.
+  function watchdog() {
+    if (ws && ws.readyState === 1 && performance.now() - lastRxAt > DEAD_MS) {
+      const dead = ws;
+      try { dead.close(); } catch (e) { /* ignore */ }
+      onClosed(dead);
+    }
   }
 
   function scheduleReconnect() {
@@ -697,6 +712,7 @@
   setDelay(loadDelay());
   layout();
   setInterval(sendStats, STATS_INTERVAL_MS);
+  setInterval(watchdog, WATCHDOG_MS);
   schedulePump(0);
   window.requestAnimationFrame(rafTick);
   connect();

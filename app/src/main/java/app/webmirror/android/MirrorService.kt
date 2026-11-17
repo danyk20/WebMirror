@@ -375,6 +375,13 @@ class MirrorService : Service() {
                     Log.w(TAG, "sweep failed: $e")
                 }
             }, 2, 2, TimeUnit.SECONDS)
+            ex.scheduleWithFixedDelay({
+                try {
+                    hub.pingAll()
+                } catch (e: Exception) {
+                    Log.w(TAG, "ping failed: $e")
+                }
+            }, 1, 1, TimeUnit.SECONDS)
             // Also catches changes that send no network callback, e.g. the hotspot being toggled.
             ex.scheduleWithFixedDelay({
                 try {
