@@ -2,7 +2,7 @@
 
 <h1 align="center">WebMirror</h1>
 
-<p align="center">Mirror your Android phone's screen to the browser in your car, with no app on the car side.</p>
+<p align="center"><b>Mirror your Android phone screen to your Tesla.</b><br>Wireless screen sharing from Android to any web browser, optimised for the Tesla in-car browser. No app, cable or account needed in the car.</p>
 
 [![CI](https://github.com/danyk20/WebMirror/actions/workflows/ci.yml/badge.svg)](https://github.com/danyk20/WebMirror/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/danyk20/WebMirror?sort=semver)](https://github.com/danyk20/WebMirror/releases/latest)
@@ -15,7 +15,9 @@
   <img src="docs/images/help.png" width="250" alt="WebMirror help page">
 </p>
 
-WebMirror turns your phone into a small web server. The car (or any device) joins the phone's hotspot and opens a web address. The phone's screen appears in the browser. It was built for the Tesla browser but works in any modern browser.
+WebMirror shares your Android phone's screen, with sound, to any web browser over Wi-Fi. It is optimised for the **Tesla browser**, so passengers can watch and control the phone on the Tesla touchscreen: videos, navigation apps, photos or anything else on the phone.
+
+How it works in one sentence: the phone turns on its Wi-Fi hotspot, the Tesla joins it, and the Tesla browser opens the address shown in the app. It also works with any other device with a modern browser, such as a laptop, tablet or TV.
 
 ## Features
 
@@ -77,11 +79,7 @@ The in-app **Help** page covers every setting and common problems.
 
 The phone captures its screen with Android's screen capture, encodes it with a hardware video encoder and serves it over HTTP or HTTPS with WebSockets. The browser page decodes the video with WebCodecs and draws it. A virtual address on the phone lets the car reach it even though browsers in the car refuse ordinary local addresses. Sound is captured on the phone and played by the page, which keeps picture and sound in sync. Touches from the car go back over the same connection and are injected through an accessibility service.
 
-```mermaid
-flowchart LR
-    A[Phone<br/>WebMirror server] -- "Wi-Fi hotspot<br/>video, sound" --> B[Car browser]
-    B -- "touch events" --> A
-```
+<p align="center"><img src="docs/images/how-it-works.svg" width="720" alt="The Android phone runs WebMirror and sends screen video and sound over its Wi-Fi hotspot to the Tesla browser; touches go back to the phone"></p>
 
 The wire protocol and architecture are described in [docs/development/PLAN.md](docs/development/PLAN.md).
 
@@ -111,6 +109,32 @@ See [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md).
 ## Safety notice
 
 WebMirror is for passengers. The driver must never watch or operate the mirrored screen while driving. Follow the traffic laws of your country.
+
+## FAQ
+
+**How do I mirror my Android phone to my Tesla?**
+Install WebMirror on the phone, turn on the phone's hotspot and connect the Tesla to it (turn on "Remain connected in Drive"). Tap Start in WebMirror and open the address it shows in the Tesla browser. See [Quick start](#quick-start).
+
+**Does it need an app on the Tesla, a cable or an adapter?**
+No. The Tesla uses its built-in browser. Nothing is installed in the car, and no extra hardware is needed.
+
+**Which Tesla models work?**
+Any Tesla whose browser supports modern video decoding (WebCodecs). It was developed and tested on a Model S with MCU2. MCU3 cars (Model 3, Y, S and X with the AMD Ryzen computer) have a faster browser and should work as well.
+
+**Does it work with Android Auto or Apple CarPlay apps?**
+WebMirror is not Android Auto or CarPlay. It shows the whole phone screen, so any app you open on the phone appears on the Tesla screen.
+
+**Is there sound?**
+Yes. Sound can play through the Tesla browser in sync with the picture, or over Bluetooth with an adjustable delay.
+
+**Can I use the Tesla touchscreen to control the phone?**
+Yes, if you allow it. Taps, swipes and pinch zoom on the Tesla screen are sent to the phone.
+
+**Does it work with an iPhone?**
+No. WebMirror is an Android app (Android 10 or newer).
+
+**Can I watch while driving?**
+WebMirror is for passengers. The driver must not watch the screen while driving. Follow the traffic laws of your country.
 
 ## Building from source
 

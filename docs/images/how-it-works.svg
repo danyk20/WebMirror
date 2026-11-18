@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 280" width="800" height="280" role="img" aria-labelledby="t d">
+  <title id="t">How WebMirror works</title>
+  <desc id="d">The Android phone runs WebMirror. Over the phone's Wi-Fi hotspot it sends screen video and sound to the Tesla browser; touches from the Tesla screen go back to the phone.</desc>
+  <style>
+    text { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    .title { font-size: 20px; font-weight: 600; fill: #10213F; }
+    .sub { font-size: 14px; fill: #4A5A75; }
+    .label { font-size: 15px; font-weight: 600; fill: #10213F; }
+    .note { font-size: 13px; fill: #4A5A75; }
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1E4FD8"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0F7B6C"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="800" height="280" rx="16" fill="#F5F8FD" stroke="#D5DEEC"/>
+
+  <!-- Phone -->
+  <rect x="40" y="40" width="200" height="200" rx="14" fill="#FFFFFF" stroke="#B9C7DE"/>
+  <rect x="117" y="62" width="46" height="80" rx="9" fill="none" stroke="#1E4FD8" stroke-width="5"/>
+  <rect x="133" y="130" width="14" height="4" rx="2" fill="#1E4FD8"/>
+  <path d="M171,88 a12,12 0 0 1 0,24" fill="none" stroke="#7FA6F0" stroke-width="4.5" stroke-linecap="round"/>
+  <path d="M178,79 a24,24 0 0 1 0,42" fill="none" stroke="#1E4FD8" stroke-width="4.5" stroke-linecap="round"/>
+  <text x="140" y="180" text-anchor="middle" class="title">Android phone</text>
+  <text x="140" y="204" text-anchor="middle" class="sub">WebMirror app</text>
+  <text x="140" y="222" text-anchor="middle" class="sub">(the web server)</text>
+
+  <!-- Car -->
+  <rect x="560" y="40" width="200" height="200" rx="14" fill="#FFFFFF" stroke="#B9C7DE"/>
+  <rect x="595" y="66" width="130" height="80" rx="8" fill="#10213F"/>
+  <rect x="603" y="74" width="114" height="64" rx="4" fill="#2C4E8F"/>
+  <rect x="648" y="82" width="24" height="48" rx="5" fill="none" stroke="#FFFFFF" stroke-width="3"/>
+  <text x="660" y="180" text-anchor="middle" class="title">Tesla screen</text>
+  <text x="660" y="204" text-anchor="middle" class="sub">built-in web browser</text>
+  <text x="660" y="222" text-anchor="middle" class="sub">(or any browser)</text>
+
+  <!-- Hotspot -->
+  <text x="400" y="62" text-anchor="middle" class="note">over the phone's Wi-Fi hotspot</text>
+
+  <!-- Video + sound -->
+  <line x1="252" y1="110" x2="546" y2="110" stroke="#1E4FD8" stroke-width="4" marker-end="url(#ah)"/>
+  <text x="400" y="98" text-anchor="middle" class="label">Screen video + sound</text>
+
+  <!-- Touch -->
+  <line x1="548" y1="172" x2="254" y2="172" stroke="#0F7B6C" stroke-width="4" stroke-dasharray="10 7" marker-end="url(#ag)"/>
+  <text x="400" y="160" text-anchor="middle" class="label">Touches (optional)</text>
+  <text x="400" y="200" text-anchor="middle" class="note">No app, cable or account needed in the car</text>
+</svg>
