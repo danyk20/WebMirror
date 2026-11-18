@@ -16,7 +16,7 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         // TODO: replace with the real GitHub "owner/repo" once the repository exists (404 is treated as "no update information").
-        buildConfigField("String", "UPDATE_REPO", "\"OWNER/WebMirror\"")
+        buildConfigField("String", "UPDATE_REPO", "\"danyk20/WebMirror\"")
     }
 
     flavorDimensions += "store"
