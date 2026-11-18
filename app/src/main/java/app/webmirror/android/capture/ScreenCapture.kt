@@ -17,6 +17,8 @@ import app.webmirror.android.stream.BitrateController
 import app.webmirror.android.stream.FpsGovernor
 import app.webmirror.android.stream.StreamConfig
 import app.webmirror.android.stream.StreamHub
+import app.webmirror.android.stream.ThermalMonitor
+import app.webmirror.android.stream.ThermalPolicy
 
 /**
  * Owns the one VirtualDisplay of a MediaProjection (Android 14+ allows only one per projection, so it is
@@ -53,6 +55,17 @@ class ScreenCapture(
     private val governor = FpsGovernor()
     private var lastGovernorMs = 0L
 
+    /**
+     * Heat protection (always on): the phone's thermal status caps the frame rate and the bitrate ceiling. Evaluated in [thermalTick]
+     * every [BitrateController.TICK_MS]; effective fps = min(preset/governor fps, cap), ceiling = min(existing ceiling, cap).
+     */
+    private val thermalMonitor = ThermalMonitor(appContext)
+    private val thermal = ThermalPolicy()
+    private var governorPaused = false
+
+    /** The frame rate the running video encoder was built with. */
+    private var encoderFps = 0
+
     private var preset = initialPreset
     private var config = initialConfig
     private var virtualDisplay: VirtualDisplay? = null
@@ -78,6 +91,9 @@ class ScreenCapture(
         check(virtualDisplay == null && !released) { "already started" }
         size = targetSize()
         governor.configure(preset.fps, System.nanoTime() / 1_000_000)
+        thermalMonitor.start()
+        thermalMonitor.poll(System.nanoTime() / 1_000_000)
+        thermal.update(thermalMonitor.status, thermalMonitor.headroom, System.nanoTime() / 1_000_000)?.let { Log.i(TAG, "thermal: ${it.reason}") }
         updatePhone(size)
         CodecSupport.logOnce(size.width, size.height, preset.fps)
         mode = hub.wantedMode()
@@ -154,6 +170,7 @@ class ScreenCapture(
         hub.modeRequester = null
         hub.keyframeRequester = null
         hub.viewListener = null
+        thermalMonitor.stop()
         try {
             displayManager.unregisterDisplayListener(displayListener)
         } catch (e: Exception) {
@@ -206,12 +223,15 @@ class ScreenCapture(
             val enc = hub.encoderFor(mode) ?: throw IllegalStateException("the phone has no usable $mode encoder")
             governor.holdOff(System.nanoTime() / 1_000_000) // a new encoder: no verdict on the viewer for a few seconds
             hub.fpsFallback = governor.inFallback
-            val e = VideoEncoder(s.width, s.height, governor.effectiveFps, controller.value, hub, config, mode, enc.first, enc.second) { setBaseReport(it) }
+            hub.fpsLimit = thermalLabel()
+            encoderFps = effectiveFps()
+            val e = VideoEncoder(s.width, s.height, encoderFps, controller.value, hub, config, mode, enc.first, enc.second) { setBaseReport(it) }
             activeEncoder = enc.first
             e
         } else {
             activeEncoder = null
             hub.fpsFallback = false
+            hub.fpsLimit = ""
             resetController()
             setBaseReport("JPEG ${s.width}x${s.height} @${preset.jpegFps} fps, quality ${preset.jpegQuality}\n(H.264 encoder options do not apply in JPEG mode)")
             JpegEncoder(s.width, s.height, preset.jpegFps, controller.value, hub)
@@ -220,10 +240,42 @@ class ScreenCapture(
     /** Floor and ceiling of the adaptive target for the current mode: bit/s for H.264, quality for JPEG. */
     private fun limits(): Pair<Int, Int> =
         if (StreamHub.isVideoMode(mode)) {
-            Pair(config.minBitrateKbps * 1000, preset.bitrateAt(governor.effectiveFps))
+            Pair(config.minBitrateKbps * 1000, bitrateCeiling())
         } else {
             Pair(BitrateController.MIN_JPEG_QUALITY, preset.jpegQuality)
         }
+
+    /** The frame rate now: the preset's or the governor's, capped by heat protection. */
+    private fun effectiveFps(): Int = thermal.limit.capFps(governor.effectiveFps)
+
+    /** The bitrate ceiling now (video): the preset's at the governor's rate, capped by heat protection. */
+    private fun bitrateCeiling(): Int = thermal.limit.capBitrate(preset.bitrateAt(effectiveFps()))
+
+    /** True while heat protection really lowers something (it does nothing to a 30 fps preset at a 30 fps cap and no bitrate cap). */
+    private fun thermalLimiting(): Boolean {
+        val l = thermal.limit
+        return l.active && (l.maxFps < governor.effectiveFps || l.maxBitrate < preset.bitrateAt(governor.effectiveFps))
+    }
+
+    private fun thermalLabel(): String = if (StreamHub.isVideoMode(mode) && thermalLimiting()) StreamHub.FPS_LIMIT_HOT else ""
+
+    /** Reads the thermal state and applies a changed limit: a new frame rate rebuilds the encoder, a bitrate-only change is live. */
+    private fun thermalTick(now: Long) {
+        thermalMonitor.poll(now)
+        val change = thermal.update(thermalMonitor.status, thermalMonitor.headroom, now) ?: return
+        Log.i(TAG, "thermal: ${change.reason}")
+        if (!StreamHub.isVideoMode(mode)) return
+        if (effectiveFps() != encoderFps) {
+            applyChange(forceEncoder = true) // same path as the governor: one new encoder, one keyframe
+            return
+        }
+        val enc = encoder ?: return
+        resetController()
+        enc.setTarget(controller.value)
+        val label = thermalLabel()
+        hub.fpsLimit = label
+        hub.update { it.copy(fpsLimit = label) }
+    }
 
     /** The target goes back to the preset's value (new encoder, new limits, adaptive switched). */
     private fun resetController() {
@@ -254,17 +306,29 @@ class ScreenCapture(
     private fun emitReport() {
         val text = synchronized(reportLock) {
             val base = baseReport ?: return
+            val hot = if (thermalLimiting()) "\nheat protection: ${thermalStatusText()}, max ${thermal.limit.maxFps} fps" + (if (thermal.limit.maxBitrate < Int.MAX_VALUE) ", max ${thermal.limit.maxBitrate / 1000} kbps" else "") else ""
             val fallback = if (governor.inFallback) "\nfps: ${governor.effectiveFps} (automatic fallback from ${preset.fps}; ${preset.fps} fps is retried after ${governor.currentWaitMs / 1000} s)" else ""
-            "$base$fallback\ntarget: ${hub.targetText}" + if (config.adaptiveBitrate) " (adaptive, floor ${controller.floor / (if (StreamHub.isVideoMode(mode)) 1000 else 1)})" else ""
+            "$base$fallback$hot\ntarget: ${hub.targetText}" + if (config.adaptiveBitrate) " (adaptive, floor ${controller.floor / (if (StreamHub.isVideoMode(mode)) 1000 else 1)})" else ""
         }
         onEncoderReport(text)
     }
+
+    private fun thermalStatusText(): String = "phone thermal status ${ThermalPolicy.statusName(thermalMonitor.status)}"
 
     private var lastViewers = 0
 
     /** Judges the viewers' stats once per [FpsGovernor.WINDOW_MS]; a decision rebuilds the encoder at the new rate. */
     private fun governorTick(now: Long) {
         if (!governor.enabled || !StreamHub.isVideoMode(mode) || now - lastGovernorMs < FpsGovernor.WINDOW_MS) return
+        // Heat protection holds the rate below the preset's: the low rate says nothing about the viewer, so the governor rests.
+        if (thermal.limit.maxFps < preset.fps) {
+            governorPaused = true
+            return
+        }
+        if (governorPaused) {
+            governorPaused = false
+            governor.holdOff(now)
+        }
         lastGovernorMs = now
         val change = governor.onWindow(now, hub.metrics.encodedFrames.get(), hub.fpsSignals(now)) ?: return
         Log.i(TAG, "fps governor: ${change.fps} fps, ${change.reason}")
@@ -276,6 +340,7 @@ class ScreenCapture(
             if (released) return
             try {
                 synchronized(this@ScreenCapture) {
+                    thermalTick(System.nanoTime() / 1_000_000)
                     governorTick(System.nanoTime() / 1_000_000)
                     val enc = encoder
                     if (config.adaptiveBitrate && enc != null && !released) {
@@ -332,7 +397,7 @@ class ScreenCapture(
      */
     private fun publish() {
         if (StreamHub.isVideoMode(mode)) return
-        hub.update { it.copy(mode = StreamHub.MODE_JPEG, codec = "", encoder = "", hardware = null, why = hub.whyFor(StreamHub.MODE_JPEG), width = size.width, height = size.height, fps = preset.jpegFps, fpsFallback = false) }
+        hub.update { it.copy(mode = StreamHub.MODE_JPEG, codec = "", encoder = "", hardware = null, why = hub.whyFor(StreamHub.MODE_JPEG), width = size.width, height = size.height, fps = preset.jpegFps, fpsFallback = false, fpsLimit = "") }
     }
 
     private fun targetSize(): CaptureSize.Size {

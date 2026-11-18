@@ -26,7 +26,7 @@ You can expect a first reply within a few days. Fixes are released as soon as th
 In scope:
 
 - **PIN pairing:** bypassing or guessing the PIN, or reading a paired viewer's credential.
-- **Remote control:** any way for an unpaired or unauthorized client to inject touches, or for the accessibility service to read screen content.
+- **Remote control:** any way for an unpaired or unauthorized client to inject touches, or for the accessibility service to read screen content (it may read only whether a text field has focus and its kind, and only in Tesla keyboard mode), or for an unauthorized client to type into the phone.
 - **TLS and certificates:** weaknesses in the HTTPS server, in certificate issuing and renewal, or in the storage of the DuckDNS token and the account key.
 - **The local web server:** access to the screen, sound or files without pairing.
 - **Updates:** a way to make the GitHub version install a file that was not signed by the release key.

@@ -65,6 +65,11 @@ class Settings internal constructor(private val prefs: SharedPreferences) {
         get() = prefs.getBoolean(KEY_REMOTE_CONTROL, DEFAULT_REMOTE_CONTROL)
         set(value) = prefs.edit().putBoolean(KEY_REMOTE_CONTROL, value).apply()
 
+    /** Which keyboard types for the car (plan 2.1.5): the phone's (default) or the car browser's own. Applies live. */
+    var typingKeyboard: TypingKeyboard
+        get() = TypingKeyboard.fromKey(prefs.getString(KEY_TYPING_KEYBOARD, null))
+        set(value) = prefs.edit().putString(KEY_TYPING_KEYBOARD, value.key).apply()
+
     /** "Require pairing PIN" (plan 2.1.4): persisted, default ON, also for installs that never saw the setting. */
     var pairingRequired: Boolean
         get() = prefs.getBoolean(KEY_PAIRING_REQUIRED, DEFAULT_PAIRING_REQUIRED)
@@ -169,6 +174,7 @@ class Settings internal constructor(private val prefs: SharedPreferences) {
         private const val KEY_STREAM_CONFIG = "streamConfig"
         private const val KEY_KEEP_SCREEN_ON = "keepScreenOn"
         private const val KEY_REMOTE_CONTROL = "remoteControlAllowed"
+        private const val KEY_TYPING_KEYBOARD = "typingKeyboard"
         const val DEFAULT_REMOTE_CONTROL = true
         private const val KEY_PAIRING_REQUIRED = "pairingRequired"
         const val DEFAULT_PAIRING_REQUIRED = true
@@ -216,5 +222,16 @@ enum class CaptureSource(val key: String, val label: String) {
 
     companion object {
         fun fromKey(key: String?): CaptureSource = entries.firstOrNull { it.key == key } ?: ENTIRE_SCREEN
+    }
+}
+
+/** Keyboard for typing from the car (plan 2.1.5). [key] is stored and is the value of `hello.control.kbd`. */
+enum class TypingKeyboard(val key: String, val label: String, val explanation: String) {
+    PHONE("phone", "Phone keyboard", "The phone's keyboard appears in the mirrored picture and you tap its keys on the car screen."),
+    TESLA("tesla", "Tesla keyboard", "The car browser's own keyboard opens when you tap a text field. The phone's keyboard stays hidden.");
+
+    companion object {
+        /** Unknown values fall back to the phone keyboard. */
+        fun fromKey(key: String?): TypingKeyboard = entries.firstOrNull { it.key == key } ?: PHONE
     }
 }

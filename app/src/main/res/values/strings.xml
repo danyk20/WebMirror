@@ -6,5 +6,5 @@
     <string name="notification_paused">Paused - open WebMirror and tap Start</string>
     <string name="notification_stop">Stop</string>
     <string name="remote_input_service_label">WebMirror remote control</string>
-    <string name="remote_input_description">WebMirror uses this only to perform the touches (taps, swipes, pinch) that are sent from a WebMirror viewer, for example the car screen, while \"Allow control from viewers\" is switched on in the WebMirror app. It does not read the screen or any text, and it does not watch what you do.</string>
+    <string name="remote_input_description">WebMirror uses this only to perform the touches (taps, swipes, pinch) that are sent from a WebMirror viewer, for example the car screen, while \"Allow control from viewers\" is switched on in the WebMirror app. It does not read the screen or any text. Only if you choose \"Tesla keyboard\" in the app, on Android 13 or newer, it also learns whether a text field is selected and what kind of field it is (for example text or number), never what is typed in it, so the car\'s keyboard can open.</string>
 </resources>

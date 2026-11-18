@@ -30,6 +30,7 @@ check('decode queue limit: 3 up to 30 fps, 6 at 60 fps, 3 when the rate is unkno
 check('overlay text shows the effective rate and the fallback', function () {
   assert.strictEqual(L.streamFpsText({ fps: 60 }), ' @60 fps');
   assert.strictEqual(L.streamFpsText({ fps: 30, fpsFallback: true }), ' @30 fps (fallback)');
+  assert.strictEqual(L.streamFpsText({ fps: 30, fpsLimit: 'hot' }), ' @30 fps (phone hot)');
   assert.strictEqual(L.streamFpsText({ fps: 0 }), '');
   assert.strictEqual(L.streamFpsText(null), '');
 });

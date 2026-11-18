@@ -3,6 +3,9 @@ package app.webmirror.android.stream
 import app.webmirror.android.input.ControlArbiter
 import app.webmirror.android.input.InputEvent
 import app.webmirror.android.input.InputSink
+import app.webmirror.android.input.KbdState
+import app.webmirror.android.input.Typing
+import app.webmirror.android.input.TypingKey
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
@@ -41,6 +44,8 @@ class StreamHub(
         val fps: Int = 0,
         /** True while [fps] is the automatic 30 fps fallback of a 60 fps preset (`FpsGovernor`). */
         val fpsFallback: Boolean = false,
+        /** Why the picture is limited besides the fallback: "hot" while heat protection lowers the rate or quality (`ThermalPolicy`), else "". */
+        val fpsLimit: String = "",
         /** Audio mode key (`hello.audio.mode`): "bluetooth", "browser" or "off". */
         val audio: String = "off",
         /** Browser audio only: "opus" or "pcm" as chosen for the viewers ("" = none) and the [AudioProfile] key (`hello.audio.profile`). */
@@ -53,9 +58,12 @@ class StreamHub(
         val controlReady: Boolean = false,
         /** Some viewer owns the control right now (`hello.control.ownerPresent`), so others need not ask. */
         val controlOwnerPresent: Boolean = false,
+        /** Typing (plan 2.1.5): the user chose the Tesla keyboard / that choice cannot work here (Android older than 13). */
+        val kbdTesla: Boolean = false,
+        val kbdUnsupported: Boolean = false,
     ) {
-        /** "60 fps" or "30 fps (fallback)": the rate the stream really has, for the app and the page. */
-        val fpsText: String get() = if (fpsFallback) "$fps fps (fallback)" else "$fps fps"
+        /** "60 fps", "30 fps (fallback)" or "30 fps (phone hot)": the rate the stream really has, for the app and the page. */
+        val fpsText: String get() = if (fpsLimit == FPS_LIMIT_HOT) "$fps fps (phone hot)" else if (fpsFallback) "$fps fps (fallback)" else "$fps fps"
 
         /** `{"mode":"browser","codec":"opus","sampleRate":48000,"channels":2,"frameMs":20,"profile":"quality"}`; other modes only have `mode`. */
         private fun audioJson(): String =
@@ -67,8 +75,9 @@ class StreamHub(
             }
 
         fun toJson(): String {
-            val fallbackJson = if (fpsFallback) ",\"fpsFallback\":true" else ""
-            return """{"t":"hello","v":$PROTOCOL_VERSION,"mode":"$mode","codec":"$codec","why":${JsonText.quote(why)},"encoder":${JsonText.quote(encoder + if (hardware == true) " (hw)" else if (hardware == false) " (sw)" else "")},"width":$width,"height":$height,"fps":$fps$fallbackJson,"audio":${audioJson()},"cfg":$cfg,"control":{"allowed":$controlAllowed,"ready":$controlReady,"ownerPresent":$controlOwnerPresent}}"""
+            val kbdJson = (if (kbdTesla) ",\"kbd\":\"tesla\"" else "") + (if (kbdUnsupported) ",\"kbdUnsupported\":true" else "")
+            val fallbackJson = (if (fpsFallback) ",\"fpsFallback\":true" else "") + (if (fpsLimit.isNotEmpty()) ",\"fpsLimit\":${JsonText.quote(fpsLimit)}" else "")
+            return """{"t":"hello","v":$PROTOCOL_VERSION,"mode":"$mode","codec":"$codec","why":${JsonText.quote(why)},"encoder":${JsonText.quote(encoder + if (hardware == true) " (hw)" else if (hardware == false) " (sw)" else "")},"width":$width,"height":$height,"fps":$fps$fallbackJson,"audio":${audioJson()},"cfg":$cfg,"control":{"allowed":$controlAllowed,"ready":$controlReady,"ownerPresent":$controlOwnerPresent$kbdJson}}"""
         }
     }
 
@@ -108,10 +117,58 @@ class StreamHub(
                 ?.onText("""{"t":"control","on":false,"owner":false,"reason":"${dropped.second}"}""")
         }
         update { it.copy(controlAllowed = allowed, controlReady = ready, controlOwnerPresent = control.ownerId != null) }
+        syncTyping()
     }
 
     /** Ownership changed: viewers learn through `hello.control.ownerPresent` (no-op when unchanged). */
-    private fun syncOwner() = update { it.copy(controlOwnerPresent = control.ownerId != null) }
+    private fun syncOwner() {
+        update { it.copy(controlOwnerPresent = control.ownerId != null) }
+        syncTyping()
+    }
+
+    private var typingActive = false
+    private var typingOwner: Int? = null
+
+    /**
+     * Typing from the car (plan 2.1.5): the user's choice ([tesla]) and whether this Android can do it ([supported]).
+     * Viewers learn through `hello.control.kbd` / `kbdUnsupported`; the keyboard of the page goes away when the mode changes.
+     */
+    fun setTypingKeyboard(tesla: Boolean, supported: Boolean) {
+        update { it.copy(kbdTesla = tesla && supported, kbdUnsupported = tesla && !supported) }
+        syncTyping()
+    }
+
+    /** True while the Tesla keyboard is in effect (the choice and Android 13+). */
+    val teslaKeyboard: Boolean get() = synchronized(lock) { info.kbdTesla }
+
+    /** Starts / stops the service's text-focus watching and hides the keyboard of the page that had it when typing stops or moves on. */
+    @Synchronized
+    private fun syncTyping() {
+        val owner = control.ownerId
+        val active = Typing.active(teslaKeyboard, owner != null)
+        if (active == typingActive && (!active || owner == typingOwner)) return
+        val previous = typingOwner
+        if (typingActive && previous != null) sinks.firstOrNull { it.viewerId == previous }?.onText(KbdState.HIDDEN.toJson())
+        typingActive = active
+        typingOwner = if (active) owner else null
+        inputSink?.setTypingActive(active)
+    }
+
+    /** The service reported a text-focus change (kind of field only). Forwarded to the control owner while typing is active. */
+    fun kbdChanged(state: KbdState) {
+        val owner = synchronized(this) { if (typingActive) typingOwner else null } ?: return
+        sinks.firstOrNull { it.viewerId == owner }?.onText(state.toJson())
+    }
+
+    /** `{t:"type", text}` of viewer [viewerId], already validated; dropped unless it owns the control and typing is active. */
+    fun typeText(viewerId: Int, text: String) {
+        if (control.canInput(viewerId) && teslaKeyboard) inputSink?.typeText(text)
+    }
+
+    /** `{t:"key", key}` of viewer [viewerId], already parsed; same gates as [typeText]. */
+    fun pressKey(viewerId: Int, key: TypingKey) {
+        if (control.canInput(viewerId) && teslaKeyboard) inputSink?.pressKey(key)
+    }
 
     /** `{t:"control", on}` of [sink]; returns the answer to send back. */
     fun controlRequest(sink: StreamSink, on: Boolean): ControlArbiter.Reply {
@@ -290,7 +347,7 @@ class StreamHub(
     /** The video encoder has its parameter sets: announce the stream ([mode] h264 or hevc, with its codec string). */
     fun onVideoConfig(mode: String, codec: String, width: Int, height: Int, fps: Int, encoder: String = "", hardware: Boolean? = null) {
         update {
-            it.copy(mode = mode, codec = codec, encoder = encoder, hardware = hardware, why = whyFor(mode), width = width, height = height, fps = fps, fpsFallback = fpsFallback)
+            it.copy(mode = mode, codec = codec, encoder = encoder, hardware = hardware, why = whyFor(mode), width = width, height = height, fps = fps, fpsFallback = fpsFallback, fpsLimit = fpsLimit)
         }
     }
 
@@ -367,7 +424,7 @@ class StreamHub(
     /** Forgets everything about the previous stream (used when mirroring stops). */
     fun reset() {
         synchronized(lock) {
-            info = HelloInfo(cfg = config.pageJson(), controlAllowed = info.controlAllowed, controlReady = info.controlReady)
+            info = HelloInfo(cfg = config.pageJson(), controlAllowed = info.controlAllowed, controlReady = info.controlReady, kbdTesla = info.kbdTesla, kbdUnsupported = info.kbdUnsupported)
             control.clearOwner()
             lastJpeg = null
             gop.clear()
@@ -378,8 +435,10 @@ class StreamHub(
             lastNotice = null
             targetText = ""
             fpsFallback = false
+            fpsLimit = ""
             lastAudioPlan = AudioPlan.OFF
         }
+        syncTyping()
     }
 
     fun helloJson(): String = synchronized(lock) { info.toJson() }
@@ -449,6 +508,10 @@ class StreamHub(
     @Volatile
     var fpsFallback: Boolean = false
 
+    /** Set like [fpsFallback]: [FPS_LIMIT_HOT] while heat protection limits the picture, else "". */
+    @Volatile
+    var fpsLimit: String = ""
+
     /** Current adaptive target as short text ("3200/4000 kbps", "40/50 quality"), empty when none; shown to viewers. */
     @Volatile
     var targetText: String = ""
@@ -490,6 +553,9 @@ class StreamHub(
 
     companion object {
         const val PROTOCOL_VERSION = 1
+        /** `HelloInfo.fpsLimit` while heat protection limits the picture. */
+        const val FPS_LIMIT_HOT = "hot"
+
         const val MODE_JPEG = "jpeg"
         const val MODE_H264 = "h264"
         const val MODE_HEVC = "hevc"

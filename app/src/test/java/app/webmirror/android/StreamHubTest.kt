@@ -46,6 +46,10 @@ class StreamHubTest {
         assertTrue(hub.helloJson().contains(""""fps":30,"fpsFallback":true,"audio""""))
         assertEquals("30 fps (fallback)", StreamHub.HelloInfo(fps = 30, fpsFallback = true).fpsText)
         assertEquals("60 fps", StreamHub.HelloInfo(fps = 60).fpsText)
+        assertEquals("30 fps (phone hot)", StreamHub.HelloInfo(fps = 30, fpsLimit = "hot").fpsText)
+        hub.update { it.copy(fpsLimit = "hot") }
+        assertTrue(hub.helloJson().contains(""""fpsFallback":true,"fpsLimit":"hot","audio""""))
+        hub.update { it.copy(fpsLimit = "") }
         hub.update { it.copy(fpsFallback = false) }
         assertFalse(hub.helloJson().contains("fpsFallback"))
     }

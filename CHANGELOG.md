@@ -8,7 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Added
 
 - Smoothest (60 fps) video option with automatic fallback to 30 fps when the viewer cannot keep up.
+- Heat protection: when the phone reports it is getting hot, WebMirror lowers the frame rate (30, then 15 fps) and the bitrate by itself and restores them one minute after it cools down. The stream status shows "(phone hot)".
 - Automatic test phase `fps-60` for the Smoothest preset.
+- Typing from the car: Settings > Remote control > "Keyboard for typing from the car" lets you use the Tesla browser's own keyboard (Android 13 or newer) instead of the phone keyboard in the picture. The accessibility service then learns only whether a text field is selected and its kind, never its text.
 
 ### Changed
 

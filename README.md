@@ -24,9 +24,11 @@ How it works in one sentence: the phone turns on its Wi-Fi hotspot, the Tesla jo
 - **Nothing to install in the car.** Open a web address or scan a QR code.
 - **Low delay.** About 40 ms picture delay in measurements, with optional in-sync sound.
 - **Up to 60 fps.** The default "Smoothest" setting sends 60 fps and falls back to 30 fps by itself if the car cannot keep up.
+- **Heat protection.** If the phone gets hot, WebMirror lowers the frame rate and quality by itself and restores them when it cools down.
 - **Automatic codec choice.** H.264, HEVC, VP9 or AV1 through WebCodecs, whichever the phone and the browser both handle in hardware. JPEG fallback on plain `http`.
 - **Sound in the browser** (Opus or PCM), or over Bluetooth with a delay slider.
 - **Remote touch control from the car**, including multi-touch gestures such as pinch.
+- **Typing from the car**, with the phone's keyboard in the picture or, on Android 13 or newer, the Tesla browser's own keyboard.
 - **Pairing PIN** (4 or 6 digits, or off) so others on the hotspot cannot watch or control the phone.
 - **Free HTTPS certificate set up on the phone** with DuckDNS and Let's Encrypt, renewed automatically.
 - **Virtual address `169.254.77.1`** that the Tesla browser accepts.
@@ -105,7 +107,7 @@ Measured with the app's built-in automatic test on a Samsung Galaxy S22, at a de
   - DuckDNS, Let's Encrypt and Cloudflare DNS, only while you get or renew a certificate.
   - The GitHub API, only in the GitHub version, to check for updates.
 - A PIN pairs each browser. Without a PIN, anyone on your hotspot can watch and control the phone.
-- Remote control uses an accessibility service that only injects the touches sent from the car. It does not read your screen. You can turn it off in the app or in Android settings.
+- Remote control uses an accessibility service that injects the touches sent from the car. It does not read your screen. With the optional Tesla keyboard it only learns whether a text field is selected and what kind it is (never its text). You can turn it off in the app or in Android settings.
 
 See [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md).
 

@@ -9,8 +9,8 @@ const src = fs.readFileSync(path.join(__dirname, '../../main/assets/web/player.j
 const a = src.indexOf('// LAYOUT-MATH-BEGIN');
 const b = src.indexOf('// LAYOUT-MATH-END');
 assert(a > 0 && b > a, 'markers not found');
-const lib = new Function(src.slice(a, b) + '; return { computeLayout, normalise, NEED_SIDE, NEED_BOTTOM, CTL_GAP };')();
-const { computeLayout, normalise, NEED_SIDE, NEED_BOTTOM, CTL_GAP } = lib;
+const lib = new Function(src.slice(a, b) + '; return { computeLayout, normalise, NEED_SIDE, NEED_BOTTOM, CTL_GAP, CTL_STACK_H, CTL_BUTTONS, CTL_ROW_H };')();
+const { computeLayout, normalise, NEED_SIDE, NEED_BOTTOM, CTL_GAP, CTL_STACK_H, CTL_BUTTONS, CTL_ROW_H } = lib;
 const NS = NEED_SIDE, NB = NEED_BOTTOM;
 function lay(vw, vh, iw, ih, bar) { return computeLayout(vw, vh, iw, ih, bar, NS, NB); }
 
@@ -50,6 +50,21 @@ check('without controls the picture fills the window as before', function () {
   const L = lay(1280, 800, 576, 1280, false);
   assert.strictEqual(L.bar, null);
   assert.strictEqual(L.ch, 800); assert.strictEqual(L.cw, 360); assert.strictEqual(L.left, 460);
+});
+
+// The right bar stacks Control, Sound and Keyboard (3 buttons) plus note, fingers and menu: it must fit the shortest window.
+check('the right bar fits the full control stack in the shortest window', function () {
+  assert.strictEqual(CTL_BUTTONS, 3);
+  assert(CTL_STACK_H >= CTL_BUTTONS * CTL_ROW_H, 'stack smaller than its buttons');
+  assert(CTL_STACK_H <= 300, 'stack taller than the shortest window: ' + CTL_STACK_H);
+  const L = lay(1280, 300, 576, 1280, true);
+  assert(L.bar.h >= CTL_STACK_H);
+});
+check('adding the Keyboard button leaves the picture untouched', function () {
+  // the bar thickness (NEED_SIDE / NEED_BOTTOM) does not depend on the number of buttons, so the picture is the same
+  const L = lay(1280, 800, 576, 1280, true), M = lay(1280, 800, 576, 1280, false);
+  assert.deepStrictEqual(pic(L), pic(M));
+  assert(L.bar.w >= NS - CTL_GAP);
 });
 
 // Random sweep.

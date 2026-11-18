@@ -31,7 +31,7 @@ These services receive what is needed for their function, such as your DuckDNS n
 
 - **Screen capture (MediaProjection):** to mirror the screen. Android asks each time you start.
 - **Microphone (`RECORD_AUDIO`):** only to capture the sound the phone plays, for sound in the browser. The microphone itself is not recorded.
-- **Accessibility service:** for remote control. It only injects the touches sent from a paired browser. It does not read, collect or store what is on your screen.
+- **Accessibility service:** for remote control. It injects the touches sent from a paired browser. It does not read, collect or store what is on your screen. Only if you choose "Tesla keyboard" for typing from the car (Android 13 or newer), while a browser controls the phone, it also learns whether a text field is selected and what kind of field it is (text, number, phone, password, email or web address, and its Enter-key action). It never reads the text in the field or anything else on the screen. The text typed in the car goes straight into the selected field and is not logged or stored.
 - **VPN service:** creates the local virtual address (`169.254.77.1`) so the car browser can reach the phone. It does not route or inspect your internet traffic.
 - **Notifications:** to show that mirroring is running and to warn about certificate renewal problems.
 - **Foreground service and wake lock:** to keep mirroring running and the screen on if you choose.

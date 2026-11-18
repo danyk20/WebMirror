@@ -59,6 +59,7 @@
   const fingersEl = document.getElementById('fingers');
   const menuBtnEl = document.getElementById('menuBtn');
   const soundBtnEl = document.getElementById('soundBtn');
+  const kbdBtnEl = document.getElementById('kbdBtn');
   const soundLabelEl = document.getElementById('soundLabel');
   const pairEl = document.getElementById('pair');
   const pairMsgEl = document.getElementById('pairMsg');
@@ -128,6 +129,8 @@
   let pairTimer = null;
   // Remote control (plan "Remote control"): allowed/ready come from hello.control; on = this page owns the control.
   const ctl = { allowed: false, ready: false, ownerPresent: false, on: false, pending: false, autoAsked: false };
+  // Tesla keyboard state (plan 2.1.5, see the section further down); declared here because updateBar() reads it.
+  const kbd = { tesla: false, show: false, type: 'text', action: 'enter', multiline: false, composing: false, field: null, spec: '', noticed: false };
   const CTL_OPTOUT_KEY = 'webmirror.controlOptOut'; // set when the user turned control off in this browser: no automatic request
   let ctlNoteTimer = null;
 
@@ -279,6 +282,10 @@
   const CTL_ROW_H = 44;
   const CTL_PAD = 8;
   const CTL_GAP = 4;               // gap between the picture and the bar content
+  // The right bar stacks, top to bottom: Control, Sound, Keyboard (3 buttons of CTL_ROW_H), a note (up to 3 lines), the finger
+  // indicator and the 40 px menu button, 8 px apart. A window is never shorter than 300 px, so the stack always fits.
+  const CTL_BUTTONS = 3;
+  const CTL_STACK_H = CTL_BUTTONS * CTL_ROW_H + 40 + 40 + 14 + 5 * 8;
   const NEED_SIDE = CTL_W + CTL_PAD;
   const NEED_BOTTOM = CTL_ROW_H + CTL_PAD;
   // Picture rectangle (centred, aspect kept) inside a vw x vh window for an iw x ih picture. The picture is ALWAYS the
@@ -1048,7 +1055,7 @@
 
   // " @60 fps" or " @30 fps (fallback)": the rate the stream really has (the phone lowers it when the viewer cannot keep up).
   function streamFpsText(h) {
-    return h && h.fps > 0 ? ' @' + h.fps + ' fps' + (h.fpsFallback ? ' (fallback)' : '') : '';
+    return h && h.fps > 0 ? ' @' + h.fps + ' fps' + (h.fpsLimit === 'hot' ? ' (phone hot)' : h.fpsFallback ? ' (fallback)' : '') : '';
   }
   // FPS-MATH-END
 
@@ -1298,6 +1305,8 @@
       showNotice(typeof m.text === 'string' ? m.text : '', Number(m.ttlS) || 10);
     } else if (m.t === 'control' || m.t === 'controlDenied') {
       onControlMessage(m);
+    } else if (m.t === 'kbd') {
+      onKbdMessage(m);
     } else if (m.t === 'denied') {
       setStatus('Denied: ' + m.reason);
       showMessage('Access denied (' + m.reason + ')');
@@ -1558,6 +1567,79 @@
     });
   }
 
+  // TYPING-MATH-BEGIN (pure; app/src/test/js/typing.test.js runs exactly this text under node)
+  // Tesla keyboard (plan 2.1.5): the page keeps a hidden text field focused so the car browser opens its own keyboard,
+  // and turns what is typed into `type` / `key` messages. The field is kept EMPTY: committed text is sent and cleared.
+  const KBD_MAX_CHUNK = 200;       // the phone accepts at most 256 characters per `type` message
+  const KBD_ACTIONS = { done: 1, search: 1, go: 1, send: 1, next: 1, enter: 1 };
+
+  // Attributes of the hidden field for the kind of field the phone reports. Autocapitalize stays off: the field is empty
+  // before every word, so the car keyboard would capitalise each one.
+  function kbdFieldSpec(type, action, multiline) {
+    const t = String(type || 'text');
+    const spec = {
+      tag: multiline && t !== 'password' ? 'textarea' : 'input',
+      type: 'text', inputmode: 'text',
+      enterkeyhint: KBD_ACTIONS.hasOwnProperty(action) ? action : 'enter',
+      autocapitalize: 'off', autocomplete: 'off', autocorrect: 'off', spellcheck: false
+    };
+    if (t === 'number') spec.inputmode = 'numeric';
+    else if (t === 'phone') { spec.type = 'tel'; spec.inputmode = 'tel'; }
+    else if (t === 'email') { spec.type = 'email'; spec.inputmode = 'email'; }
+    else if (t === 'url') { spec.type = 'url'; spec.inputmode = 'url'; }
+    else if (t === 'password') spec.type = 'password';
+    if (spec.tag === 'textarea') spec.type = null;
+    return spec;
+  }
+
+  // Committed text -> messages: at most maxChunk characters per `type` (never splitting a surrogate pair), a new line
+  // becomes the Enter key and a tab the Tab key, other control characters are dropped.
+  function kbdSplitText(text, maxChunk) {
+    const parts = String(text === null || text === undefined ? '' : text).replace(/\r\n?/g, '\n').split(/([\n\t])/);
+    const out = [];
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (part === '\n') { out.push({ t: 'key', key: 'Enter' }); continue; }
+      if (part === '\t') { out.push({ t: 'key', key: 'Tab' }); continue; }
+      const clean = part.replace(/[\u0000-\u001f\u007f]/g, '');
+      let pos = 0;
+      while (pos < clean.length) {
+        let end = Math.min(pos + maxChunk, clean.length);
+        if (end < clean.length) {
+          const c = clean.charCodeAt(end - 1);
+          if (c >= 0xd800 && c <= 0xdbff) end--; // do not cut between the halves of a surrogate pair
+        }
+        if (end <= pos) end = Math.min(pos + 2, clean.length);
+        out.push({ t: 'type', text: clean.slice(pos, end) });
+        pos = end;
+      }
+    }
+    return out;
+  }
+
+  // Which key a keydown stands for (null = let the field handle it). While an IME composes (or keyCode 229) nothing is
+  // a key. Backspace and the arrows count only on an empty field: otherwise they edit the text being composed.
+  function kbdKeyFromKeydown(key, valueEmpty, composing) {
+    if (composing) return null;
+    if (key === 'Enter' || key === 'Tab') return key;
+    if (key === 'Backspace' || key === 'ArrowLeft' || key === 'ArrowRight') return valueEmpty ? key : null;
+    return null;
+  }
+
+  // Same for beforeinput (soft keyboards that do not send a usable keydown): Backspace on the empty field, line breaks.
+  function kbdKeyFromBeforeInput(inputType, valueEmpty, composing) {
+    if (composing) return null;
+    if (inputType === 'deleteContentBackward' && valueEmpty) return 'Backspace';
+    if (inputType === 'insertLineBreak' || inputType === 'insertParagraph') return 'Enter';
+    return null;
+  }
+
+  // The Keyboard button shows while the phone has a text field focused (Tesla keyboard on, this page controls).
+  function kbdButtonVisible(tesla, show, controlOn) {
+    return !!(tesla && show && controlOn);
+  }
+  // TYPING-MATH-END
+
   // ---- remote control: touches on the picture go to the phone while ctl.on ----
   const INPUT_ID_MAX = 1000000;
   const slots = {};                // browser pointer/touch id -> { id, x, y, ts, dirty }
@@ -1634,6 +1716,7 @@
     fingersEl.hidden = !ctl.on;
     fingersEl.textContent = 'Fingers ' + fingersNow + '/' + fingersMax;
     ctlToggleEl.hidden = !ctl.allowed;
+    kbdBtnEl.hidden = !kbdButtonVisible(kbd.tesla, kbd.show, ctl.on);
   }
 
   // Control is on (owner) or off. notifyPhone: tell the phone (not needed when the phone said it).
@@ -1645,6 +1728,7 @@
     if (on) overlayEl.hidden = true;
     if (!on && notifyPhone && changed) send({ t: 'control', on: false });
     updateBar();
+    syncKbd();
   }
 
   function ctlOptedOut() {
@@ -1670,6 +1754,7 @@
     ctl.ownerPresent = !!(c && c.ownerPresent);
     const changed = allowed !== ctl.allowed;
     ctl.allowed = allowed;
+    applyKbdHello(c);
     if (!allowed && (ctl.on || ctl.pending)) setControlOn(false, false);
     // Control starts ON: ask automatically once per "nobody owns it" period, unless the user turned it off in this
     // browser. If another screen owns it, say so and ask again once its owner is gone (the hello tells).
@@ -1706,6 +1791,117 @@
       if (wasOn && m.reason) showCtlNote(CTL_REASONS[m.reason] || m.reason);
     }
   }
+
+  // ---- Tesla keyboard (plan 2.1.5): a hidden field opens the car browser's keyboard; what is typed goes to the phone ----
+  // Nothing typed is logged or stored: the field is emptied after every send.
+
+  function applyKbdHello(c) {
+    const t = !!(c && c.kbd === 'tesla');
+    if (t !== kbd.tesla) { kbd.tesla = t; if (!t) kbd.show = false; syncKbd(); }
+    if (c && c.kbdUnsupported && c.allowed && !kbd.noticed) {
+      kbd.noticed = true;
+      showNotice('Tesla keyboard needs Android 13 or newer; using the phone keyboard', 8);
+    }
+  }
+
+  // The phone says a text field has / lost input focus. Remembered even before this page owns the control (the message
+  // can overtake the control answer); acted on only while it does.
+  function onKbdMessage(m) {
+    if (!kbd.tesla) return;
+    kbd.show = m.show === true;
+    if (kbd.show) {
+      kbd.type = typeof m.type === 'string' ? m.type : 'text';
+      kbd.action = typeof m.action === 'string' ? m.action : 'enter';
+      kbd.multiline = m.multiline === true;
+    }
+    updateBar();
+    syncKbd();
+  }
+
+  function removeKbdField() {
+    const f = kbd.field;
+    kbd.field = null;
+    kbd.spec = '';
+    kbd.composing = false;
+    if (f) {
+      try { f.blur(); } catch (e) { /* gone */ }
+      if (f.parentNode) f.parentNode.removeChild(f);
+    }
+  }
+
+  // Sends and clears what the field holds (committed text only).
+  function kbdFlush() {
+    const f = kbd.field;
+    if (!f || !f.value) return;
+    const v = f.value;
+    f.value = '';
+    const msgs = kbdSplitText(v, KBD_MAX_CHUNK);
+    for (let i = 0; i < msgs.length; i++) send(msgs[i]);
+  }
+
+  function kbdSendKey(key) {
+    kbdFlush();
+    send({ t: 'key', key: key });
+  }
+
+  function buildKbdField() {
+    const spec = kbdFieldSpec(kbd.type, kbd.action, kbd.multiline);
+    const sig = JSON.stringify(spec);
+    if (kbd.field && kbd.spec === sig) return kbd.field;
+    removeKbdField();
+    const f = document.createElement(spec.tag);
+    f.id = 'kbdField';
+    if (spec.type) f.setAttribute('type', spec.type);
+    f.setAttribute('inputmode', spec.inputmode);
+    f.setAttribute('enterkeyhint', spec.enterkeyhint);
+    f.setAttribute('autocapitalize', spec.autocapitalize);
+    f.setAttribute('autocomplete', spec.autocomplete);
+    f.setAttribute('autocorrect', spec.autocorrect);
+    f.setAttribute('spellcheck', 'false');
+    f.setAttribute('aria-hidden', 'true');
+    f.setAttribute('tabindex', '-1');
+    if (spec.tag === 'textarea') f.setAttribute('rows', '1');
+    f.addEventListener('compositionstart', function () { kbd.composing = true; });
+    f.addEventListener('compositionend', function () { kbd.composing = false; kbdFlush(); });
+    f.addEventListener('input', function (ev) {
+      if (ev.isComposing || kbd.composing) return; // only committed text is sent
+      kbdFlush();
+    });
+    f.addEventListener('beforeinput', function (ev) {
+      const key = kbdKeyFromBeforeInput(ev.inputType, f.value === '', !!ev.isComposing || kbd.composing);
+      if (key) { ev.preventDefault(); kbdSendKey(key); }
+    });
+    f.addEventListener('keydown', function (ev) {
+      const key = kbdKeyFromKeydown(ev.key, f.value === '', !!ev.isComposing || kbd.composing || ev.keyCode === 229);
+      if (key) { ev.preventDefault(); kbdSendKey(key); }
+    });
+    document.body.appendChild(f);
+    kbd.field = f;
+    kbd.spec = sig;
+    return f;
+  }
+
+  // Focus the field (opens the car browser's keyboard where the browser allows it; many only do so from a tap, hence the
+  // Keyboard button and the refocus after a tap on the picture).
+  function focusKbdField() {
+    if (!(kbd.tesla && kbd.show && ctl.on)) return;
+    const f = buildKbdField();
+    try { f.focus({ preventScroll: true }); } catch (e) { try { f.focus(); } catch (e2) { /* not focusable */ } }
+  }
+
+  function syncKbd() {
+    if (kbd.tesla && kbd.show && ctl.on) focusKbdField();
+    else removeKbdField();
+    updateBar();
+  }
+
+  kbdBtnEl.addEventListener('click', function () { focusKbdField(); });
+  // A tap on the picture ends with a user gesture: use it to bring the keyboard back if the user dismissed it.
+  function refocusKbd() {
+    if (kbd.tesla && kbd.show && ctl.on && document.activeElement !== kbd.field) focusKbdField();
+  }
+  canvas.addEventListener('pointerup', refocusKbd);
+  canvas.addEventListener('touchend', refocusKbd);
 
   ctlToggleEl.addEventListener('click', function () {
     if (ctl.on || ctl.pending) {

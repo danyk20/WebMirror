@@ -59,6 +59,9 @@ import app.webmirror.android.capture.CaptureSize
 import app.webmirror.android.capture.Preset
 import app.webmirror.android.encode.CodecSupport
 import app.webmirror.android.input.RemoteControlState
+import app.webmirror.android.input.Typing
+import app.webmirror.android.TypingKeyboard
+import app.webmirror.android.input.TypingState
 import app.webmirror.android.net.AutoCert
 import app.webmirror.android.net.Ipv4
 import app.webmirror.android.net.TlsStore
@@ -347,10 +350,32 @@ private fun ControlSettings(settings: Settings) {
         color = if (ready) Color(0xFF008C3C) else MaterialTheme.colorScheme.error,
     )
     Note(
-        "Touches are performed by an Android accessibility service. It only injects the touches sent from a viewer; it reads no screen content. " +
+        "Touches are performed by an Android accessibility service. It injects the touches sent from a viewer and reads no screen content. " +
+            "Only with the Tesla keyboard it notices that a text field is selected and what kind it is (text, number, password…), never its text. " +
             "In Accessibility settings open Installed apps (or Downloaded apps), choose WebMirror remote control and switch it on.",
     )
     OutlinedButton(onClick = { openAccessibilitySettings(context) }) { Text("Open accessibility settings") }
+    GroupTitle("Keyboard for typing from the car")
+    var keyboard by remember { mutableStateOf(settings.typingKeyboard) }
+    val teslaOk = Typing.supported(Build.VERSION.SDK_INT)
+    fun chooseKeyboard(k: TypingKeyboard) {
+        keyboard = k
+        settings.typingKeyboard = k
+        TypingState.keyboard.value = k
+    }
+    Column(Modifier.selectableGroup()) {
+        ChoiceRow(TypingKeyboard.PHONE.label, keyboard == TypingKeyboard.PHONE || !teslaOk, supporting = TypingKeyboard.PHONE.explanation) { chooseKeyboard(TypingKeyboard.PHONE) }
+        ChoiceRow(
+            TypingKeyboard.TESLA.label, keyboard == TypingKeyboard.TESLA && teslaOk, enabled = teslaOk,
+            supporting = TypingKeyboard.TESLA.explanation + if (teslaOk) "" else " Needs Android 13 or newer.",
+        ) { chooseKeyboard(TypingKeyboard.TESLA) }
+    }
+    if (keyboard == TypingKeyboard.TESLA && teslaOk) {
+        Note(
+            "With the Tesla keyboard the accessibility service also learns whether a text field is selected on the phone and what kind it is " +
+                "(text, number, password ...). It never reads what is in the field or anything else on the screen.",
+        )
+    }
 }
 
 @Composable

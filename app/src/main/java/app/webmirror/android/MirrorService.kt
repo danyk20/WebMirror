@@ -27,7 +27,10 @@ import android.content.pm.PackageManager
 import app.webmirror.android.audio.BrowserAudio
 import app.webmirror.android.audio.OpusSupport
 import app.webmirror.android.capture.ScreenCapture
+import app.webmirror.android.input.KbdListener
 import app.webmirror.android.input.RemoteControlState
+import app.webmirror.android.input.Typing
+import app.webmirror.android.input.TypingState
 import app.webmirror.android.input.RemoteInput
 import app.webmirror.android.input.RemoteInputService
 import app.webmirror.android.net.Addresses
@@ -128,6 +131,7 @@ class MirrorService : Service() {
         super.onCreate()
         hubRef = hub
         hub.inputSink = RemoteInput
+        RemoteInput.kbdListener = KbdListener { hub.kbdChanged(it) }
         // Keep the Quick Settings tile current even while the shade is closed.
         scope.launch {
             _state.map { it.running to it.paused }.distinctUntilChanged().collect { MirrorTileService.requestUpdate(this@MirrorService) }
@@ -190,6 +194,7 @@ class MirrorService : Service() {
             p.registerCallback(projectionCallback, Handler(Looper.getMainLooper()))
             if (!resuming) {
                 RemoteControlState.allowed.value = settings.remoteControlAllowed // persisted, default on; not reset by sessions
+                TypingState.keyboard.value = settings.typingKeyboard
                 hub.reset()
                 bindEvents()
             }
@@ -490,6 +495,10 @@ class MirrorService : Service() {
         scope.launch {
             combine(RemoteControlState.allowed, RemoteInputService.connected) { a, r -> a to r }
                 .collect { hub.setControl(it.first, it.second) }
+        }
+        // Typing from the car: the user's choice (live) and whether this Android can do the Tesla keyboard.
+        scope.launch {
+            TypingState.keyboard.collect { hub.setTypingKeyboard(it == TypingKeyboard.TESLA, Typing.supported(Build.VERSION.SDK_INT)) }
         }
         refreshUrls()
         Log.i(TAG, "server started on port $PORT: ${_state.value.urls}")

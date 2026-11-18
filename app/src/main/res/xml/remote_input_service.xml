@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Gesture injection only: no events are listened to and no screen content is read. -->
+<!-- Android 10 to 12: gesture injection only; no events are listened to and no screen content is read. (Android 13+ uses res/xml-v33.) -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/remote_input_description"
     android:accessibilityFeedbackType="feedbackGeneric"

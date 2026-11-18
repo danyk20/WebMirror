@@ -18,6 +18,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import app.webmirror.android.input.RemoteControlState
+import app.webmirror.android.input.TypingState
 import app.webmirror.android.net.AutoCert
 import app.webmirror.android.net.Ipv4
 import app.webmirror.android.net.TlsStore
@@ -98,6 +99,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         settings = Settings(this)
         RemoteControlState.allowed.value = settings.remoteControlAllowed
+        TypingState.keyboard.value = settings.typingKeyboard
         TlsStore.refresh(this)
         AutoCert.onAppStart(this)
         Updates.schedule(this)

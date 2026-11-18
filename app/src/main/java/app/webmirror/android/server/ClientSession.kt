@@ -3,6 +3,8 @@ package app.webmirror.android.server
 import android.util.Log
 import app.webmirror.android.input.InputEvent
 import app.webmirror.android.input.RateLimiter
+import app.webmirror.android.input.Typing
+import app.webmirror.android.input.TypingKey
 import app.webmirror.android.stream.AudioBacklog
 import app.webmirror.android.stream.BitrateController
 import app.webmirror.android.stream.ClockSync
@@ -361,6 +363,8 @@ class ClientSession(
                 "blast" -> blast()
                 "control" -> onText(hub.controlRequest(this, obj.optBoolean("on", false)).toJson())
                 "input" -> handleInput(obj)
+                "type" -> handleType(obj)
+                "key" -> handleKey(obj)
                 else -> Unit // unknown types are ignored
             }
         } catch (e: Exception) {
@@ -382,6 +386,24 @@ class ClientSession(
             obj.optDouble("ts", Double.NaN), obj.optInt("w", 0), obj.optInt("h", 0),
         ) ?: return
         hub.controlInput(id, ev)
+    }
+
+    /**
+     * `{t:"type", text}` / `{t:"key", key}` (typing from the car, plan 2.1.5): the same gates as touches (rate limit,
+     * control owner), then validated. The hub drops them unless the Tesla keyboard is in effect. The text is never logged.
+     */
+    private fun handleType(obj: JSONObject) {
+        if (!inputLimiter.allow(nowMs())) return
+        if (!hub.control.canInput(id)) return
+        val text = Typing.validateText(obj.opt("text")) ?: return
+        hub.typeText(id, text)
+    }
+
+    private fun handleKey(obj: JSONObject) {
+        if (!inputLimiter.allow(nowMs())) return
+        if (!hub.control.canInput(id)) return
+        val key = TypingKey.parse(obj.opt("key") as? String) ?: return
+        hub.pressKey(id, key)
     }
 
     /** `{t:"audio", on}`: this page's sound is on (it can play) or off. Capture runs only while somebody wants sound. */

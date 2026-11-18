@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 13+: gesture injection, plus (only for the "Tesla keyboard" typing mode) whether a text field has input
+  focus and its kind. The event types below are switched off in code (RemoteInputService.setEventTypes) until a
+  viewer controls the phone in that mode. The service never reads the text, hint or any other content of the screen.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/remote_input_description"
+    android:accessibilityEventTypes="typeViewFocused|typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagInputMethodEditor"
+    android:canPerformGestures="true"
+    android:canRetrieveWindowContent="true"
+    android:notificationTimeout="100" />
