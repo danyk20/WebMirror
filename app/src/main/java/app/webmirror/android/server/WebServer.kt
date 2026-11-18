@@ -35,9 +35,6 @@ class WebServer(
     /** The accepted plain socket of the connection being served on this thread (see [SniffingHandler.run]). */
     private val currentRaw = ThreadLocal<Socket?>()
 
-    @Volatile
-    private var consumedUnsupported = false
-
     /** Plain port only: when set, page requests with exactly this Host header are redirected to https. */
     @Volatile
     var httpsRedirectHost: String? = null
@@ -49,8 +46,7 @@ class WebServer(
      * Makes this the TLS server. NanoHTTPD's own makeSecure() cannot be used because its SSLServerSocket
      * hides the first bytes of a connection (a plain-HTTP request would only produce a handshake error and
      * its bytes are gone). Instead the server accepts plain TCP sockets, looks at the first byte, and for
-     * real TLS wraps the socket itself with the first byte handed over (SSLSocketFactory.createSocket(
-     * socket, consumed, autoClose)).
+     * real TLS wraps the socket itself in a [ReplaySocket] that replays the first byte.
      */
     fun enableTls(ctx: SSLContext) {
         tlsFactory = ctx.socketFactory
@@ -112,7 +108,6 @@ class WebServer(
 
         private fun prepare(): ClientHandler? {
             val tls = tlsFactory
-            if (tls != null && consumedUnsupported) return wrapTls(tls, null)
             raw.soTimeout = SNIFF_TIMEOUT_MS
             val first = raw.getInputStream().read()
             raw.soTimeout = 0
@@ -133,18 +128,13 @@ class WebServer(
             }
         }
 
-        private fun wrapTls(tls: SSLSocketFactory, first: Int?): ClientHandler? {
-            val ssl: Socket = try {
-                if (first != null) {
-                    val m = CREATE_WITH_CONSUMED ?: throw UnsupportedOperationException("createSocket(consumed) missing")
-                    m.invoke(tls, raw, ByteArrayInputStream(byteArrayOf(first.toByte())), true) as Socket
-                } else {
-                    (tls.createSocket(raw, null, raw.port, true) as SSLSocket).also { it.useClientMode = false }
-                }
+        private fun wrapTls(tls: SSLSocketFactory, first: Int): ClientHandler? {
+            val ssl: SSLSocket = try {
+                // Conscrypt has no createSocket(socket, consumed, autoClose): layer TLS over a socket that replays the first byte.
+                val replay = ReplaySocket(raw, byteArrayOf(first.toByte()))
+                (tls.createSocket(replay, raw.inetAddress?.hostAddress, raw.port, true) as SSLSocket).also { it.useClientMode = false }
             } catch (e: Exception) {
-                // Some platform does not support handing over consumed bytes: stop sniffing from now on.
-                Log.w(TAG, "TLS wrap with consumed bytes failed, sniffing off: $e")
-                consumedUnsupported = true
+                Log.w(TAG, "TLS wrap failed: $e")
                 return null
             }
             return ClientHandler(ssl.getInputStream(), ssl)
@@ -212,19 +202,6 @@ class WebServer(
     companion object {
         private const val TAG = "WebMirror"
         private const val SNIFF_TIMEOUT_MS = 10_000
-
-        /**
-         * SSLSocketFactory.createSocket(Socket, InputStream consumed, boolean): a server-mode TLS socket over a
-         * connected socket whose first bytes were already read. Looked up by reflection because the Kotlin
-         * compiler does not see it in the Android SDK stubs; it exists at run time on Android 10+ (Conscrypt).
-         */
-        private val CREATE_WITH_CONSUMED: java.lang.reflect.Method? = try {
-            SSLSocketFactory::class.java.getMethod(
-                "createSocket", Socket::class.java, InputStream::class.java, java.lang.Boolean.TYPE,
-            )
-        } catch (e: Exception) {
-            null
-        }
 
         /** Socket options of [StreamConfig]; applies to connections accepted from now on. */
         fun tuneSocket(s: Socket, cfg: StreamConfig) {
