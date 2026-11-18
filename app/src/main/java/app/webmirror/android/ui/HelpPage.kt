@@ -76,7 +76,7 @@ internal val HELP_SECTIONS: List<HelpSection> = listOf(
                 "If: Bluetooth device connected → choose your car.",
                 "Then: Mobile Hotspot → On. Optionally add \"Open an app → WebMirror\".",
             ),
-            p("The hotspot then turns on by itself when the phone connects to the car, and the car joins it automatically. Other phones may offer similar automations (for example Google's Routines or apps like Tasker)."),
+            p("The hotspot then turns on by itself when the phone connects to the car, and the car joins it automatically. Phones from other makers may have a similar automation feature in their settings."),
         ),
     ),
     HelpSection(
