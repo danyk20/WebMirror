@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-18
+
 ### Added
 
 - Smoothest (60 fps) video option with automatic fallback to 30 fps when the viewer cannot keep up.
@@ -17,6 +19,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Release builds are shrunk with R8; each GitHub release also includes the mapping files needed to read crash reports.
 - GitHub Actions updated to their Node.js 24 versions.
 - Smoothest (60 fps) is the default video setting. Installs that already chose a setting keep it.
+- New app icon (a phone broadcasting its screen), also used for the Quick Settings tile, notifications and the browser tab; Android 13+ themed icon.
+
+### Fixed
+
+- The Home status line no longer shows the codec twice.
 
 ## [0.1.0] - 2026-11-18
 
@@ -37,5 +44,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Release signing from environment variables or Gradle properties.
 - Documentation, safety notice and MIT license.
 
-[Unreleased]: https://github.com/danyk20/WebMirror/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/danyk20/WebMirror/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/danyk20/WebMirror/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/danyk20/WebMirror/releases/tag/v0.1.0
