@@ -71,6 +71,12 @@ internal val HELP_SECTIONS: List<HelpSection> = listOf(
             ),
             p("For passengers only. The driver must never watch the screen while driving."),
             p("Tip: add the WebMirror tile to Quick Settings (swipe down twice, tap the pencil/edit button) to start and stop mirroring without opening the app."),
+            p("Tip: Android does not let apps switch on the hotspot, but Samsung phones can do it for you when you get in the car. Open Settings → Modes and Routines → Routines → +:"),
+            bullets(
+                "If: Bluetooth device connected → choose your car.",
+                "Then: Mobile Hotspot → On. Optionally add \"Open an app → WebMirror\".",
+            ),
+            p("The hotspot then turns on by itself when the phone connects to the car, and the car joins it automatically. Other phones may offer similar automations (for example Google's Routines or apps like Tasker)."),
         ),
     ),
     HelpSection(
