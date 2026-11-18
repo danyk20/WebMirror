@@ -13,8 +13,10 @@ android {
         applicationId = "app.webmirror.android"
         minSdk = 29
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        // Single source of truth for the version. versionCode = major * 10000 + minor * 100 + patch (0.9.0 -> 900, 1.2.3 -> 10203).
+        // The release workflow requires the git tag (v<versionName>) to equal versionName.
+        versionCode = 900
+        versionName = "0.9.0"
         buildConfigField("String", "UPDATE_REPO", "\"danyk20/WebMirror\"")
     }
 

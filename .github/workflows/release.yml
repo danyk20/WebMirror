@@ -1,0 +1,181 @@
+name: Release
+
+# Push a tag such as v0.9.0 to build, sign and publish a release. See CONTRIBUTING.md.
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+env:
+  # SHA-256 of the release signing certificate. The release fails if the built APK is signed by anything else.
+  EXPECTED_CERT_SHA256: ABA60DE08391E40EF4C41EB6EE630D4AC58F39DD6DBED43F44690EBD4C81EB6A
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    env:
+      SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+      SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+      SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+      SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check signing secrets
+        run: |
+          missing=0
+          for name in SIGNING_KEYSTORE_BASE64 SIGNING_STORE_PASSWORD SIGNING_KEY_PASSWORD SIGNING_KEY_ALIAS; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Repository secret $name is not set. Run scripts/setup-release-secrets.sh <keystore>."
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Check tag against versionName
+        id: version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          name="$(sed -n 's/^[[:space:]]*versionName = "\(.*\)"[[:space:]]*$/\1/p' app/build.gradle.kts)"
+          if [ -z "$name" ]; then
+            echo "::error::Could not read versionName from app/build.gradle.kts."
+            exit 1
+          fi
+          if [ "$tag" != "$name" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match versionName \"$name\" in app/build.gradle.kts."
+            exit 1
+          fi
+          echo "version=$tag" >> "$GITHUB_OUTPUT"
+          case "$tag" in
+            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *)   echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Unit tests
+        run: ./gradlew testDebugUnitTest
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Web page tests
+        run: |
+          for f in app/src/test/js/*.test.js; do
+            echo "== $f"
+            node "$f"
+          done
+
+      - name: Decode keystore
+        run: |
+          umask 077
+          printf '%s' "$SIGNING_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+
+      - name: Build signed APK and Play bundle
+        env:
+          SIGNING_KEYSTORE_FILE: ${{ runner.temp }}/release.jks
+        run: ./gradlew assembleGithubRelease bundlePlayRelease
+
+      - name: Verify signature
+        run: |
+          apk="$(find app/build/outputs/apk/github/release -name '*.apk' | head -n 1)"
+          [ -n "$apk" ] || { echo "::error::No release APK was built."; exit 1; }
+          tools="$ANDROID_HOME/build-tools/$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort -V | tail -n 1)"
+          out="$("$tools/apksigner" verify --verbose --print-certs "$apk")"
+          signers="$(printf '%s\n' "$out" | grep -c 'certificate SHA-256 digest' || true)"
+          if [ "$signers" != "1" ]; then
+            echo "::error::Expected exactly one signer certificate, found $signers."
+            exit 1
+          fi
+          actual="$(printf '%s\n' "$out" | sed -n 's/.*certificate SHA-256 digest: *//p' | tr -d ': ' | tr 'a-f' 'A-F')"
+          expected="$(printf '%s' "$EXPECTED_CERT_SHA256" | tr -d ': ' | tr 'a-f' 'A-F')"
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::APK is signed with an unexpected certificate (SHA-256 $actual, expected $expected)."
+            exit 1
+          fi
+          echo "Signer certificate matches $expected"
+
+      - name: Prepare release files
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p dist
+          apk="$(find app/build/outputs/apk/github/release -name '*.apk' | head -n 1)"
+          cp "$apk" "dist/WebMirror-$VERSION.apk"
+          # Same format as sha256sum: "<hex>  <file name>". The in-app updater reads the first token.
+          (cd dist && sha256sum "WebMirror-$VERSION.apk" > "WebMirror-$VERSION.apk.sha256")
+          cat "dist/WebMirror-$VERSION.apk.sha256"
+          # Release notes: the CHANGELOG section of this version (without heading and link references).
+          awk -v v="$VERSION" '
+            index($0, "## [" v "]") == 1 { f = 1; next }
+            /^## \[/ { f = 0 }
+            /^\[[^]]+\]: / { f = 0 }
+            f
+          ' CHANGELOG.md > dist/notes.md
+          if ! grep -q '[^[:space:]]' dist/notes.md; then
+            echo "No CHANGELOG section for $VERSION; the release will use generated notes."
+            rm dist/notes.md
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-files
+          path: dist/
+          if-no-files-found: error
+
+      - name: Collect Play bundle
+        run: |
+          mkdir -p play
+          cp app/build/outputs/bundle/playRelease/*.aab play/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: play-bundle
+          path: play/
+          if-no-files-found: error
+
+      - name: Delete keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.jks"
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-files
+          path: dist
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.build.outputs.version }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
+        run: |
+          args=(--repo "$GITHUB_REPOSITORY" --title "WebMirror $VERSION" --verify-tag)
+          if [ -f dist/notes.md ]; then
+            args+=(--notes-file dist/notes.md)
+          else
+            args+=(--generate-notes)
+          fi
+          if [ "$PRERELEASE" = "true" ]; then
+            args+=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" "${args[@]}" \
+            "dist/WebMirror-$VERSION.apk" "dist/WebMirror-$VERSION.apk.sha256"

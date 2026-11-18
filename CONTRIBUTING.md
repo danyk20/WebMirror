@@ -50,6 +50,21 @@ Add or update tests for the behavior you change. Pure logic lives in small class
 
 Add a line under "Unreleased" in [CHANGELOG.md](CHANGELOG.md) for changes that users notice.
 
+## Releasing
+
+Maintainers only. Releases are built, signed and published by GitHub Actions when a version tag is pushed.
+
+One-time setup: store the signing key as repository secrets with `scripts/setup-release-secrets.sh <keystore>`.
+
+For each release:
+
+1. Bump `versionName` and `versionCode` in `app/build.gradle.kts` (`versionCode` = major * 10000 + minor * 100 + patch).
+2. In [CHANGELOG.md](CHANGELOG.md), rename "Unreleased" to the new version with its date, add a new empty "Unreleased" section and update the compare links.
+3. Commit and push to `main`.
+4. Tag and push: `git tag v0.9.0 && git push origin v0.9.0`.
+
+The workflow checks that the tag matches `versionName`, runs the tests, signs the APK, verifies the signing certificate and publishes `WebMirror-<version>.apk` with its `.sha256` file. A version with a suffix such as `1.0.0-beta.1` is marked as a pre-release. The signed Play bundle is attached to the workflow run only.
+
 ## License
 
 Your contributions are licensed under the [MIT License](LICENSE).

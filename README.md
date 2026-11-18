@@ -2,6 +2,7 @@
 
 Mirror your Android phone's screen to the browser in your car, with no app on the car side.
 
+[![CI](https://github.com/danyk20/WebMirror/actions/workflows/ci.yml/badge.svg)](https://github.com/danyk20/WebMirror/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/danyk20/WebMirror?sort=semver)](https://github.com/danyk20/WebMirror/releases/latest)
 [![License: MIT](https://img.shields.io/github/license/danyk20/WebMirror)](LICENSE)
 ![Android 10+](https://img.shields.io/badge/Android-10%2B-3DDC84?logo=android&logoColor=white)
@@ -47,7 +48,7 @@ Google Play is planned.
 Releases are signed with one key. Check the certificate before you install:
 
 ```bash
-apksigner verify --print-certs WebMirror-<version>.apk
+apksigner verify --print-certs WebMirror-<version>.apk   # e.g. WebMirror-0.9.0.apk
 ```
 
 The SHA-256 digest must be:

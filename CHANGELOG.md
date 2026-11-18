@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-18
+
 ### Added
 
 - Screen mirroring from the phone to any modern browser over the phone's hotspot, with no app on the car side.
@@ -22,4 +24,5 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Release signing from environment variables or Gradle properties.
 - Documentation, safety notice and MIT license.
 
-[Unreleased]: https://github.com/danyk20/WebMirror/commits/main
+[Unreleased]: https://github.com/danyk20/WebMirror/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/danyk20/WebMirror/releases/tag/v0.9.0
