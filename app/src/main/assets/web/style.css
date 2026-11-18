@@ -27,3 +27,21 @@ body.player { padding: 0; overflow: hidden; background: #000; position: fixed; l
 #delay { flex: 1; min-height: 40px; }
 #delayValue { min-width: 80px; text-align: right; }
 #hint { color: #bdc1c6; font-size: 15px; }
+
+/* ---- remote control bar: always in the black area, never over the picture (player.js computeLayout) ---- */
+#bar { position: absolute; box-sizing: border-box; background: #000; display: flex; align-items: center; justify-content: center; z-index: 1; padding: 6px; overflow: hidden; }
+#bar[hidden], #ctlNote[hidden], #fingers[hidden] { display: none; }
+#bar.bar-v { flex-direction: column; }
+#bar.bar-h { flex-direction: row; }
+#bar > * { margin: 6px; }
+#ctlToggle { box-sizing: border-box; min-width: 56px; min-height: 56px; max-width: 220px; font-size: 16px; font-weight: bold; line-height: 1.2; color: #fff; border: 2px solid #5a626c; border-radius: 12px; white-space: pre-line; padding: 4px; }
+#bar.bar-v #ctlToggle { width: 100%; height: 96px; }
+#bar.bar-h #ctlToggle { height: 100%; min-width: 120px; }
+#ctlToggle.off { background: #3a4048; color: #c4c8cc; }
+#ctlToggle.on { background: #1b873f; border-color: #6fdc8c; }
+#ctlToggle.pending { background: #6b5b1a; border-color: #e0c04a; }
+#ctlNote { font-size: 12px; line-height: 1.2; color: #ffb74d; text-align: center; max-width: 100%; word-wrap: break-word; }
+#fingers { font-size: 13px; line-height: 1.25; color: #9aa0a6; text-align: center; white-space: pre; font-family: monospace; }
+#menuBtn { box-sizing: border-box; width: 56px; height: 56px; font-size: 26px; color: #bdc1c6; background: #1c2128; border: 1px solid #3a4048; border-radius: 10px; padding: 0; }
+.player canvas.controlling { touch-action: none; -ms-touch-action: none; }
+#overlay { z-index: 2; }

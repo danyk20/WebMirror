@@ -46,6 +46,12 @@
   const hintEl = document.getElementById('hint');
   const fullscreenBtn = document.getElementById('fullscreen');
   const noticeEl = document.getElementById('notice');
+  const barEl = document.getElementById('bar');
+  const ctlToggleEl = document.getElementById('ctlToggle');
+  const ctlLabelEl = document.getElementById('ctlLabel');
+  const ctlNoteEl = document.getElementById('ctlNote');
+  const fingersEl = document.getElementById('fingers');
+  const menuBtnEl = document.getElementById('menuBtn');
 
   // ---- state ----
   let ws = null;
@@ -98,6 +104,9 @@
   let rttSum = 0;
   let rttCount = 0;
   let noticeTimer = null;
+  // Remote control (plan "Remote control"): allowed/ready come from hello.control; on = this page owns the control.
+  const ctl = { allowed: false, ready: false, on: false, pending: false };
+  let ctlNoteTimer = null;
 
   // ---- small helpers ----
   function setStatus(text) {
@@ -205,18 +214,61 @@
   }
 
   // ---- layout: canvas fills the window keeping the aspect ratio ----
+  // LAYOUT-MATH-BEGIN (pure; app/src/test/js/layout.test.js runs exactly this text under node)
+  const MIN_BAR = 64;              // CSS px: smallest black bar that holds the remote-control controls
+  // Picture rectangle (centred, aspect kept) inside a vw x vh window for an iw x ih picture. With withBar, a black
+  // bar for the controls is reserved on the side with the larger black area (right bar for a picture that is
+  // narrower than the window, bottom bar for one that is flatter; a tie takes the right bar); if that bar is
+  // thinner than minBar the picture shrinks until a bar of minBar exists. The bar rectangle never touches the picture.
+  function computeLayout(vw, vh, iw, ih, withBar, minBar) {
+    let scale = Math.min(vw / iw, vh / ih);
+    let side = '';
+    if (withBar) {
+      const bx = (vw - iw * scale) / 2;
+      const by = (vh - ih * scale) / 2;
+      const horizontal = bx >= by;
+      if ((horizontal ? bx : by) < minBar) {
+        const limit = horizontal ? (vw - 2 * minBar) / iw : (vh - 2 * minBar) / ih;
+        scale = Math.min(scale, Math.max(limit, 0.02));
+      }
+      side = horizontal ? 'right' : 'bottom';
+    }
+    const cw = Math.max(1, Math.floor(iw * scale));
+    const ch = Math.max(1, Math.floor(ih * scale));
+    const left = Math.floor((vw - cw) / 2);
+    const top = Math.floor((vh - ch) / 2);
+    let bar = null;
+    if (side === 'right') bar = { side: 'right', x: left + cw, y: 0, w: vw - (left + cw), h: vh };
+    else if (side === 'bottom') bar = { side: 'bottom', x: 0, y: top + ch, w: vw, h: vh - (top + ch) };
+    return { cw: cw, ch: ch, left: left, top: top, bar: bar };
+  }
+
+  // Position inside the picture rectangle r (left, top, width, height) as 0..1, clamped.
+  function normalise(clientX, clientY, r) {
+    const x = r.width > 0 ? (clientX - r.left) / r.width : 0;
+    const y = r.height > 0 ? (clientY - r.top) / r.height : 0;
+    return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
+  }
+  // LAYOUT-MATH-END
+
   function layout() {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    const iw = canvas.width;
-    const ih = canvas.height;
-    const scale = Math.min(vw / iw, vh / ih);
-    const cw = Math.floor(iw * scale);
-    const ch = Math.floor(ih * scale);
-    canvas.style.width = cw + 'px';
-    canvas.style.height = ch + 'px';
-    canvas.style.left = Math.floor((vw - cw) / 2) + 'px';
-    canvas.style.top = Math.floor((vh - ch) / 2) + 'px';
+    const L = computeLayout(vw, vh, canvas.width, canvas.height, ctl.allowed, MIN_BAR);
+    canvas.style.width = L.cw + 'px';
+    canvas.style.height = L.ch + 'px';
+    canvas.style.left = L.left + 'px';
+    canvas.style.top = L.top + 'px';
+    if (L.bar) {
+      barEl.style.left = L.bar.x + 'px';
+      barEl.style.top = L.bar.y + 'px';
+      barEl.style.width = L.bar.w + 'px';
+      barEl.style.height = L.bar.h + 'px';
+      barEl.className = L.bar.side === 'right' ? 'bar-v' : 'bar-h';
+      barEl.hidden = false;
+    } else {
+      barEl.hidden = true;
+    }
   }
 
   function setCanvasSize(w, h) {
@@ -579,6 +631,7 @@
 
   function rafTick() {
     lastRafAt = performance.now();
+    flushInput();
     drawHeld();
     pump();
     window.requestAnimationFrame(rafTick);
@@ -642,6 +695,7 @@
     if (m.t === 'hello') {
       hello = m;
       applyCfg(m.cfg);
+      applyControlHello(m.control);
       chooseDecoder(m);
     } else if (m.t === 'ping') {
       // Answer at once with the page clock: the phone measures the round trip and the clock offset from it.
@@ -654,6 +708,8 @@
       serverTarget = typeof m.target === 'string' ? m.target : '';
     } else if (m.t === 'notice') {
       showNotice(typeof m.text === 'string' ? m.text : '', Number(m.ttlS) || 10);
+    } else if (m.t === 'control' || m.t === 'controlDenied') {
+      onControlMessage(m);
     } else if (m.t === 'denied') {
       setStatus('Denied: ' + m.reason);
       showMessage('Access denied (' + m.reason + ')');
@@ -750,6 +806,13 @@
     if (socket.wmOpened) reconnects++;
     clearTimeout(connectTimer);
     hello = null;
+    if (ctl.on || ctl.pending || ctl.allowed) {
+      // The phone releases the control when the socket closes; the next hello says what is allowed now.
+      setControlOn(false, false);
+      ctl.allowed = false;
+      updateBar();
+      layout();
+    }
     phoneOffsetMs = null; // the next connection measures its own offset
     paused = false;
     flushQueue();
@@ -818,6 +881,7 @@
       'e2e avg ' + Math.round(lastE2eAvg) + ' ms   p95 ' + Math.round(lastE2eP95) + '   max ' + Math.round(lastE2eMax) + '   rtt ' + lastRtt.toFixed(1) + ' ms');
     lines.push('queue ' + queue.length + '   decoder ' + inDecoderCount() + ' (queue ' + decodeQueueSize() + ')   in flight ' + serverInFlight + ' (held ' + serverPending + ')');
     if (serverTarget) lines.push('target ' + serverTarget);
+    if (ctl.allowed) lines.push('control ' + (ctl.on ? 'ON' : 'off') + '   service ' + (ctl.ready ? 'ready' : 'not ready') + '   fingers ' + fingersNow + ' (max ' + fingersMax + ')');
     if (cfgId) lines.push('cfg ' + cfgId + '   ' + cfgSummary);
     if (hello) {
       lines.push(hello.width + 'x' + hello.height + '   mode ' + hello.mode + '   audio ' + hello.audio);
@@ -879,6 +943,204 @@
     });
   }
 
+  // ---- remote control: touches on the picture go to the phone while ctl.on ----
+  const INPUT_ID_MAX = 1000000;
+  const slots = {};                // browser pointer/touch id -> { id, x, y, ts, dirty }
+  let nextInputId = 0;
+  const seenPointers = {};         // every pointer the browser reports (picture or not): the finger indicator
+  let fingersNow = 0;
+  let fingersMax = 0;
+  const havePointer = typeof window.PointerEvent === 'function';
+
+  function round5(v) { return Math.round(v * 100000) / 100000; }
+
+  function sendInput(e, id, x, y, ts) {
+    const m = { t: 'input', e: e, id: id, ts: Math.round(ts * 10) / 10, w: hello ? hello.width | 0 : 0, h: hello ? hello.height | 0 : 0 };
+    if (x !== null) { m.x = round5(x); m.y = round5(y); }
+    send(m);
+  }
+
+  function pictureRect() { return canvas.getBoundingClientRect(); }
+
+  function ctlDown(key, cx, cy) {
+    if (slots[key]) return;
+    const n = normalise(cx, cy, pictureRect());
+    const now = performance.now();
+    const id = nextInputId;
+    nextInputId = (nextInputId + 1) % INPUT_ID_MAX;
+    slots[key] = { id: id, x: n.x, y: n.y, ts: now, dirty: false };
+    sendInput('down', id, n.x, n.y, now);
+  }
+
+  function ctlMove(key, cx, cy) {
+    const s = slots[key];
+    if (!s) return;
+    const n = normalise(cx, cy, pictureRect());
+    s.x = n.x; s.y = n.y; s.ts = performance.now(); s.dirty = true; // sent from the next animation frame (at most one move per frame and pointer)
+  }
+
+  function ctlEnd(key, cx, cy, cancel) {
+    const s = slots[key];
+    if (!s) return;
+    delete slots[key];
+    if (cx !== null && !cancel) {
+      const n = normalise(cx, cy, pictureRect());
+      s.x = n.x; s.y = n.y;
+    }
+    sendInput(cancel ? 'cancel' : 'up', s.id, s.x, s.y, performance.now());
+  }
+
+  function flushInput() {
+    for (const key in slots) {
+      const s = slots[key];
+      if (s.dirty) {
+        s.dirty = false;
+        sendInput('move', s.id, s.x, s.y, s.ts);
+      }
+    }
+  }
+
+  function cancelAllPointers() {
+    for (const key in slots) ctlEnd(key, null, null, true);
+  }
+
+  function showCtlNote(text) {
+    if (ctlNoteTimer !== null) { clearTimeout(ctlNoteTimer); ctlNoteTimer = null; }
+    if (!text) { ctlNoteEl.hidden = true; return; }
+    ctlNoteEl.textContent = text;
+    ctlNoteEl.hidden = false;
+    ctlNoteTimer = setTimeout(function () { ctlNoteTimer = null; ctlNoteEl.hidden = true; }, 6000);
+  }
+
+  function updateBar() {
+    ctlToggleEl.className = ctl.pending ? 'pending' : ctl.on ? 'on' : 'off';
+    ctlLabelEl.textContent = ctl.pending ? 'Control\n...' : ctl.on ? 'Control\nON' : 'Control\nOFF';
+    canvas.className = ctl.on ? 'controlling' : '';
+    fingersEl.hidden = !ctl.on;
+    fingersEl.textContent = 'Fingers ' + fingersNow + '\nmax ' + fingersMax;
+    ctlToggleEl.hidden = !ctl.allowed;
+  }
+
+  // Control is on (owner) or off. notifyPhone: tell the phone (not needed when the phone said it).
+  function setControlOn(on, notifyPhone) {
+    if (!on) cancelAllPointers();
+    const changed = ctl.on !== on || ctl.pending;
+    ctl.on = on;
+    ctl.pending = false;
+    if (on) overlayEl.hidden = true;
+    if (!on && notifyPhone && changed) send({ t: 'control', on: false });
+    updateBar();
+  }
+
+  function applyControlHello(c) {
+    const allowed = !!(c && c.allowed);
+    ctl.ready = !!(c && c.ready);
+    const changed = allowed !== ctl.allowed;
+    ctl.allowed = allowed;
+    if (!allowed && (ctl.on || ctl.pending)) setControlOn(false, false);
+    updateBar();
+    if (changed) layout(); // the bar appears or goes away, which may shrink or grow the picture
+  }
+
+  const CTL_REASONS = {
+    notAllowed: 'Not allowed on the phone',
+    notReady: 'Phone: turn on the accessibility service',
+    busy: 'Another screen is controlling'
+  };
+
+  function onControlMessage(m) {
+    if (m.t === 'controlDenied') {
+      ctl.pending = false;
+      setControlOn(false, false);
+      showCtlNote(CTL_REASONS[m.reason] || ('Denied: ' + m.reason));
+    } else if (m.on && m.owner) {
+      setControlOn(true, false);
+      showCtlNote('');
+    } else {
+      const wasOn = ctl.on || ctl.pending;
+      setControlOn(false, false);
+      if (wasOn && m.reason) showCtlNote(CTL_REASONS[m.reason] || m.reason);
+    }
+  }
+
+  ctlToggleEl.addEventListener('click', function () {
+    if (ctl.on || ctl.pending) {
+      setControlOn(false, true);
+    } else {
+      ctl.pending = true;
+      updateBar();
+      send({ t: 'control', on: true });
+      // No answer (old phone app, link problem): back to OFF.
+      setTimeout(function () { if (ctl.pending) { ctl.pending = false; updateBar(); showCtlNote('No answer from the phone'); } }, 4000);
+    }
+  });
+  menuBtnEl.addEventListener('click', toggleOverlay);
+
+  // Touches on the picture: Pointer Events, or Touch Events where those are missing.
+  if (havePointer) {
+    canvas.addEventListener('pointerdown', function (ev) {
+      if (!ctl.on || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
+      ev.preventDefault();
+      try { canvas.setPointerCapture(ev.pointerId); } catch (e) { /* not capturable */ }
+      ctlDown('p' + ev.pointerId, ev.clientX, ev.clientY);
+    });
+    canvas.addEventListener('pointermove', function (ev) {
+      if (!ctl.on) return;
+      ev.preventDefault();
+      ctlMove('p' + ev.pointerId, ev.clientX, ev.clientY);
+    });
+    canvas.addEventListener('pointerup', function (ev) { ev.preventDefault(); ctlEnd('p' + ev.pointerId, ev.clientX, ev.clientY, false); });
+    canvas.addEventListener('pointercancel', function (ev) { ctlEnd('p' + ev.pointerId, null, null, true); });
+  } else {
+    const touchOpts = { passive: false };
+    canvas.addEventListener('touchstart', function (ev) {
+      if (!ctl.on) return;
+      ev.preventDefault();
+      for (let i = 0; i < ev.changedTouches.length; i++) {
+        const t = ev.changedTouches[i];
+        ctlDown('t' + t.identifier, t.clientX, t.clientY);
+      }
+    }, touchOpts);
+    canvas.addEventListener('touchmove', function (ev) {
+      if (!ctl.on) return;
+      ev.preventDefault();
+      for (let i = 0; i < ev.changedTouches.length; i++) {
+        const t = ev.changedTouches[i];
+        ctlMove('t' + t.identifier, t.clientX, t.clientY);
+      }
+    }, touchOpts);
+    canvas.addEventListener('touchend', function (ev) {
+      ev.preventDefault();
+      for (let i = 0; i < ev.changedTouches.length; i++) {
+        const t = ev.changedTouches[i];
+        ctlEnd('t' + t.identifier, t.clientX, t.clientY, false);
+      }
+    }, touchOpts);
+    canvas.addEventListener('touchcancel', function (ev) {
+      for (let i = 0; i < ev.changedTouches.length; i++) ctlEnd('t' + ev.changedTouches[i].identifier, null, null, true);
+    }, touchOpts);
+  }
+
+  // Finger indicator: how many touches the browser reports right now (anywhere on the page); shows whether the car's
+  // screen delivers multi-touch at all.
+  function countFingers(n) {
+    fingersNow = n;
+    if (n > fingersMax) fingersMax = n;
+    if (ctl.on) updateBar();
+  }
+  if (havePointer) {
+    window.addEventListener('pointerdown', function (ev) { seenPointers[ev.pointerId] = true; countFingers(Object.keys(seenPointers).length); }, true);
+    const gone = function (ev) { delete seenPointers[ev.pointerId]; countFingers(Object.keys(seenPointers).length); };
+    window.addEventListener('pointerup', gone, true);
+    window.addEventListener('pointercancel', gone, true);
+  } else {
+    const touches = function (ev) { countFingers(ev.touches ? ev.touches.length : 0); };
+    window.addEventListener('touchstart', touches, true);
+    window.addEventListener('touchend', touches, true);
+    window.addEventListener('touchcancel', touches, true);
+  }
+  window.addEventListener('blur', cancelAllPointers);
+
   // ---- UI ----
   function toggleOverlay() {
     overlayEl.hidden = !overlayEl.hidden;
@@ -887,9 +1149,10 @@
   document.body.addEventListener('click', function (ev) {
     let el = ev.target;
     while (el) {
-      if (el === overlayEl) return; // taps inside the panel do not toggle it
+      if (el === overlayEl || el === barEl) return; // taps inside the panel or the control bar do not toggle it
       el = el.parentNode;
     }
+    if (ctl.on && ev.target === canvas) return; // while controlling, the picture belongs to the phone
     toggleOverlay();
   });
   document.getElementById('close').addEventListener('click', function () { overlayEl.hidden = true; });
@@ -917,6 +1180,7 @@
 
   window.addEventListener('resize', function () { layout(); scheduleView(); });
   document.addEventListener('visibilitychange', function () {
+    if (document.hidden) cancelAllPointers();
     if (!document.hidden) {
       flushQueue(); // the queue may hold stale packets after a long hidden period
       if (decoder) decoder.resync();
@@ -926,6 +1190,7 @@
 
   // ---- go ----
   setDelay(loadDelay());
+  updateBar();
   layout();
   setInterval(sendStats, STATS_INTERVAL_MS);
   setInterval(watchdog, WATCHDOG_MS);
