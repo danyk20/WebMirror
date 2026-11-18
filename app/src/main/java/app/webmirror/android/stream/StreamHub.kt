@@ -16,6 +16,10 @@ class StreamHub(
     private val nowMs: () -> Long = { System.nanoTime() / 1_000_000 },
 ) {
 
+    /** Pairing PIN and tokens (plan 2.1.4); the default has pairing off. Set by the service owner, read by every session. */
+    @Volatile
+    var pairing: Pairing = Pairing(MemoryPairingStore())
+
     interface Events {
         fun onViewerCountChanged(count: Int)
         fun onStats(json: String)
@@ -172,6 +176,7 @@ class StreamHub(
     @Volatile
     var modeRequester: ((String) -> Unit)? = null
 
+    /** Registered viewers only: a session that has not passed pairing is never in [sinks] (see ClientSession.admit). */
     val viewerCount: Int get() = sinks.size
 
     var forceJpeg: Boolean
@@ -340,6 +345,16 @@ class StreamHub(
     /** Closes every viewer connection; pages reconnect after about a second (new connections get new socket options). */
     fun disconnectAll() {
         for (s in sinks) s.disconnect()
+    }
+
+    /** Pairing was turned on: viewers admitted without a pairing token are disconnected (they reconnect and are asked for the PIN). */
+    fun disconnectUnpaired() {
+        for (s in sinks) if (!s.paired) s.disconnect()
+    }
+
+    /** "Forget paired viewers": every viewer that got in with a pairing token or PIN is disconnected. */
+    fun disconnectPaired() {
+        for (s in sinks) if (s.paired) s.disconnect()
     }
 
     /** Congestion signals of every viewer, for the bitrate controller. */

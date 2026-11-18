@@ -71,8 +71,10 @@ import app.webmirror.android.stream.StreamConfig
 import app.webmirror.android.stream.StreamHub
 import app.webmirror.android.input.RemoteControlState
 import app.webmirror.android.input.RemoteInputService
+import app.webmirror.android.net.AutoCert
 import app.webmirror.android.net.Ipv4
 import app.webmirror.android.net.TlsStore
+import app.webmirror.android.net.acme.IssueResult
 import app.webmirror.android.net.VirtualIpService
 import app.webmirror.android.test.AutoTestSection
 import app.webmirror.android.test.TestReportScreen
@@ -134,6 +136,7 @@ class MainActivity : ComponentActivity() {
         settings = Settings(this)
         RemoteControlState.allowed.value = settings.remoteControlAllowed
         TlsStore.refresh(this)
+        AutoCert.onAppStart(this)
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -184,6 +187,7 @@ class MainActivity : ComponentActivity() {
     private fun setVirtualIp(on: Boolean, ip: String) {
         settings.virtualIp = ip
         settings.virtualIpEnabled = on
+        if (on) AutoCert.updateIp(this, ip)
         if (!on) {
             VirtualIpService.stop(this)
             return
@@ -211,6 +215,25 @@ private fun MainScreen(
     val context = LocalContext.current
     val state by MirrorService.state.collectAsState()
     var openReport by remember { mutableStateOf<String?>(null) }
+    var safetyAccepted by remember { mutableStateOf(settings.safetyAcceptedVersion >= Settings.SAFETY_NOTICE_VERSION) }
+    var showAbout by remember { mutableStateOf(false) }
+    var showWizard by remember { mutableStateOf(false) }
+    if (!safetyAccepted) {
+        // Must be accepted before the app can be used; Exit closes the app.
+        SafetyNoticeScreen(
+            onAccept = { settings.safetyAcceptedVersion = Settings.SAFETY_NOTICE_VERSION; safetyAccepted = true },
+            onExit = { (context as? android.app.Activity)?.finish() },
+        )
+        return
+    }
+    if (showAbout) {
+        SafetyNoticeScreen(onAccept = null, onExit = { showAbout = false })
+        return
+    }
+    if (showWizard) {
+        CertWizardScreen(onClose = { showWizard = false })
+        return
+    }
     val reportStem = openReport
     if (reportStem != null) {
         TestReportScreen(reportStem) { openReport = null }
@@ -278,6 +301,9 @@ private fun MainScreen(
         Text("Viewers: ${state.viewerCount}", style = MaterialTheme.typography.titleMedium)
 
         HorizontalDivider()
+        PairingSection(settings)
+
+        HorizontalDivider()
         AutoTestSection(settings) { openReport = it }
 
         HorizontalDivider()
@@ -299,7 +325,10 @@ private fun MainScreen(
         VirtualAddressSection(settings, onVirtualIp)
 
         HorizontalDivider()
-        CertificateSection(pickedP12, pickError, onPickCertificate, onCertificateDone)
+        CertificateSection(pickedP12, pickError, onPickCertificate, onCertificateDone) { AutoCert.clearRun(); showWizard = true }
+
+        HorizontalDivider()
+        OutlinedButton(onClick = { showAbout = true }, modifier = Modifier.fillMaxWidth()) { Text("About & safety") }
 
         HorizontalDivider()
         SectionTitle("Probe result")
@@ -373,6 +402,59 @@ private fun QualitySection(settings: Settings, onChanged: () -> Unit) {
                 onChanged()
             }
         }
+    }
+}
+
+/** Pairing PIN (plan 2.1.4): the switch, the big PIN, "New PIN", the paired browsers and "Forget paired viewers". */
+@Composable
+private fun PairingSection(settings: Settings) {
+    val context = LocalContext.current
+    var required by remember { mutableStateOf(settings.pairingRequired) }
+    var pin by remember { mutableStateOf(if (settings.pairingRequired) MirrorService.pairingPin(context) else "") }
+    var paired by remember { mutableStateOf(settings.pairingTokens.size) }
+    // New pairings happen in the service while this screen is open.
+    androidx.compose.runtime.LaunchedEffect(required) {
+        while (true) {
+            paired = settings.pairingTokens.size
+            if (required) pin = MirrorService.pairingPin(context)
+            kotlinx.coroutines.delay(1000)
+        }
+    }
+    SectionTitle("Pairing PIN")
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Switch(checked = required, onCheckedChange = {
+            required = it
+            MirrorService.setPairingRequired(context, it)
+            if (it) pin = MirrorService.pairingPin(context)
+        })
+        Text("Require pairing PIN", modifier = Modifier.padding(start = 12.dp))
+    }
+    if (required) {
+        Text("Enter this PIN once in each browser (the browser then stays paired):", style = MaterialTheme.typography.bodySmall)
+        Text(
+            pin.chunked(3).joinToString(" "),
+            fontSize = 48.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { pin = MirrorService.newPairingPin(context) }) { Text("New PIN") }
+            OutlinedButton(enabled = paired > 0, onClick = { MirrorService.forgetPairedViewers(context); paired = 0 }) {
+                Text("Forget paired viewers")
+            }
+        }
+        Text("Paired viewers: $paired", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "A new PIN does not unpair browsers that are already paired. \"Forget paired viewers\" unpairs all of them at once and disconnects them.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+    } else {
+        Text(
+            "Anyone on the same network can watch your screen and control the phone.",
+            color = MaterialTheme.colorScheme.error,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 
@@ -681,15 +763,18 @@ private fun CertificateSection(
     pickError: String?,
     onPick: () -> Unit,
     onDone: () -> Unit,
+    onOpenWizard: () -> Unit,
 ) {
     val context = LocalContext.current
+    val auto by AutoCert.state.collectAsState()
+    val autoRun by AutoCert.run.collectAsState()
     val tls by TlsStore.state.collectAsState()
     val scope = rememberCoroutineScope()
     var password by remember { mutableStateOf("") }
     var importError by remember { mutableStateOf<String?>(null) }
 
     SectionTitle("HTTPS certificate")
-    Text("Optional. Import your own .p12 to also serve https on port 8443. The file stays on this phone only.")
+    Text("The car shows smooth video only on a secure (https) page, served on port 8443. Get a free certificate in two minutes, or import your own.")
 
     val info = tls.info
     if (info != null) {
@@ -703,11 +788,32 @@ private fun CertificateSection(
     }
     tls.error?.let { ErrorText(it) }
     pickError?.let { ErrorText(it) }
+    if (auto.enabled) {
+        val until = if (auto.notAfterMs > 0) DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(auto.notAfterMs)) else "?"
+        Text("Automatic: ${auto.fqdn}, valid until $until, renews automatically", style = MaterialTheme.typography.titleSmall)
+        auto.lastError?.let { ErrorText("Last renewal failed: $it") }
+        auto.ipError?.let { ErrorText(it) }
+        autoRun.lines.lastOrNull()?.takeIf { autoRun.running }?.let { Text(it, fontFamily = FontFamily.Monospace, fontSize = 12.sp) }
+        (autoRun.result as? IssueResult.Failure)?.takeIf { it !is IssueResult.Cancelled }?.let { ErrorText(it.message) }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (autoRun.running) {
+                OutlinedButton(onClick = { AutoCert.cancelRun() }) { Text("Cancel") }
+            } else {
+                Button(onClick = { AutoCert.startRenewNow(context) }) { Text("Renew now") }
+            }
+            OutlinedButton(onClick = { AutoCert.turnOff(context, removeCertificate = true) }, enabled = !autoRun.running) {
+                Text("Turn off automatic certificate")
+            }
+        }
+    } else {
+        Button(onClick = onOpenWizard, modifier = Modifier.fillMaxWidth()) { Text("Get a free certificate") }
+    }
+    Text("Advanced", style = MaterialTheme.typography.labelLarge)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(onClick = { importError = null; password = ""; onPick() }) {
             Text("Import certificate (.p12)")
         }
-        if (info != null || tls.error != null) {
+        if (!auto.enabled && (info != null || tls.error != null)) {
             OutlinedButton(onClick = { TlsStore.remove(context) }) { Text("Remove certificate") }
         }
     }
@@ -737,6 +843,7 @@ private fun CertificateSection(
                     scope.launch {
                         val error = withContext(Dispatchers.Default) { TlsStore.import(context, pickedP12, chars) }
                         if (error == null) {
+                            AutoCert.turnOff(context, removeCertificate = false)
                             password = ""
                             importError = null
                             onDone()
@@ -762,7 +869,7 @@ private fun shareText(context: Context, text: String) {
     context.startActivity(Intent.createChooser(send, "Share probe result"))
 }
 
-private fun qrBitmap(text: String, size: Int): Bitmap {
+internal fun qrBitmap(text: String, size: Int): Bitmap {
     val matrix = QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, size, size)
     val w = matrix.width
     val h = matrix.height

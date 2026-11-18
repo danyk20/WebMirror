@@ -52,6 +52,11 @@
   const ctlNoteEl = document.getElementById('ctlNote');
   const fingersEl = document.getElementById('fingers');
   const menuBtnEl = document.getElementById('menuBtn');
+  const pairEl = document.getElementById('pair');
+  const pairMsgEl = document.getElementById('pairMsg');
+  const pairPinEl = document.getElementById('pairPin');
+  const pairPadEl = document.getElementById('pairPad');
+  const pairOkEl = document.getElementById('pairOk');
 
   // ---- state ----
   let ws = null;
@@ -104,6 +109,15 @@
   let rttSum = 0;
   let rttCount = 0;
   let noticeTimer = null;
+  // Pairing (plan 2.1.4): the PIN panel is shown while the phone waits for the PIN; no ping arrives meanwhile.
+  const TOKEN_KEY = 'webmirror.pairToken';
+  const PIN_LENGTH = 6;
+  const PAIR_PROMPT = 'Enter the PIN shown in the WebMirror app on the phone';
+  let pairing = false;
+  let pairDigits = '';
+  let pairNote = '';              // 'Wrong PIN' or '' (the prompt)
+  let pairLockUntil = 0;          // performance.now() when the lockout ends, 0 = not locked
+  let pairTimer = null;
   // Remote control (plan "Remote control"): allowed/ready come from hello.control; on = this page owns the control.
   const ctl = { allowed: false, ready: false, ownerPresent: false, on: false, pending: false, autoAsked: false };
   const CTL_OPTOUT_KEY = 'webmirror.controlOptOut'; // set when the user turned control off in this browser: no automatic request
@@ -703,10 +717,111 @@
     if (queue.length === 1) schedulePump(dueTime(queue[0]) - performance.now());
   }
 
+  // ---- pairing ----
+  function loadToken() {
+    try { return localStorage.getItem(TOKEN_KEY) || ''; } catch (e) { return ''; }
+  }
+
+  function saveToken(t) {
+    try { localStorage.setItem(TOKEN_KEY, t); } catch (e) { /* storage blocked: the PIN is asked again next time */ }
+  }
+
+  function clearToken() {
+    try { localStorage.removeItem(TOKEN_KEY); } catch (e) { /* storage blocked */ }
+  }
+
+  function renderPair() {
+    const left = pairLockUntil > 0 ? Math.ceil((pairLockUntil - performance.now()) / 1000) : 0;
+    if (pairLockUntil > 0 && left <= 0) { pairLockUntil = 0; pairNote = ''; }
+    let dots = '';
+    for (let i = 0; i < PIN_LENGTH; i++) dots += (i < pairDigits.length ? '\u25CF' : '\u25CB');
+    pairPinEl.textContent = dots;
+    if (pairLockUntil > 0) {
+      pairMsgEl.textContent = 'Too many attempts, try again in ' + left + ' s';
+      pairMsgEl.className = 'err';
+    } else {
+      pairMsgEl.textContent = pairNote || PAIR_PROMPT;
+      pairMsgEl.className = pairNote === 'Wrong PIN' ? 'err' : '';
+    }
+    pairOkEl.disabled = pairLockUntil > 0 || pairDigits.length === 0;
+    if (pairLockUntil > 0 && pairTimer === null) pairTimer = setInterval(renderPair, 500);
+    if (pairLockUntil === 0 && pairTimer !== null) { clearInterval(pairTimer); pairTimer = null; }
+  }
+
+  function showPair() {
+    pairing = true;
+    pairEl.hidden = false;
+    showMessage('');
+    setStatus('Waiting for the PIN');
+    renderPair();
+  }
+
+  function hidePair() {
+    pairing = false;
+    pairDigits = '';
+    pairNote = '';
+    pairLockUntil = 0;
+    if (pairTimer !== null) { clearInterval(pairTimer); pairTimer = null; }
+    pairEl.hidden = true;
+  }
+
+  function onPair(m) {
+    const sock = ws;
+    if (m.reason === 'required' && sock && sock.wmTokenSent) {
+      clearToken();            // the phone does not know this token any more (forgotten): ask for the PIN
+      sock.wmTokenSent = false;
+    }
+    pairDigits = '';
+    if (m.reason === 'wrong') pairNote = 'Wrong PIN';
+    else if (m.reason === 'locked') pairLockUntil = performance.now() + (Number(m.retryInMs) || 0);
+    else if (!pairing) pairNote = '';
+    showPair();
+  }
+
+  function onPaired(m) {
+    if (typeof m.token === 'string' && m.token) saveToken(m.token);
+    hidePair();
+    setStatus('Waiting for the stream…');
+    showMessage('Waiting for the picture…');
+  }
+
+  function pairKey(k) {
+    if (!pairing || pairLockUntil > 0) return;
+    if (k === 'del') {
+      pairDigits = pairDigits.slice(0, -1);
+    } else if (k === 'ok') {
+      if (pairDigits.length === 0) return;
+      send({ t: 'pair', pin: pairDigits });
+      pairNote = 'Checking…';
+      pairDigits = '';
+    } else if (k.length === 1 && k >= '0' && k <= '9' && pairDigits.length < PIN_LENGTH) {
+      pairDigits += k;
+      pairNote = '';
+    }
+    renderPair();
+  }
+
+  pairPadEl.addEventListener('click', function (ev) {
+    const t = ev.target;
+    const k = t && t.getAttribute ? t.getAttribute('data-k') : null;
+    if (k) pairKey(k);
+  });
+  document.addEventListener('keydown', function (ev) {
+    if (!pairing) return;
+    if (ev.key === 'Backspace') pairKey('del');
+    else if (ev.key === 'Enter') pairKey('ok');
+    else if (ev.key && ev.key.length === 1) pairKey(ev.key);
+  });
+
   function onText(text) {
     let m;
     try { m = JSON.parse(text); } catch (e) { return; }
-    if (m.t === 'hello') {
+    if (m.t === 'pair') {
+      onPair(m);
+    } else if (m.t === 'paired') {
+      onPaired(m);
+    } else if (m.t === 'hello') {
+      if (pairing) hidePair();
       hello = m;
       applyCfg(m.cfg);
       applyControlHello(m.control);
@@ -799,7 +914,10 @@
       checkCodecs().then(function (c) {
         if (ws === socket) {
           // h264 / hevc booleans: kept for older phone apps (h264 = decodable at all, hevc = in hardware).
-          send({ t: 'hello', v: 1, h264: c.h264.sw || c.h264.hw, hevc: c.hevc.hw, codecs: c, pin: '' });
+          const hi = { t: 'hello', v: 1, h264: c.h264.sw || c.h264.hw, hevc: c.hevc.hw, codecs: c, pin: '' };
+          const tok = loadToken();
+          if (tok) { hi.token = tok; socket.wmTokenSent = true; }
+          send(hi);
           sendView();
         }
       });
@@ -820,6 +938,7 @@
     if (socket.wmOpened) reconnects++;
     clearTimeout(connectTimer);
     hello = null;
+    if (pairing) hidePair(); // the next connection asks again if needed
     if (ctl.on || ctl.pending || ctl.allowed) {
       // The phone releases the control when the socket closes; the next hello says what is allowed now.
       setControlOn(false, false);
@@ -840,6 +959,7 @@
   // Dead-connection watchdog: the server pings every second, so 3 s of silence means the link is gone
   // (e.g. the car dropped Wi-Fi). The old socket may never report it, so it is abandoned right here.
   function watchdog() {
+    if (pairing) return; // the phone sends nothing to an unpaired page
     if (ws && ws.readyState === 1 && performance.now() - lastRxAt > DEAD_MS) {
       const dead = ws;
       try { dead.close(); } catch (e) { /* ignore */ }

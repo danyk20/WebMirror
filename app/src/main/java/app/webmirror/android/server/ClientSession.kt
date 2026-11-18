@@ -8,6 +8,7 @@ import app.webmirror.android.stream.ClockSync
 import app.webmirror.android.stream.CodecChooser
 import app.webmirror.android.stream.Expirable
 import app.webmirror.android.stream.Packet
+import app.webmirror.android.stream.Pairing
 import app.webmirror.android.stream.StreamHub
 import app.webmirror.android.stream.StreamSink
 import app.webmirror.android.stream.VideoOutbox
@@ -70,6 +71,25 @@ class ClientSession(
     private val id = nextId.incrementAndGet()
 
     override val viewerId: Int get() = id
+
+    /**
+     * Pairing gate (plan 2.1.4). A session is registered in the hub, and so counts as a viewer for the codec choice,
+     * mode, bitrate control, window size and remote-control ownership, only once it is [admitted]: right at open when
+     * pairing is off, else after a hello with a valid token or a correct PIN. Until then it is invisible to the hub
+     * and ignores everything but `hello` and `pair`.
+     */
+    @Volatile
+    private var admitted = false
+
+    @Volatile
+    private var pairedViaPairing = false
+
+    override val paired: Boolean get() = pairedViaPairing
+
+    /** The page's hello while it waits for the PIN; processed like a normal hello once the PIN was right. */
+    private var pendingHello: JSONObject? = null
+
+    private val openedAtMs = nowMs()
 
     /** At most 120 `input` messages per second from this viewer (up/cancel are never refused). */
     private val inputLimiter = RateLimiter()
@@ -229,7 +249,17 @@ class ClientSession(
         t.isDaemon = true
         writer = t
         t.start()
+        if (!hub.pairing.required) admit(false)
+    }
+
+    /** Registers this session as a viewer. Pairing turned on meanwhile and no token: not allowed in. */
+    private fun admit(viaPairing: Boolean) {
+        if (stopped) return
+        pairedViaPairing = viaPairing
+        admitted = true
+        pendingHello = null
         hub.register(this)
+        if (!viaPairing && hub.pairing.required) disconnect() // pairing was switched on while this session was being admitted
     }
 
     override fun onClose(code: CloseCode?, reason: String?, initiatedByRemote: Boolean) {
@@ -255,6 +285,14 @@ class ClientSession(
             if (message == null || message.opCode != WebSocketFrame.OpCode.Text) return
             val text = message.textPayload
             val obj = JSONObject(text)
+            if (!admitted) {
+                // Not paired (yet): nothing but the pairing conversation is looked at.
+                when (obj.optString("t")) {
+                    "hello" -> handleHello(obj)
+                    "pair" -> handlePair(obj)
+                }
+                return
+            }
             when (obj.optString("t")) {
                 "hello" -> handleHello(obj)
                 "pong" -> handlePong(obj)
@@ -318,6 +356,52 @@ class ClientSession(
     }
 
     private fun handleHello(obj: JSONObject) {
+        if (!admitted) {
+            val pairing = hub.pairing
+            if (!pairing.required) {
+                admit(false)
+            } else if (pairing.isValidToken(obj.optString("token", ""))) {
+                admit(true)
+            } else {
+                pendingHello = obj
+                val left = pairing.lockedForMs()
+                onText(if (left > 0) pairJson("locked", left) else pairJson("required", 0))
+                return
+            }
+            if (!admitted) return
+        }
+        completeHello(obj)
+    }
+
+    /** `{t:"pair", pin}` from a session that waits for the PIN. */
+    private fun handlePair(obj: JSONObject) {
+        val hello = pendingHello ?: return
+        val pairing = hub.pairing
+        if (!pairing.required) { // switched off while the panel was open
+            admit(false)
+            if (admitted) completeHello(hello)
+            return
+        }
+        when (val r = pairing.attempt(obj.optString("pin", ""))) {
+            is Pairing.Attempt.Ok -> {
+                admit(true)
+                if (!admitted) return
+                onText("""{"t":"paired","token":"${r.token}"}""")
+                completeHello(hello)
+            }
+            is Pairing.Attempt.Wrong -> {
+                Log.i(TAG, "wrong pairing PIN${if (r.lockedForMs > 0) ", locked for ${r.lockedForMs / 1000} s" else ""}")
+                onText(if (r.lockedForMs > 0) pairJson("locked", r.lockedForMs) else pairJson("wrong", 0))
+            }
+            is Pairing.Attempt.Locked -> onText(pairJson("locked", r.retryInMs))
+        }
+    }
+
+    private fun pairJson(reason: String, retryInMs: Long): String =
+        if (retryInMs > 0) """{"t":"pair","reason":"$reason","retryInMs":$retryInMs}""" else """{"t":"pair","reason":"$reason"}"""
+
+    /** The normal processing of a hello, for a session that is admitted. */
+    private fun completeHello(obj: JSONObject) {
         if (obj.optInt("v", -1) != StreamHub.PROTOCOL_VERSION) {
             synchronized(mon) {
                 addControl(Outgoing.Text("""{"t":"denied","reason":"version"}"""))
@@ -374,6 +458,12 @@ class ClientSession(
     private fun writeLoop() {
         try {
             while (!stopped) {
+                if (!admitted && nowMs() - openedAtMs > UNPAIRED_TIMEOUT_MS) {
+                    Log.i(TAG, "viewer did not pair in time, closing")
+                    shutdown()
+                    forceCloseSocket()
+                    break
+                }
                 var item: Outgoing? = null
                 var askKeyframe = false
                 synchronized(mon) {
@@ -482,6 +572,9 @@ class ClientSession(
 
         private val MODE_REGEX = Regex("\"mode\":\"(\\w+)\"")
         private const val WAIT_MS = 200L
+
+        /** A session that has not passed pairing is closed after this long (plan 2.1.4). */
+        const val UNPAIRED_TIMEOUT_MS = 120_000L
         private const val WRITER_GRACE_MS = 3000L
         private const val STATS_FRESH_MS = 3000L
         private val nextId = java.util.concurrent.atomic.AtomicInteger()

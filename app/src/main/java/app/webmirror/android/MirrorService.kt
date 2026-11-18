@@ -31,6 +31,7 @@ import app.webmirror.android.net.TlsStore
 import app.webmirror.android.net.VirtualIpService
 import app.webmirror.android.server.WebServer
 import app.webmirror.android.stream.StreamConfig
+import app.webmirror.android.stream.Pairing
 import app.webmirror.android.stream.StreamHub
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -85,7 +86,7 @@ data class ServiceState(
  */
 class MirrorService : Service() {
 
-    private val hub = StreamHub()
+    private val hub by lazy { StreamHub().also { it.pairing = Pairing(Settings(this).pairingStore()) } }
     private var server: WebServer? = null
     private var tlsServer: WebServer? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -642,6 +643,27 @@ class MirrorService : Service() {
         fun applyConfig(context: Context, config: StreamConfig) {
             Settings(context).streamConfig = config
             applySettings(context)
+        }
+
+        /** The pairing logic of the running service (it owns the rate limit), else a fresh one over the saved settings. */
+        private fun pairing(context: Context): Pairing = hubRef?.pairing ?: Pairing(Settings(context).pairingStore())
+
+        /** The current pairing PIN (created on first use). */
+        fun pairingPin(context: Context): String = pairing(context).pin
+
+        /** "New PIN": paired viewers stay paired. Returns the new PIN. */
+        fun newPairingPin(context: Context): String = pairing(context).newPin()
+
+        /** "Forget paired viewers": drops every token and disconnects the viewers that used one. */
+        fun forgetPairedViewers(context: Context) {
+            pairing(context).forgetAll()
+            hubRef?.disconnectPaired()
+        }
+
+        /** The "Require pairing PIN" switch changed. Turning it on disconnects viewers that are not paired. */
+        fun setPairingRequired(context: Context, required: Boolean) {
+            pairing(context).required = required
+            if (required) hubRef?.disconnectUnpaired()
         }
 
         /** Tells a running service that the preset or audio mode changed. */

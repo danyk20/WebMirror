@@ -190,6 +190,7 @@ function connect() {
 }
 
 let blastBytes = 0;
+let pairNeeded = false;
 let blastDoneCb = null;
 
 function onSocketMessage(ev) {
@@ -198,6 +199,11 @@ function onSocketMessage(ev) {
       const m = JSON.parse(ev.data);
       if (m.t === 'blastDone' && blastDoneCb) blastDoneCb('complete');
       if (m.t === 'hello') set('phone.hello', m);
+      if (m.t === 'pair') {
+        pairNeeded = true;
+        set('websocket', 'The phone requires pairing: open the main page, enter the PIN, then run the probe again.');
+        if (blastDoneCb) blastDoneCb('needs pairing');
+      }
     } catch (e) { /* ignore */ }
   } else if (ev.data && ev.data.byteLength) {
     blastBytes += ev.data.byteLength;
@@ -235,8 +241,13 @@ async function wsChecks() {
   set('websocket', 'connected');
   ws = sock;
   sock.onmessage = onSocketMessage;
-  sock.send(JSON.stringify({ t: 'hello', v: 1, h264: 'VideoDecoder' in window, pin: '' }));
+  let token = '';
+  try { token = localStorage.getItem('webmirror.pairToken') || ''; } catch (e) { /* storage blocked */ }
+  const hi = { t: 'hello', v: 1, h264: 'VideoDecoder' in window, pin: '' };
+  if (token) hi.token = token;
+  sock.send(JSON.stringify(hi));
   await sleep(300);
+  if (pairNeeded) return sock;
   try {
     set('websocket.throughput', await blast(sock));
   } catch (e) {

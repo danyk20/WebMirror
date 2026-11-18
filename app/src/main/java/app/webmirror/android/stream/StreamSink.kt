@@ -17,6 +17,9 @@ interface StreamSink {
     /** Stable id of this viewer (remote control owner arbitration); -1 for sinks that are not viewers. */
     val viewerId: Int get() = -1
 
+    /** True if this viewer got in through pairing (a pairing token or the PIN), false if it was admitted because pairing was off. */
+    val paired: Boolean get() = false
+
     /** Closes this viewer's connection (the page reconnects by itself). */
     fun disconnect() {}
 

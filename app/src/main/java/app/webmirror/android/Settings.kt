@@ -3,6 +3,7 @@ package app.webmirror.android
 import android.content.Context
 import android.content.SharedPreferences
 import app.webmirror.android.capture.Preset
+import app.webmirror.android.stream.PairingStore
 import app.webmirror.android.stream.StreamConfig
 
 /** Small SharedPreferences wrapper for the user's persistent choices. */
@@ -52,6 +53,39 @@ class Settings internal constructor(private val prefs: SharedPreferences) {
         get() = prefs.getBoolean(KEY_REMOTE_CONTROL, DEFAULT_REMOTE_CONTROL)
         set(value) = prefs.edit().putBoolean(KEY_REMOTE_CONTROL, value).apply()
 
+    /** "Require pairing PIN" (plan 2.1.4): persisted, default ON, also for installs that never saw the setting. */
+    var pairingRequired: Boolean
+        get() = prefs.getBoolean(KEY_PAIRING_REQUIRED, DEFAULT_PAIRING_REQUIRED)
+        set(value) = prefs.edit().putBoolean(KEY_PAIRING_REQUIRED, value).apply()
+
+    /** The 6-digit pairing PIN, or null until the first one was generated. */
+    var pairingPin: String?
+        get() = prefs.getString(KEY_PAIRING_PIN, null)
+        set(value) = prefs.edit().putString(KEY_PAIRING_PIN, value).apply()
+
+    /** Pairing tokens of paired browsers, oldest first (hex, no separators inside). */
+    var pairingTokens: List<String>
+        get() = prefs.getString(KEY_PAIRING_TOKENS, "").orEmpty().split(',').filter { it.isNotEmpty() }
+        set(value) = prefs.edit().putString(KEY_PAIRING_TOKENS, value.joinToString(",")).apply()
+
+    /** Version of the safety notice the user accepted (0 = never); the notice is shown again when [SAFETY_NOTICE_VERSION] is higher. */
+    var safetyAcceptedVersion: Int
+        get() = prefs.getInt(KEY_SAFETY_VERSION, 0)
+        set(value) = prefs.edit().putInt(KEY_SAFETY_VERSION, value).apply()
+
+    /** [PairingStore] backed by these settings. */
+    fun pairingStore(): PairingStore = object : PairingStore {
+        override var required: Boolean
+            get() = pairingRequired
+            set(value) { pairingRequired = value }
+        override var pin: String?
+            get() = pairingPin
+            set(value) { pairingPin = value }
+        override var tokens: List<String>
+            get() = pairingTokens
+            set(value) { pairingTokens = value }
+    }
+
     /** Hold a dim wake lock while mirroring, so the screen lock does not stop the capture (plan M3.5). */
     var keepScreenOn: Boolean
         get() = prefs.getBoolean(KEY_KEEP_SCREEN_ON, true)
@@ -100,6 +134,14 @@ class Settings internal constructor(private val prefs: SharedPreferences) {
         private const val KEY_KEEP_SCREEN_ON = "keepScreenOn"
         private const val KEY_REMOTE_CONTROL = "remoteControlAllowed"
         const val DEFAULT_REMOTE_CONTROL = true
+        private const val KEY_PAIRING_REQUIRED = "pairingRequired"
+        const val DEFAULT_PAIRING_REQUIRED = true
+        private const val KEY_PAIRING_PIN = "pairingPin"
+        private const val KEY_PAIRING_TOKENS = "pairingTokens"
+        private const val KEY_SAFETY_VERSION = "safetyAcceptedVersion"
+
+        /** Bump when the text of the safety notice changes; everybody has to accept it again. */
+        const val SAFETY_NOTICE_VERSION = 1
         private const val KEY_FORCE_JPEG = "forceJpeg"
         private const val FILE = "webmirror"
         private const val KEY_VIRTUAL_IP = "virtualIp"
