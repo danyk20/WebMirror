@@ -3,6 +3,7 @@ package app.webmirror.android.server
 import android.util.Log
 import app.webmirror.android.input.InputEvent
 import app.webmirror.android.input.RateLimiter
+import app.webmirror.android.stream.AudioBacklog
 import app.webmirror.android.stream.BitrateController
 import app.webmirror.android.stream.ClockSync
 import app.webmirror.android.stream.CodecChooser
@@ -13,6 +14,7 @@ import app.webmirror.android.stream.StreamHub
 import app.webmirror.android.stream.StreamSink
 import app.webmirror.android.stream.VideoOutbox
 import app.webmirror.android.stream.ViewBox
+import app.webmirror.android.stream.ViewerAudio
 import fi.iki.elonen.NanoHTTPD
 import fi.iki.elonen.NanoWSD
 import fi.iki.elonen.NanoWSD.WebSocketFrame
@@ -47,6 +49,9 @@ class ClientSession(
     /** Text messages (and blast dummies, which are not video): FIFO, hard safety limit [MAX_QUEUE]. */
     private val control = ArrayDeque<Outgoing>()
 
+    /** Audio: sent before video, never flow-controlled or acknowledged, capped at ~300 ms (oldest dropped). Guarded by [mon]. */
+    private val audioQ = AudioBacklog()
+
     /** Video: flow-controlled, never piles up (see [VideoOutbox]). */
     private val outbox = VideoOutbox(hub.config.maxInFlight, hub.config.dropAfterMs)
     private var writer: Thread? = null
@@ -62,6 +67,11 @@ class ClientSession(
     private var caps: CodecChooser.ViewerCaps? = null
 
     override val viewerCaps: CodecChooser.ViewerCaps? get() = caps
+
+    @Volatile
+    private var audio: ViewerAudio? = null
+
+    override val audioCaps: ViewerAudio? get() = audio
 
     @Volatile
     private var viewPx: ViewBox? = null
@@ -149,6 +159,14 @@ class ClientSession(
             mon.notifyAll()
         }
         if (wantKeyframe) hub.requestKeyframe()
+    }
+
+    override fun onAudio(p: Packet, durationMs: Int) {
+        if (stopped) return
+        synchronized(mon) {
+            audioQ.offer(p, durationMs)
+            mon.notifyAll()
+        }
     }
 
     override fun onPing() {
@@ -299,6 +317,7 @@ class ClientSession(
                 "kf" -> hub.requestKeyframe()
                 "view" -> handleView(obj)
                 "ack" -> handleAck(obj.optLong("pts", -1))
+                "audio" -> handleAudio(obj.optBoolean("on", false))
                 "stats" -> {
                     // Add what only the server knows, so one log line tells the whole story.
                     pageSkipped = obj.optLong("skipped", 0) - obj.optLong("replaced", 0) // vsync replacements are not congestion
@@ -312,6 +331,7 @@ class ClientSession(
                         obj.put("srvPending", outbox.pendingCount)
                         obj.put("srvDropped", outbox.dropped)
                         obj.put("srvResetDropped", outbox.resetDropped)
+                        obj.put("srvAudioDropped", audioQ.dropped)
                     }
                     hub.reportStats(obj.toString())
                 }
@@ -343,6 +363,14 @@ class ClientSession(
             obj.optDouble("ts", Double.NaN), obj.optInt("w", 0), obj.optInt("h", 0),
         ) ?: return
         hub.controlInput(id, ev)
+    }
+
+    /** `{t:"audio", on}`: this page's sound is on (it can play) or off. Capture runs only while somebody wants sound. */
+    private fun handleAudio(on: Boolean) {
+        val a = audio ?: return
+        audio = a.copy(wants = on)
+        if (!on) synchronized(mon) { audioQ.clear() }
+        hub.audioChanged()
     }
 
     /** `{t:"view", w, h, dpr}`: the page's window in CSS pixels and the device pixel ratio. */
@@ -412,6 +440,8 @@ class ClientSession(
             return
         }
         caps = parseCaps(obj)
+        // `audio:{opus}` is present only when the page can play audio at all.
+        audio = obj.optJSONObject("audio")?.let { ViewerAudio(it.optBoolean("opus", false), audio?.wants == true) }
         hub.greet(this)
     }
 
@@ -474,15 +504,20 @@ class ClientSession(
                         if (item === Outgoing.Ping) item = Outgoing.Text(pingText())
                         mon.notifyAll() // room for a blocked blast
                     } else {
-                        if (outbox.checkStall(now)) askKeyframe = true
-                        val p = outbox.next(now)
-                        if (p != null) {
-                            item = Outgoing.Bin(p)
+                        val a = audioQ.poll() // audio goes before the next video frame
+                        if (a != null) {
+                            item = Outgoing.Bin(a)
                         } else {
-                            // The hub rate-limits requests, so asking again while waiting is cheap and
-                            // covers a request that was swallowed (static screen, nothing else arrives).
-                            if (outbox.needsKeyframe) askKeyframe = true
-                            if (!askKeyframe) mon.wait(WAIT_MS)
+                            if (outbox.checkStall(now)) askKeyframe = true
+                            val p = outbox.next(now)
+                            if (p != null) {
+                                item = Outgoing.Bin(p)
+                            } else {
+                                // The hub rate-limits requests, so asking again while waiting is cheap and
+                                // covers a request that was swallowed (static screen, nothing else arrives).
+                                if (outbox.needsKeyframe) askKeyframe = true
+                                if (!askKeyframe) mon.wait(WAIT_MS)
+                            }
                         }
                     }
                 }
@@ -492,7 +527,7 @@ class ClientSession(
                     is Outgoing.Bin -> {
                         val bytes = it.packet.toBytes()
                         send(bytes)
-                        if (it.packet.type != Packet.TYPE_BLAST) hub.metrics.bytesSent.addAndGet(bytes.size.toLong())
+                        if (it.packet.type != Packet.TYPE_BLAST && it.packet.type != Packet.TYPE_AUDIO) hub.metrics.bytesSent.addAndGet(bytes.size.toLong())
                     }
                     Outgoing.Ping -> Unit
                     is Outgoing.Text -> send(it.text)
@@ -557,6 +592,7 @@ class ClientSession(
         hub.unregister(this)
         synchronized(mon) {
             control.clear()
+            audioQ.clear()
             outbox.reset(false)
             mon.notifyAll()
         }

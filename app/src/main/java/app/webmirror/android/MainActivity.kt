@@ -44,6 +44,10 @@ class MainActivity : ComponentActivity() {
 
     /** Asked first on Android 13+ when Start is tapped. The answer does not matter (the service runs without a visible notification). */
     private val notificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { askAudioThenCapture() }
+
+    /** "In the browser" sound needs RECORD_AUDIO. Asked from the Start flow; if denied, mirroring starts without sound. */
+    private val audioPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { requestCapture() }
 
     /** System dialog "Start recording or casting?". Its result can be used once, for one service start. */
@@ -154,6 +158,16 @@ class MainActivity : ComponentActivity() {
             PackageManager.PERMISSION_GRANTED
         ) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            askAudioThenCapture()
+        }
+    }
+
+    private fun askAudioThenCapture() {
+        if (settings.audioMode == AudioMode.BROWSER &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
+        ) {
+            audioPermission.launch(Manifest.permission.RECORD_AUDIO)
         } else {
             requestCapture()
         }

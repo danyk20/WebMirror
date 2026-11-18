@@ -22,6 +22,10 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
+import android.Manifest
+import android.content.pm.PackageManager
+import app.webmirror.android.audio.BrowserAudio
+import app.webmirror.android.audio.OpusSupport
 import app.webmirror.android.capture.ScreenCapture
 import app.webmirror.android.input.RemoteControlState
 import app.webmirror.android.input.RemoteInput
@@ -74,6 +78,8 @@ data class ServiceState(
     val video: StreamHub.HelloInfo? = null,
     /** What the encoder actually accepted (profile, low latency, ...), multi-line, or null when not mirroring. */
     val encoder: String? = null,
+    /** Why "In the browser" sound is not working (permission missing, capture failed), or null. */
+    val audioNote: String? = null,
 )
 
 /**
@@ -99,6 +105,7 @@ class MirrorService : Service() {
 
     private var projection: MediaProjection? = null
     private var capture: ScreenCapture? = null
+    private var browserAudio: BrowserAudio? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var screenLock: PowerManager.WakeLock? = null
@@ -186,7 +193,8 @@ class MirrorService : Service() {
                 hub.reset()
                 bindEvents()
             }
-            hub.update { it.copy(audio = settings.audioMode.key) }
+            hub.setAudioEncoders(OpusSupport.available)
+            applyAudioSettings(settings)
             hub.forceJpeg = settings.forceJpeg
             val cfg = settings.streamConfig
             appliedConfig = cfg
@@ -196,6 +204,10 @@ class MirrorService : Service() {
             }
             capture = cap
             cap.start()
+            val ba = BrowserAudio(p, hub) { note -> _state.update { it.copy(audioNote = note ?: if (micAllowed()) null else it.audioNote) } }
+            browserAudio = ba
+            hub.audioRequester = { plan -> ba.apply(plan) }
+            ba.apply(hub.audioPlan())
         } catch (e: Exception) {
             Log.e(TAG, "cannot start capture", e)
             val message = "Cannot start screen capture: ${e.message ?: e.javaClass.simpleName}"
@@ -241,6 +253,9 @@ class MirrorService : Service() {
 
     /** Tears down capture and projection only; the server, locks and viewers stay. */
     private fun endCapture() {
+        hub.audioRequester = null
+        browserAudio?.stop()
+        browserAudio = null
         capture?.stop()
         capture = null
         projection?.let {
@@ -295,12 +310,30 @@ class MirrorService : Service() {
         capture?.applyConfig(config) // always: a new config resets the adaptive target
     }
 
+    private fun micAllowed() = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+    /**
+     * Mode and profile of the audio to the hello (the capture follows through the hub's audio plan, live, without touching the
+     * video). "In the browser" without the RECORD_AUDIO permission streams without sound and says why.
+     */
+    private fun applyAudioSettings(settings: Settings) {
+        var mode = settings.audioMode
+        var note: String? = null
+        if (mode == AudioMode.BROWSER && !micAllowed()) {
+            mode = AudioMode.OFF
+            note = "Sound in the browser needs the Microphone permission (Android's name for capturing the phone's sound). Allow it under Settings > Audio."
+            hub.notice("No sound: the phone has not allowed sound capture.", 8)
+        }
+        _state.update { it.copy(audioNote = note) }
+        hub.update { it.copy(audio = mode.key, audioProfile = settings.audioProfile.key) }
+    }
+
     /** Applies preset and audio mode from [Settings] to the running stream. */
     private fun applySettings() {
         val settings = Settings(this)
         hub.forceJpeg = settings.forceJpeg
         capture?.setPreset(settings.preset)
-        hub.update { it.copy(audio = settings.audioMode.key) }
+        applyAudioSettings(settings)
         applyConfig(settings.streamConfig)
         if (capture != null) {
             if (settings.keepScreenOn) acquireScreenLock() else releaseScreenLock()

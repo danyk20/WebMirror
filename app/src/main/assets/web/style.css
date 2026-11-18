@@ -39,6 +39,11 @@ body.player { padding: 0; overflow: hidden; background: #000; position: fixed; l
 #ctlToggle.off { background: #3a4048; color: #c4c8cc; }
 #ctlToggle.on { background: #1b873f; border-color: #6fdc8c; }
 #ctlToggle.pending { background: #6b5b1a; border-color: #e0c04a; }
+#soundBtn { box-sizing: border-box; width: 104px; height: 44px; font-size: 13px; font-weight: bold; line-height: 1.2; color: #fff; border: 2px solid #5a626c; border-radius: 10px; white-space: nowrap; padding: 0 4px; }
+#soundBtn[hidden] { display: none; }
+#soundBtn.off { background: #1a5fb4; border-color: #7fb8ff; }
+#soundBtn.on { background: #1b873f; border-color: #6fdc8c; }
+#soundBtn.muted { background: #3a4048; border-color: #5a626c; color: #c4c8cc; }
 #ctlNote { font-size: 11px; line-height: 1.2; color: #ffb74d; text-align: center; max-width: 104px; word-wrap: break-word; }
 #fingers { font-size: 11px; line-height: 1.2; color: #9aa0a6; text-align: center; white-space: nowrap; font-family: monospace; }
 #menuBtn { box-sizing: border-box; width: 40px; height: 40px; font-size: 20px; line-height: 1; color: #bdc1c6; background: #1c2128; border: 1px solid #3a4048; border-radius: 8px; padding: 0; }

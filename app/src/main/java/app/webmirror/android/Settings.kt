@@ -3,6 +3,7 @@ package app.webmirror.android
 import android.content.Context
 import android.content.SharedPreferences
 import app.webmirror.android.capture.Preset
+import app.webmirror.android.stream.AudioProfile
 import app.webmirror.android.stream.Pairing
 import app.webmirror.android.stream.PairingStore
 import app.webmirror.android.stream.StreamConfig
@@ -50,6 +51,11 @@ class Settings internal constructor(private val prefs: SharedPreferences) {
     var audioMode: AudioMode
         get() = AudioMode.fromKey(prefs.getString(KEY_AUDIO, null))
         set(value) = prefs.edit().putString(KEY_AUDIO, value.key).apply()
+
+    /** Profile of the "In the browser" audio mode (Fast / High quality); sent in `hello.audio.profile`. */
+    var audioProfile: AudioProfile
+        get() = AudioProfile.fromKey(prefs.getString(KEY_AUDIO_PROFILE, null))
+        set(value) = prefs.edit().putString(KEY_AUDIO_PROFILE, value.key).apply()
 
     /**
      * "Allow control from viewers" (plan 2.1.3): persisted, default ON, never reset by mirroring start/stop. It only
@@ -178,22 +184,28 @@ class Settings internal constructor(private val prefs: SharedPreferences) {
         private const val KEY_VIRTUAL_IP_ENABLED = "virtualIpEnabled"
         private const val KEY_PRESET = "preset"
         private const val KEY_AUDIO = "audioMode"
+        private const val KEY_AUDIO_PROFILE = "audioProfile"
 
         /** Link-local, so Android's VPN ingress-discard rule does not apply; the Tesla browser accepts it. */
         const val DEFAULT_VIRTUAL_IP = "169.254.77.1"
     }
 }
 
-/** Audio mode (plan M3.2). [key] is the value of `hello.audio`. */
-enum class AudioMode(val key: String, val label: String, val available: Boolean) {
-    BLUETOOTH("bluetooth", "Bluetooth (car speakers)", true),
-    BROWSER("browser", "Browser (coming later)", false),
-    OFF("off", "Off", true);
+/** Audio mode (plan M3.2, 2.4.1). [key] is the value of `hello.audio.mode`; [label] is the short name (Settings list). */
+enum class AudioMode(val key: String, val label: String, val optionText: String, val explanation: String) {
+    BLUETOOTH(
+        "bluetooth", "Car speakers via Bluetooth", "Car speakers via Bluetooth (adjust delay in the car)",
+        "The phone plays the sound to the car over Bluetooth. The page delays the picture to match; set the delay in the page.",
+    ),
+    BROWSER(
+        "browser", "In the browser", "In the browser (sound plays in the car browser, in sync)",
+        "The phone sends its sound to the page; the page plays it and keeps picture and sound in sync.",
+    ),
+    OFF("off", "Off", "Off", "No sound handling: no sound in the browser and no delay hint.");
 
     companion object {
-        /** Unknown or not yet available values fall back to Bluetooth. */
-        fun fromKey(key: String?): AudioMode =
-            entries.firstOrNull { it.key == key && it.available } ?: BLUETOOTH
+        /** Unknown values fall back to Bluetooth. */
+        fun fromKey(key: String?): AudioMode = entries.firstOrNull { it.key == key } ?: BLUETOOTH
     }
 }
 

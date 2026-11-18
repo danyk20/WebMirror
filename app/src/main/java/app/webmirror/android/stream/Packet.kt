@@ -36,7 +36,11 @@ class Packet(
         const val HEADER_SIZE = 12
         const val TYPE_H264 = 1
         const val TYPE_JPEG = 2
-        const val TYPE_PCM = 3
+        /** Audio (browser audio mode): payload is Opus or PCM, told by the flags; see [FLAG_AUDIO_OPUS]. */
+        const val TYPE_AUDIO = 3
+
+        /** Audio packets: this flag set = one Opus packet, clear = PCM s16le interleaved 48 kHz stereo. */
+        const val FLAG_AUDIO_OPUS = 2
 
         /** Not part of the stream protocol: dummy data for the M0 throughput test ("blast"). */
         const val TYPE_BLAST = 0

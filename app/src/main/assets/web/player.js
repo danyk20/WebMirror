@@ -22,6 +22,13 @@
   const HEADER = 12;
   const TYPE_H264 = 1;
   const TYPE_JPEG = 2;
+  const TYPE_AUDIO = 3;
+  const FLAG_AUDIO_OPUS = 2;       // audio packet flag: set = Opus, clear = PCM s16le interleaved 48 kHz stereo
+  const SOUND_KEY = 'webmirror.sound';          // '1' = the user turned sound on in this browser
+  const MUTED_KEY = 'webmirror.soundMuted';     // '1' = muted
+  const TRIM_KEY = 'webmirror.audioTrimMs';     // fine trim of the picture against the sound (browser audio), -300..300
+  const TRIM_MAX = 300;
+  const AUDIO_STALE_MS = 600;      // no audio packet for this long: the picture stops following the sound
   // Representative codec strings for the capability check (hello.codecs), checked at 1280x720.
   const PROBE_CODECS = {
     h264: 'avc1.42E01F',
@@ -52,6 +59,8 @@
   const ctlNoteEl = document.getElementById('ctlNote');
   const fingersEl = document.getElementById('fingers');
   const menuBtnEl = document.getElementById('menuBtn');
+  const soundBtnEl = document.getElementById('soundBtn');
+  const soundLabelEl = document.getElementById('soundLabel');
   const pairEl = document.getElementById('pair');
   const pairMsgEl = document.getElementById('pairMsg');
   const pairPinEl = document.getElementById('pairPin');
@@ -122,6 +131,15 @@
   const ctl = { allowed: false, ready: false, ownerPresent: false, on: false, pending: false, autoAsked: false };
   const CTL_OPTOUT_KEY = 'webmirror.controlOptOut'; // set when the user turned control off in this browser: no automatic request
   let ctlNoteTimer = null;
+
+  // Browser audio (plan 2.4.1). want/muted = the user's choice (remembered); ctx = the AudioContext; fmt = hello.audio while the
+  // phone offers browser sound and this page can play it; clock = the pure scheduling state (AUDIO-MATH section).
+  const audioSupported = !!(window.AudioContext || window.webkitAudioContext);
+  const snd = {
+    want: false, muted: false, ctx: null, gain: null, fmt: null, available: false, clock: null, decoder: null, decoderErrors: 0,
+    sentOn: false, lastPktAt: 0, packets: 0, clk: null, trimMs: 0, shown: false, resumeNote: ''
+  };
+  let audioCheck = null;          // promise of { opus } (null when the page cannot play audio)
 
   // ---- small helpers ----
   function setStatus(text) {
@@ -202,7 +220,7 @@
       if (e2eList.length > E2E_KEEP) e2eList.shift();
     }
     if (baseMs === null) return;
-    const late = performance.now() - ptsMs - baseMs - bufferMs - offsetMs;
+    const late = performance.now() - dueTime({ pts: ptsMs });
     lateSum += late;
     lateCount++;
     if (late > lateMax) lateMax = late;
@@ -220,12 +238,38 @@
     try { localStorage.setItem(DELAY_KEY, String(v)); } catch (e) { /* storage blocked */ }
   }
 
+  function loadTrim() {
+    try {
+      const v = parseInt(localStorage.getItem(TRIM_KEY), 10);
+      if (v >= -TRIM_MAX && v <= TRIM_MAX) return v;
+    } catch (e) { /* storage blocked */ }
+    return 0;
+  }
+
+  function saveTrim(v) {
+    try { localStorage.setItem(TRIM_KEY, String(v)); } catch (e) { /* storage blocked */ }
+  }
+
+  // The slider is the Bluetooth delay (0..1500 ms) normally, and the fine trim (-300..300 ms) while the sound plays in this browser.
   function setDelay(v) {
-    v = Math.max(0, Math.min(1500, Math.round(v / 10) * 10));
-    offsetMs = v;
+    if (soundActive()) {
+      snd.trimMs = Math.max(-TRIM_MAX, Math.min(TRIM_MAX, Math.round(v / 10) * 10));
+      saveTrim(snd.trimMs);
+    } else {
+      offsetMs = Math.max(0, Math.min(1500, Math.round(v / 10) * 10));
+      saveDelay(offsetMs);
+    }
+    syncDelayUi();
+  }
+
+  function syncDelayUi() {
+    const a = soundActive();
+    delayEl.min = a ? String(-TRIM_MAX) : '0';
+    delayEl.max = a ? String(TRIM_MAX) : '1500';
+    const v = a ? snd.trimMs : offsetMs;
     delayEl.value = String(v);
     delayValueEl.textContent = v + ' ms';
-    saveDelay(v);
+    updateHint();
   }
 
   // ---- layout: canvas fills the window keeping the aspect ratio ----
@@ -282,7 +326,7 @@
   function layout() {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    const L = computeLayout(vw, vh, canvas.width, canvas.height, ctl.allowed, NEED_SIDE, NEED_BOTTOM);
+    const L = computeLayout(vw, vh, canvas.width, canvas.height, ctl.allowed || snd.available, NEED_SIDE, NEED_BOTTOM);
     canvas.style.width = L.cw + 'px';
     canvas.style.height = L.ch + 'px';
     canvas.style.left = L.left + 'px';
@@ -322,7 +366,13 @@
     netLateCount++;
   }
 
+  // While the sound plays in this browser the picture follows the sound (audio is the master clock, plan 2.4.1); otherwise the
+  // jitter-buffer time above is used, unchanged.
   function dueTime(p) {
+    if (audioMaster()) {
+      const d = audioVideoDue(snd.clock, p.pts, snd.trimMs, audioClk(), p.pts + baseMs + bufferMs + offsetMs);
+      return d;
+    }
     return p.pts + baseMs + bufferMs + offsetMs;
   }
 
@@ -332,6 +382,377 @@
     queue = [];
     baseSamples = [];
     baseMs = null;
+  }
+
+
+  // ---- browser audio: pure scheduling math ----
+  // AUDIO-MATH-BEGIN (pure; app/src/test/js/audio.test.js runs exactly this text under node)
+  // The two audio profiles of the phone's Settings > Audio (hello.audio.profile), page side: the playback buffer (seconds) and how it adapts.
+  // start/min/max = target buffer; grow = added on an underrun; shrink = removed after quietS seconds without one. Keep in step with
+  // AudioProfile.kt on the phone (the phone has the frame sizes and bit rates).
+  const AUDIO_PROFILES = {
+    fast:    { start: 0.04, min: 0.03, max: 0.15, grow: 0.01, shrink: 0.01, quietS: 15 },
+    quality: { start: 0.10, min: 0.08, max: 0.40, grow: 0.03, shrink: 0.01, quietS: 60 }
+  };
+  const AUDIO_DRIFT_S = 0.1;       // scheduled time further ahead of currentTime than target + this: re-anchor
+  const AUDIO_MAX_VIDEO_AHEAD_MS = 1500; // a picture due later than this from audio timing is not trusted (normal timing is used)
+
+  function audioProfileParams(name) {
+    return AUDIO_PROFILES[name] || AUDIO_PROFILES.quality;
+  }
+
+  function audioClockCreate(profileName) {
+    const p = audioProfileParams(profileName);
+    return { profile: AUDIO_PROFILES[profileName] ? profileName : 'quality', p: p, target: p.start, base: null, lastEnd: 0,
+             quietSince: 0, underruns: 0, reanchors: 0 };
+  }
+
+  // Forget the pts -> context time mapping (new stream, reconnect, tab shown again); the adapted target stays.
+  function audioClockReset(st) {
+    st.base = null;
+    st.lastEnd = 0;
+  }
+
+  // Another profile: its start target, and a new anchor at the next chunk.
+  function audioClockSetProfile(st, profileName) {
+    const name = AUDIO_PROFILES[profileName] ? profileName : 'quality';
+    if (name === st.profile) return;
+    st.profile = name;
+    st.p = AUDIO_PROFILES[name];
+    st.target = st.p.start;
+    audioClockReset(st);
+  }
+
+  // audioBase = ctx.currentTime + target - pts: the chunk with this pts plays target seconds from now.
+  function audioAnchor(st, ctxNow, ptsSec) {
+    st.base = ctxNow + st.target - ptsSec;
+    st.reanchors++;
+  }
+
+  // Where to play the chunk with phone time ptsSec and length durSec, given the context time ctxNow.
+  // Returns { when, offset, skip, event }: start the source at `when` (context seconds) at `offset` seconds into the chunk; skip = do not
+  // play it (already covered). event = '' | 'anchor' | 'underrun' | 'drift' | 'shrink'.
+  function audioSchedule(st, ctxNow, ptsSec, durSec) {
+    let event = '';
+    if (st.base === null) {
+      audioAnchor(st, ctxNow, ptsSec);
+      st.quietSince = ctxNow;
+      event = 'anchor';
+    } else {
+      const w = ptsSec + st.base;
+      if (w < ctxNow) {
+        // Underrun: the chunk's start time is already past. A bigger buffer next time.
+        st.underruns++;
+        st.target = Math.min(st.p.max, st.target + st.p.grow);
+        st.quietSince = ctxNow;
+        audioAnchor(st, ctxNow, ptsSec);
+        event = 'underrun';
+      } else if (w - ctxNow > st.target + AUDIO_DRIFT_S) {
+        audioAnchor(st, ctxNow, ptsSec);
+        event = 'drift';
+      } else if (st.target > st.p.min && ctxNow - st.quietSince >= st.p.quietS) {
+        st.target = Math.max(st.p.min, st.target - st.p.shrink);
+        st.quietSince = ctxNow;
+        audioAnchor(st, ctxNow, ptsSec);
+        event = 'shrink';
+      }
+    }
+    let when = ptsSec + st.base;
+    let offset = 0;
+    if (when < st.lastEnd) {          // overlaps what is already scheduled (after a re-anchor): play only the new part
+      offset = st.lastEnd - when;
+      when = st.lastEnd;
+      if (offset < 0.0002) offset = 0;
+    }
+    const skip = offset >= durSec - 0.0005;
+    if (!skip) st.lastEnd = when + (durSec - offset);
+    return { when: when, offset: offset, skip: skip, event: event };
+  }
+
+  function audioBufferedMs(st, ctxNow) {
+    return Math.max(0, (st.lastEnd - ctxNow) * 1000);
+  }
+
+  // Due time, in performance.now() milliseconds, of the picture with phone pts ptsMs while the sound is the master clock.
+  // clk = { perfMs, ctxSec, latencySec }: the audio context time ctxSec that is being HEARD at perfMs (from getOutputTimestamp, latencySec 0),
+  // or the render time at perfMs with the output latency to subtract. A chunk scheduled at context time T is heard at T + latency,
+  // so the picture is due when the heard time reaches ptsMs/1000 + base (+ the user's trim).
+  function audioVideoDueMs(st, ptsMs, trimMs, clk) {
+    return clk.perfMs + ((ptsMs / 1000 + st.base + trimMs / 1000) - clk.ctxSec + clk.latencySec) * 1000;
+  }
+
+  // As above, but fallbackMs (the normal due time) when the sound timing is not usable (no anchor yet, or absurdly far ahead).
+  function audioVideoDue(st, ptsMs, trimMs, clk, fallbackMs) {
+    if (!st || st.base === null || !clk) return fallbackMs;
+    const d = audioVideoDueMs(st, ptsMs, trimMs, clk);
+    if (!(d - clk.perfMs < AUDIO_MAX_VIDEO_AHEAD_MS)) return fallbackMs;
+    return d;
+  }
+
+  // 16-bit little-endian interleaved stereo (DataView view, byte offset off) -> two Float32Arrays of `frames` samples.
+  function audioPcmToFloat(view, off, frames, left, right) {
+    for (let i = 0; i < frames; i++) {
+      left[i] = view.getInt16(off + i * 4, true) / 32768;
+      right[i] = view.getInt16(off + i * 4 + 2, true) / 32768;
+    }
+  }
+  // AUDIO-MATH-END
+
+  // ---- browser audio: the player ----
+  function helloAudio(h) {
+    if (!h || h.audio === undefined || h.audio === null) return { mode: 'off' };
+    return typeof h.audio === 'string' ? { mode: h.audio } : h.audio;
+  }
+
+  function loadSoundPrefs() {
+    try {
+      snd.want = localStorage.getItem(SOUND_KEY) === '1';
+      snd.muted = localStorage.getItem(MUTED_KEY) === '1';
+    } catch (e) { /* storage blocked */ }
+    snd.trimMs = loadTrim();
+  }
+
+  function saveSoundPrefs() {
+    try {
+      localStorage.setItem(SOUND_KEY, snd.want ? '1' : '0');
+      localStorage.setItem(MUTED_KEY, snd.muted ? '1' : '0');
+    } catch (e) { /* storage blocked */ }
+  }
+
+  // Sound is playing in this browser (or about to): the user wants it, it is not muted, and the context runs.
+  function soundActive() {
+    return !!(snd.available && snd.want && !snd.muted && snd.ctx && snd.ctx.state === 'running');
+  }
+
+  // The picture follows the sound only while audio packets keep arriving.
+  function audioMaster() {
+    return !!(snd.clock && snd.clock.base !== null && soundActive() && performance.now() - snd.lastPktAt < AUDIO_STALE_MS);
+  }
+
+  function audioClk() {
+    const c = snd.ctx;
+    const pm = performance.now();
+    if (snd.clk && pm - snd.clk.at < 50) return snd.clk;
+    let clk = null;
+    if (typeof c.getOutputTimestamp === 'function') {
+      try {
+        const t = c.getOutputTimestamp();
+        if (t && t.performanceTime > 0 && t.contextTime > 0 && Math.abs(pm - t.performanceTime) < 2000) {
+          clk = { perfMs: t.performanceTime, ctxSec: t.contextTime, latencySec: 0, at: pm };
+        }
+      } catch (e) { /* not available */ }
+    }
+    if (!clk) {
+      const lat = (typeof c.outputLatency === 'number' && c.outputLatency > 0) ? c.outputLatency : (c.baseLatency || 0);
+      clk = { perfMs: pm, ctxSec: c.currentTime, latencySec: lat, at: pm };
+    }
+    snd.clk = clk;
+    return clk;
+  }
+
+  function ensureAudioContext() {
+    if (snd.ctx) return snd.ctx;
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return null;
+    let c = null;
+    try { c = new Ctor({ sampleRate: 48000, latencyHint: 'interactive' }); } catch (e) {
+      try { c = new Ctor(); } catch (e2) { c = null; }
+    }
+    if (!c) return null;
+    snd.ctx = c;
+    snd.gain = c.createGain();
+    snd.gain.gain.value = snd.muted ? 0 : 1;
+    snd.gain.connect(c.destination);
+    c.onstatechange = function () { snd.clk = null; onSoundStateChange(); };
+    return c;
+  }
+
+  function resumeAudioContext() {
+    const c = ensureAudioContext();
+    if (!c) return;
+    if (c.state !== 'running') {
+      try {
+        const r = c.resume();
+        if (r && r.then) r.then(onSoundStateChange, function () { /* needs a user gesture */ });
+      } catch (e) { /* needs a user gesture */ }
+    }
+    onSoundStateChange();
+  }
+
+  // Tell the phone whether this page wants sound (it captures only while somebody does), and refresh the button.
+  function onSoundStateChange() {
+    const on = soundActive();
+    if (!on) { if (snd.clock) audioClockReset(snd.clock); flushAudioDecoder(); }
+    if (on !== snd.sentOn && ws && ws.readyState === 1 && hello) {
+      snd.sentOn = on;
+      send({ t: 'audio', on: on });
+    }
+    updateSoundUi();
+    schedulePump(0);
+  }
+
+  function updateSoundUi() {
+    const running = !!(snd.ctx && snd.ctx.state === 'running');
+    soundBtnEl.hidden = !snd.available;
+    let label = 'Tap for sound';
+    let cls = 'off';
+    if (snd.available && snd.want && running) { label = snd.muted ? 'Muted' : 'Sound on'; cls = snd.muted ? 'muted' : 'on'; }
+    soundLabelEl.textContent = label;
+    soundBtnEl.className = cls;
+    if (snd.shown !== snd.available) { snd.shown = snd.available; layout(); } // the bar appears or goes away
+    syncDelayUi();
+  }
+
+  function enableSound() {
+    snd.want = true;
+    snd.muted = false;
+    saveSoundPrefs();
+    if (snd.gain) snd.gain.gain.value = 1;
+    resumeAudioContext();
+  }
+
+  function toggleMute() {
+    snd.muted = !snd.muted;
+    saveSoundPrefs();
+    if (snd.gain) snd.gain.gain.value = snd.muted ? 0 : 1;
+    onSoundStateChange();
+  }
+
+  soundBtnEl.addEventListener('click', function () {
+    const running = !!(snd.ctx && snd.ctx.state === 'running');
+    if (snd.want && running) toggleMute();
+    else enableSound();
+  });
+
+  // The remembered choice cannot start sound without a gesture: the next touch anywhere resumes it.
+  function onGesture() {
+    if (snd.available && snd.want && !snd.muted && !(snd.ctx && snd.ctx.state === 'running')) resumeAudioContext();
+  }
+  ['pointerdown', 'touchend', 'mousedown', 'keydown'].forEach(function (n) { document.addEventListener(n, onGesture, true); });
+
+  // hello.audio: { mode, codec, sampleRate, channels, frameMs, profile }
+  function applyAudioHello(m) {
+    const a = helloAudio(m);
+    const avail = !!(audioSupported && a.mode === 'browser' && a.codec);
+    const prev = snd.fmt;
+    snd.fmt = avail ? a : null;
+    snd.available = avail;
+    if (avail) {
+      if (!snd.clock) snd.clock = audioClockCreate(a.profile);
+      else audioClockSetProfile(snd.clock, a.profile);
+      if (!prev || prev.codec !== a.codec || prev.frameMs !== a.frameMs) { flushAudioDecoder(); audioClockReset(snd.clock); }
+    } else if (snd.clock) {
+      audioClockReset(snd.clock);
+      flushAudioDecoder();
+    }
+    onSoundStateChange();
+  }
+
+  function flushAudioDecoder() {
+    const d = snd.decoder;
+    snd.decoder = null;
+    if (d) { try { d.close(); } catch (e) { /* already closed */ } }
+  }
+
+  function scheduleAudio(ptsSec, left, right, frames) {
+    const c = snd.ctx;
+    if (!c || !snd.clock) return;
+    const r = audioSchedule(snd.clock, c.currentTime, ptsSec, frames / 48000);
+    snd.lastPktAt = performance.now();
+    if (r.event) schedulePump(0);       // the mapping changed: due times of waiting pictures changed
+    if (r.skip) return;
+    const buf = c.createBuffer(2, frames, 48000);
+    buf.getChannelData(0).set(left);
+    buf.getChannelData(1).set(right);
+    const src = c.createBufferSource();
+    src.buffer = buf;
+    src.connect(snd.gain);
+    try { src.start(r.when, r.offset); } catch (e) { /* out of range: drop this chunk */ }
+  }
+
+  function onAudioData(ad) {
+    try {
+      if (!soundActive()) return;
+      const n = ad.numberOfFrames;
+      const left = new Float32Array(n);
+      let right = left;
+      try {
+        ad.copyTo(left, { planeIndex: 0, format: 'f32-planar' });
+        if (ad.numberOfChannels > 1) { right = new Float32Array(n); ad.copyTo(right, { planeIndex: 1, format: 'f32-planar' }); }
+      } catch (e) {
+        // No format conversion: take the data as it is (interleaved f32).
+        const all = new Float32Array(n * ad.numberOfChannels);
+        ad.copyTo(all, { planeIndex: 0 });
+        const ch = ad.numberOfChannels;
+        right = ch > 1 ? new Float32Array(n) : left;
+        for (let i = 0; i < n; i++) { left[i] = all[i * ch]; if (ch > 1) right[i] = all[i * ch + 1]; }
+      }
+      scheduleAudio(ad.timestamp / 1e6, left, right, n);
+    } catch (e) {
+      snd.decoderErrors++;
+    } finally {
+      try { ad.close(); } catch (e2) { /* ignore */ }
+    }
+  }
+
+  function opusDecoder() {
+    if (snd.decoder) return snd.decoder;
+    const d = new window.AudioDecoder({
+      output: onAudioData,
+      error: function (e) {
+        if (snd.decoder !== d) return;
+        snd.decoderErrors++;
+        if (window.console) console.log('audio decoder error', e);
+        flushAudioDecoder();          // recreated by the next packet
+      }
+    });
+    d.configure({ codec: 'opus', sampleRate: 48000, numberOfChannels: 2 });
+    snd.decoder = d;
+    return d;
+  }
+
+  function onAudioPacket(buf, flags, ptsUs) {
+    if (!soundActive() || !snd.clock) return;
+    if (!snd.fmt) return;
+    snd.packets++;
+    try {
+      if ((flags & FLAG_AUDIO_OPUS) !== 0) {
+        if (!window.AudioDecoder || !window.EncodedAudioChunk) return;
+        const d = opusDecoder();
+        if (d.decodeQueueSize > 20) return;   // the decoder is behind: drop, the clock re-anchors
+        d.decode(new window.EncodedAudioChunk({ type: 'key', timestamp: ptsUs, duration: (snd.fmt.frameMs || 20) * 1000, data: new Uint8Array(buf, HEADER) }));
+      } else {
+        const frames = Math.floor((buf.byteLength - HEADER) / 4);
+        if (frames <= 0) return;
+        const left = new Float32Array(frames);
+        const right = new Float32Array(frames);
+        audioPcmToFloat(new DataView(buf), HEADER, frames, left, right);
+        scheduleAudio(ptsUs / 1e6, left, right, frames);
+      }
+    } catch (e) {
+      snd.decoderErrors++;
+      flushAudioDecoder();
+    }
+  }
+
+  // Page capability for the phone's format choice: Opus only if WebCodecs can decode it (secure pages only).
+  function checkAudio() {
+    if (audioCheck) return audioCheck;
+    audioCheck = new Promise(function (resolve) {
+      if (!audioSupported) { resolve(null); return; }
+      try {
+        if (typeof window.AudioDecoder === 'function' && typeof window.EncodedAudioChunk === 'function' &&
+            typeof window.AudioData === 'function' && window.AudioDecoder.isConfigSupported) {
+          window.AudioDecoder.isConfigSupported({ codec: 'opus', sampleRate: 48000, numberOfChannels: 2 }).then(
+            function (r) { resolve({ opus: !!(r && r.supported) }); },
+            function () { resolve({ opus: false }); }
+          );
+          return;
+        }
+      } catch (e) { /* not supported */ }
+      resolve({ opus: false });
+    });
+    return audioCheck;
   }
 
   // ---- decoders, one per mode ----
@@ -582,7 +1003,16 @@
   }
 
   function updateHint() {
-    hintEl.hidden = !(hello && hello.audio === 'bluetooth');
+    const mode = helloAudio(hello).mode;
+    if (mode === 'bluetooth') {
+      hintEl.textContent = 'Adjust delay until lips match sound.';
+      hintEl.hidden = false;
+    } else if (soundActive()) {
+      hintEl.textContent = 'Sound plays here, in sync. Use the slider only to fine-tune.';
+      hintEl.hidden = false;
+    } else {
+      hintEl.hidden = true;
+    }
   }
 
   // ---- pump: hand due packets to the decoder ----
@@ -693,10 +1123,11 @@
     if (buf.byteLength < HEADER) return;
     const view = new DataView(buf);
     const type = view.getUint8(0);
-    if (type !== TYPE_JPEG && type !== TYPE_H264) return; // 0 = probe dummy, 3 = audio (later)
-    if (!hello) return;                                    // wait for the stream description
     const hi = view.getUint32(4, false);
     const lo = view.getUint32(8, false);
+    if (type === TYPE_AUDIO) { onAudioPacket(buf, view.getUint8(1), hi * 4294967296 + lo); return; }
+    if (type !== TYPE_JPEG && type !== TYPE_H264) return; // 0 = probe dummy
+    if (!hello) return;                                    // wait for the stream description
     const ptsMs = (hi * 4294967296 + lo) / 1000;
     noteArrival(ptsMs);
     queue.push({
@@ -827,6 +1258,7 @@
       hello = m;
       applyCfg(m.cfg);
       applyControlHello(m.control);
+      applyAudioHello(m);
       chooseDecoder(m);
     } else if (m.t === 'ping') {
       // Answer at once with the page clock: the phone measures the round trip and the clock offset from it.
@@ -913,10 +1345,12 @@
       socket.wmOpened = true;
       clearTimeout(connectTimer);
       setStatus('Waiting for the stream…');
-      checkCodecs().then(function (c) {
+      Promise.all([checkCodecs(), checkAudio()]).then(function (res) {
+        const c = res[0];
         if (ws === socket) {
           // h264 / hevc booleans: kept for older phone apps (h264 = decodable at all, hevc = in hardware).
           const hi = { t: 'hello', v: 1, h264: c.h264.sw || c.h264.hw, hevc: c.hevc.hw, codecs: c, pin: '' };
+          if (res[1]) hi.audio = res[1];   // only pages that can play audio at all
           const tok = loadToken();
           if (tok) { hi.token = tok; socket.wmTokenSent = true; }
           send(hi);
@@ -949,6 +1383,9 @@
       updateBar();
       layout();
     }
+    snd.sentOn = false;   // the next hello of the phone re-sends the sound state
+    if (snd.clock) audioClockReset(snd.clock);
+    flushAudioDecoder();
     phoneOffsetMs = null; // the next connection measures its own offset
     paused = false;
     flushQueue();
@@ -1021,7 +1458,14 @@
     if (ctl.allowed) lines.push('control ' + (ctl.on ? 'ON' : 'off') + '   service ' + (ctl.ready ? 'ready' : 'not ready') + '   fingers ' + fingersNow + ' (max ' + fingersMax + ')');
     if (cfgId) lines.push('cfg ' + cfgId + '   ' + cfgSummary);
     if (hello) {
-      lines.push(hello.width + 'x' + hello.height + '   mode ' + hello.mode + '   audio ' + hello.audio);
+      lines.push(hello.width + 'x' + hello.height + '   mode ' + hello.mode + '   audio ' + helloAudio(hello).mode);
+      if (snd.fmt && snd.clock) {
+        const c = snd.ctx;
+        lines.push('audio ' + snd.fmt.codec + ' ' + Math.round((snd.fmt.sampleRate || 48000) / 1000) + 'k ' + (snd.fmt.frameMs || 20) + ' ms ' + snd.clock.profile +
+          '   ' + (soundActive() ? (audioMaster() ? 'following' : 'on') : snd.muted ? 'muted' : 'off') +
+          (c ? '   buf ' + Math.round(audioBufferedMs(snd.clock, c.currentTime)) + ' ms (target ' + Math.round(snd.clock.target * 1000) + ')' : '') +
+          '   underruns ' + snd.clock.underruns + '   decoder errors ' + snd.decoderErrors);
+      }
       if (hello.codec) lines.push('codec ' + hello.codec + (hello.encoder ? '   encoder ' + hello.encoder : ''));
       if (hello.why) lines.push(hello.why);
     }
@@ -1076,6 +1520,8 @@
       decodeQueue: decodeQueueSize(),
       inDecoder: inDecoderCount(),
       srvInFlight: serverInFlight,
+      audioBufMs: snd.clock && snd.ctx ? Math.round(audioBufferedMs(snd.clock, snd.ctx.currentTime)) : 0,
+      audioUnderruns: snd.clock ? snd.clock.underruns : 0,
       ua: navigator.userAgent
     });
   }
@@ -1320,8 +1766,8 @@
     toggleOverlay();
   });
   document.getElementById('close').addEventListener('click', function () { overlayEl.hidden = true; });
-  document.getElementById('delayMinus').addEventListener('click', function () { setDelay(offsetMs - 10); });
-  document.getElementById('delayPlus').addEventListener('click', function () { setDelay(offsetMs + 10); });
+  document.getElementById('delayMinus').addEventListener('click', function () { setDelay((soundActive() ? snd.trimMs : offsetMs) - 10); });
+  document.getElementById('delayPlus').addEventListener('click', function () { setDelay((soundActive() ? snd.trimMs : offsetMs) + 10); });
   delayEl.addEventListener('input', function () { setDelay(parseInt(delayEl.value, 10) || 0); });
 
   const docEl = document.documentElement;
@@ -1346,6 +1792,8 @@
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) cancelAllPointers();
     if (!document.hidden) {
+      if (snd.ctx && snd.available && snd.want && !snd.muted) resumeAudioContext();
+      if (snd.clock) audioClockReset(snd.clock);   // re-anchor: the context may have stood still while hidden
       flushQueue(); // the queue may hold stale packets after a long hidden period
       if (decoder) decoder.resync();
       askKeyframe();
@@ -1353,7 +1801,9 @@
   });
 
   // ---- go ----
-  setDelay(loadDelay());
+  loadSoundPrefs();
+  offsetMs = loadDelay();
+  syncDelayUi();
   updateBar();
   layout();
   setInterval(sendStats, STATS_INTERVAL_MS);

@@ -39,7 +39,11 @@ class StreamHub(
         val width: Int = 0,
         val height: Int = 0,
         val fps: Int = 0,
+        /** Audio mode key (`hello.audio.mode`): "bluetooth", "browser" or "off". */
         val audio: String = "off",
+        /** Browser audio only: "opus" or "pcm" as chosen for the viewers ("" = none) and the [AudioProfile] key (`hello.audio.profile`). */
+        val audioCodec: String = "",
+        val audioProfile: String = AudioProfile.QUALITY.key,
         /** The page-side part of [StreamConfig] as a JSON object text (`hello.cfg`). */
         val cfg: String = StreamConfig().pageJson(),
         /** Remote control (plan 2.1 `hello.control`): the phone's switch is on / the accessibility service is connected. */
@@ -48,8 +52,17 @@ class StreamHub(
         /** Some viewer owns the control right now (`hello.control.ownerPresent`), so others need not ask. */
         val controlOwnerPresent: Boolean = false,
     ) {
+        /** `{"mode":"browser","codec":"opus","sampleRate":48000,"channels":2,"frameMs":20,"profile":"quality"}`; other modes only have `mode`. */
+        private fun audioJson(): String =
+            if (audio == AUDIO_BROWSER && audioCodec.isNotEmpty()) {
+                val p = AudioProfile.fromKey(audioProfile)
+                """{"mode":"$audio","codec":"$audioCodec","sampleRate":${AudioSpec.SAMPLE_RATE},"channels":${AudioSpec.CHANNELS},"frameMs":${p.frameMs},"profile":"${p.key}"}"""
+            } else {
+                """{"mode":"$audio"}"""
+            }
+
         fun toJson(): String =
-            """{"t":"hello","v":$PROTOCOL_VERSION,"mode":"$mode","codec":"$codec","why":${JsonText.quote(why)},"encoder":${JsonText.quote(encoder + if (hardware == true) " (hw)" else if (hardware == false) " (sw)" else "")},"width":$width,"height":$height,"fps":$fps,"audio":"$audio","cfg":$cfg,"control":{"allowed":$controlAllowed,"ready":$controlReady,"ownerPresent":$controlOwnerPresent}}"""
+            """{"t":"hello","v":$PROTOCOL_VERSION,"mode":"$mode","codec":"$codec","why":${JsonText.quote(why)},"encoder":${JsonText.quote(encoder + if (hardware == true) " (hw)" else if (hardware == false) " (sw)" else "")},"width":$width,"height":$height,"fps":$fps,"audio":${audioJson()},"cfg":$cfg,"control":{"allowed":$controlAllowed,"ready":$controlReady,"ownerPresent":$controlOwnerPresent}}"""
     }
 
     private val sinks = CopyOnWriteArrayList<StreamSink>()
@@ -67,6 +80,7 @@ class StreamHub(
     private var lastNotice: String? = null
     private var lastNoticeAtMs = 0L
     private var lastNoticeTtlMs = 0L
+    private var lastAudioPlan = AudioPlan.OFF
 
     /** Who may control the phone (see "Remote control" in the plan). */
     val control = ControlArbiter()
@@ -229,6 +243,7 @@ class StreamHub(
     fun register(sink: StreamSink) {
         sinks.add(sink)
         events?.onViewerCountChanged(sinks.size)
+        recomputeAudio()
     }
 
     fun unregister(sink: StreamSink) {
@@ -237,6 +252,7 @@ class StreamHub(
             syncOwner()
             events?.onViewerCountChanged(sinks.size)
             recomputeMode()
+            recomputeAudio()
             viewChanged()
         }
     }
@@ -276,10 +292,12 @@ class StreamHub(
      * A change of picture size drops the cached JPEG (it has the old size).
      */
     fun update(change: (HelloInfo) -> HelloInfo) {
+        var audioChanged = false
         synchronized(lock) {
             val old = info
             val new = change(old)
             if (new == old) return
+            audioChanged = new.audio != old.audio || new.audioProfile != old.audioProfile
             info = new
             if (new.width != old.width || new.height != old.height || new.mode != old.mode || new.codec != old.codec) {
                 lastJpeg = null
@@ -289,6 +307,54 @@ class StreamHub(
             for (s in sinks) s.onHello(json)
             events?.onStreamChanged(new)
         }
+        if (audioChanged) recomputeAudio()
+    }
+
+    // ---- browser audio (plan 2.4.1) ----
+
+    /** Whether the phone has an Opus encoder; set by the capture owner. */
+    @Volatile
+    var phoneOpus: Boolean = false
+        private set
+
+    fun setAudioEncoders(opus: Boolean) {
+        if (opus == phoneOpus) return
+        phoneOpus = opus
+        recomputeAudio()
+    }
+
+    /**
+     * Set by the audio capture owner: called (without any hub lock held) whenever the audio plan changes (mode or profile,
+     * a viewer joined/left/turned sound on or off, the codec choice changed).
+     */
+    @Volatile
+    var audioRequester: ((AudioPlan) -> Unit)? = null
+
+    /** The current plan (what the capture should be doing now). */
+    fun audioPlan(): AudioPlan = synchronized(lock) { lastAudioPlan }
+
+    /** Recomputes the plan; updates `hello.audio.codec` for the viewers and asks the capture owner to follow when it changed. */
+    fun recomputeAudio() {
+        val plan: AudioPlan
+        val changed: Boolean
+        val helloCodec: String
+        synchronized(lock) {
+            val browser = info.audio == AUDIO_BROWSER
+            plan = AudioPolicy.plan(browser, AudioProfile.fromKey(info.audioProfile), phoneOpus, sinks.mapNotNull { it.audioCaps })
+            changed = plan != lastAudioPlan
+            lastAudioPlan = plan
+            helloCodec = if (browser) plan.codec else ""
+        }
+        update { if (it.audioCodec == helloCodec) it else it.copy(audioCodec = helloCodec) }
+        if (changed) audioRequester?.invoke(plan)
+    }
+
+    /** A viewer's audio state changed (its hello or `{t:"audio"}`). */
+    fun audioChanged() = recomputeAudio()
+
+    /** Called by the audio capture for every packet of [durationMs] ms. Not under the hub lock: audio must never wait for video. */
+    fun onAudio(packet: Packet, durationMs: Int) {
+        for (s in sinks) if (s.audioCaps?.wants == true) s.onAudio(packet, durationMs)
     }
 
     /** Forgets everything about the previous stream (used when mirroring stops). */
@@ -304,6 +370,7 @@ class StreamHub(
             fallbackNote = null
             lastNotice = null
             targetText = ""
+            lastAudioPlan = AudioPlan.OFF
         }
     }
 
@@ -410,6 +477,7 @@ class StreamHub(
         const val MODE_HEVC = "hevc"
         const val MODE_VP9 = "vp9"
         const val MODE_AV1 = "av1"
+        const val AUDIO_BROWSER = "browser"
 
         /** h264, hevc, vp9 and av1 share packet type 1 and the keyframe/GOP handling. */
         fun isVideoMode(mode: String): Boolean = mode in CodecChooser.VIDEO_CODECS

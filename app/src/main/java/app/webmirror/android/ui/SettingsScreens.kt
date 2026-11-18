@@ -1,6 +1,10 @@
 package app.webmirror.android.ui
 
+import android.Manifest
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -60,6 +64,7 @@ import app.webmirror.android.net.Ipv4
 import app.webmirror.android.net.TlsStore
 import app.webmirror.android.net.VirtualIpService
 import app.webmirror.android.net.acme.IssueResult
+import app.webmirror.android.stream.AudioProfile
 import app.webmirror.android.stream.Pairing
 import app.webmirror.android.stream.StreamConfig
 import app.webmirror.android.test.AutoTestRunner
@@ -77,7 +82,7 @@ import java.util.Date
 internal enum class SettingsPage(val title: String, val icon: ImageVector?) {
     VIDEO("Video & quality", AppIcons.Play),
     CAPTURE("Screen capture", AppIcons.Phone),
-    AUDIO("Audio", null),
+    AUDIO("Audio", AppIcons.VolumeUp),
     CONTROL("Remote control", AppIcons.Person),
     SECURITY("Security", AppIcons.Lock),
     HTTPS("Secure connection (HTTPS)", AppIcons.CheckCircle),
@@ -260,27 +265,65 @@ private fun CaptureSettings(settings: Settings) {
 @Composable
 private fun AudioSettings(settings: Settings) {
     val context = LocalContext.current
+    val state by MirrorService.state.collectAsState()
     var selected by remember { mutableStateOf(settings.audioMode) }
-    Note("WebMirror does not send sound to the browser yet. In the car, sound comes from the phone over Bluetooth.")
+    var profile by remember { mutableStateOf(settings.audioProfile) }
+    val resumes = rememberResumeCount()
+    var granted by remember(resumes) { mutableStateOf(micGranted(context)) }
+    val permission = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        granted = ok
+        if (ok) {
+            MirrorService.applySettings(context)
+        } else {
+            // "Don't ask again": the system dialog does not show any more, so send the user to the app's settings.
+            val activity = generateSequence(context) { (it as? android.content.ContextWrapper)?.baseContext }.filterIsInstance<android.app.Activity>().firstOrNull()
+            if (activity != null && !androidx.core.app.ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.RECORD_AUDIO)) {
+                context.startActivity(
+                    Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
+        }
+    }
     Column(Modifier.selectableGroup()) {
         for (m in AudioMode.entries) {
-            ChoiceRow(
-                m.label,
-                selected == m,
-                enabled = m.available,
-                supporting = when (m) {
-                    AudioMode.BLUETOOTH -> "The phone plays the sound to the car. The page delays the picture to match; set the delay in the page."
-                    AudioMode.BROWSER -> "Sound through the browser. Not available yet."
-                    AudioMode.OFF -> "No sound hint on the page."
-                },
-            ) {
+            ChoiceRow(m.optionText, selected == m, supporting = m.explanation) {
                 selected = m
                 settings.audioMode = m
+                if (m == AudioMode.BROWSER && !granted) permission.launch(Manifest.permission.RECORD_AUDIO)
                 MirrorService.applySettings(context)
             }
         }
     }
+    if (selected == AudioMode.BROWSER) {
+        GroupTitle("Sound profile")
+        Column(Modifier.selectableGroup()) {
+            ChoiceRow("Fast \u2014 lowest delay, sound may crackle on weak Wi-Fi", profile == AudioProfile.FAST) {
+                profile = AudioProfile.FAST
+                settings.audioProfile = profile
+                MirrorService.applySettings(context)
+            }
+            ChoiceRow("High quality \u2014 best sound, slightly more delay", profile == AudioProfile.QUALITY) {
+                profile = AudioProfile.QUALITY
+                settings.audioProfile = profile
+                MirrorService.applySettings(context)
+            }
+        }
+        GroupTitle("Permission")
+        Text(
+            if (granted) "Sound capture: allowed" else "Sound capture: not allowed",
+            style = MaterialTheme.typography.titleMedium,
+            color = if (granted) Color(0xFF008C3C) else MaterialTheme.colorScheme.error,
+        )
+        Note("Android calls this permission \"Microphone\". WebMirror uses it only to capture the sound the phone plays; it does not record the microphone.")
+        if (!granted) OutlinedButton(onClick = { permission.launch(Manifest.permission.RECORD_AUDIO) }) { Text("Allow sound capture") }
+        state.audioNote?.let { ErrorText(it) }
+        Note("Some apps (for example Netflix) block sound capture; their sound stays silent.")
+    }
 }
+
+private fun micGranted(context: android.content.Context): Boolean =
+    androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
 @Composable
 private fun ControlSettings(settings: Settings) {

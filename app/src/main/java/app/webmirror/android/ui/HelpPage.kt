@@ -145,9 +145,24 @@ internal val HELP_SECTIONS: List<HelpSection> = listOf(
     HelpSection(
         "Sound",
         listOf(
-            p("WebMirror does not send sound to the browser yet."),
-            p("With the default \"Bluetooth\" option the phone plays the sound to the car over Bluetooth. Bluetooth sound arrives a little later than the picture, so the page has a delay setting to match them. Set it in the page until lips and sound fit."),
-            p("\"Off\" turns that hint off. \"Browser\" sound is planned for later and cannot be chosen yet."),
+            p("Settings > Audio has three options:"),
+            bullets(
+                "Car speakers via Bluetooth (default): the phone plays the sound to the car over Bluetooth. Bluetooth sound arrives a little later than the picture, so the page has a delay setting; set it in the page until lips and sound fit.",
+                "In the browser: the phone sends its sound to the page and the car browser plays it, in sync with the picture. No Bluetooth needed.",
+                "Off: no sound handling and no delay hint.",
+            ),
+            h("Sound in the browser"),
+            p("Android asks for the \"Microphone\" permission. WebMirror uses it only to capture the sound the phone plays, not the microphone."),
+            p("In the car, tap \"Tap for sound\" on the page once (browsers do not play sound before a tap). After that the same button turns the sound off and on. The browser remembers your choice; the sound starts again after your next touch."),
+            p("To keep picture and sound together, the picture waits for the sound. With browser sound the delay grows to about 0.1-0.15 seconds. The small delay slider in the page's menu then only fine-tunes (-300 to +300 ms)."),
+            p("Some apps (for example Netflix) block sound capture; their sound stays silent."),
+            p("If the phone plays the sound too, lower its volume and check whether the car still gets sound."),
+            h("Sound profile"),
+            bullets(
+                "High quality (default): best sound, slightly more delay.",
+                "Fast: lowest delay. The sound may crackle on weak Wi-Fi. Use it when picture and sound must react quickly, for example games.",
+            ),
+            p("You can switch the profile while mirroring."),
         ),
     ),
     HelpSection(

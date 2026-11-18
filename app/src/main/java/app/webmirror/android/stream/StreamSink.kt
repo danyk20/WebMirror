@@ -20,6 +20,12 @@ interface StreamSink {
     /** True if this viewer got in through pairing (a pairing token or the PIN), false if it was admitted because pairing was off. */
     val paired: Boolean get() = false
 
+    /** What the viewer said about audio (Opus support, sound on), or null if its page cannot play audio. */
+    val audioCaps: ViewerAudio? get() = null
+
+    /** An audio packet of [durationMs] ms; sent ahead of video, never flow-controlled, backlog capped (see AudioBacklog). */
+    fun onAudio(p: Packet, durationMs: Int) {}
+
     /** Closes this viewer's connection (the page reconnects by itself). */
     fun disconnect() {}
 
