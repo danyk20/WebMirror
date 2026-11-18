@@ -61,9 +61,10 @@ object TestPlan {
         // vsync pacing, jitter 150 ms, JPEG) were measured in the car on 2026-11-18 and made no measurable difference
         // (docs/car-test-results.md); they are not repeated. The options themselves still exist in StreamConfig.
         return listOf(
-            p("default", "All current defaults (codec auto, jitter 40 ms, adaptive bitrate)", base),
+            p("default", "All current defaults (codec auto, jitter 20 ms, adaptive bitrate)", base),
+            p("jitter-40ms", "Player jitter buffer 40 ms", base.copy(jitterBufferMs = 40)),
             p("jitter-30ms", "Player jitter buffer 30 ms", base.copy(jitterBufferMs = 30)),
-            p("jitter-20ms", "Player jitter buffer 20 ms", base.copy(jitterBufferMs = 20)),
+            p("jitter-10ms", "Player jitter buffer 10 ms", base.copy(jitterBufferMs = 10)),
             p("no-adaptive-bitrate", "Adaptive bitrate off", base.copy(adaptiveBitrate = false)),
             p("codec-h264", "Forced H.264", base.copy(codec = StreamConfig.CODEC_H264)),
             p("codec-hevc", "Forced HEVC", base.copy(codec = StreamConfig.CODEC_HEVC)),

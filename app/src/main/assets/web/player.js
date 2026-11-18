@@ -4,7 +4,7 @@
   'use strict';
 
   // ---- constants ----
-  const DEFAULT_BUFFER_MS = 40;    // network jitter buffer (plan 2.4); the phone's hello.cfg.jitterBufferMs overrides it
+  const DEFAULT_BUFFER_MS = 20;    // network jitter buffer (plan 2.4); the phone's hello.cfg.jitterBufferMs overrides it
   const BASE_WINDOW_MS = 2000;     // clock mapping = minimum over the last 2 s (re-adapts when the network speeds up)
   const MAX_QUEUE = 200;           // hard cap of waiting packets
   const DEFAULT_LATE_SKIP = 2;     // a frame later than this many frame intervals is skipped (hello.cfg.skipLateFrames; 0 = never)

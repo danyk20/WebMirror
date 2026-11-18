@@ -39,7 +39,7 @@ data class StreamConfig(
     /** Lowest H.264 bitrate the controller may choose, kbit/s (JPEG: quality never goes below 30). */
     val minBitrateKbps: Int = 800,
     // ---- page (sent in hello.cfg) ----
-    val jitterBufferMs: Int = 40,
+    val jitterBufferMs: Int = 20,
     /** The player skips frames later than this many frame intervals; 0 = never. */
     val skipLateFrames: Int = 2,
     /** "immediate" = draw each decoded frame at once; "vsync" = draw the newest decoded frame once per screen refresh. */

@@ -25,7 +25,7 @@ class StreamConfigTest {
         assertFalse(c.fitToViewer)
         assertEquals(6, c.maxInFlight)
         assertEquals(150, c.dropAfterMs)
-        assertEquals(40, c.jitterBufferMs)
+        assertEquals(20, c.jitterBufferMs)
         assertEquals("auto", c.codec)
         assertFalse(c.allowSoftwareEncoder)
         assertEquals(2, c.skipLateFrames)

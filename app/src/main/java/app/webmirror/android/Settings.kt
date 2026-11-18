@@ -11,6 +11,20 @@ class Settings(context: Context) {
     private val prefs: SharedPreferences =
         context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
+    init {
+        val v = prefs.getInt(KEY_MIGRATION, 0)
+        if (v < MIGRATION_VERSION) {
+            val raw = prefs.getString(KEY_STREAM_CONFIG, null)
+            val e = prefs.edit()
+            if (raw != null) {
+                val cfg = StreamConfig.fromJson(raw)
+                val j = migrateJitter(v, cfg.jitterBufferMs)
+                if (j != cfg.jitterBufferMs) e.putString(KEY_STREAM_CONFIG, cfg.copy(jitterBufferMs = j).toJson().toString())
+            }
+            e.putInt(KEY_MIGRATION, MIGRATION_VERSION).apply()
+        }
+    }
+
     /** Raw text of the "Virtual address" field (may be invalid while the user is typing). */
     var virtualIp: String
         get() = prefs.getString(KEY_VIRTUAL_IP, DEFAULT_VIRTUAL_IP) ?: DEFAULT_VIRTUAL_IP
@@ -64,6 +78,13 @@ class Settings(context: Context) {
         set(value) = prefs.edit().putBoolean(KEY_TEST_PATTERN, value).apply()
 
     companion object {
+        private const val KEY_MIGRATION = "migrationVersion"
+        const val MIGRATION_VERSION = 1
+
+        /** Migration 1: the old defaults 80 and 40 ms become the new default 20 ms; other values are the user's. */
+        fun migrateJitter(fromVersion: Int, jitterMs: Int): Int =
+            if (fromVersion < 1 && (jitterMs == 80 || jitterMs == 40)) StreamConfig().jitterBufferMs else jitterMs
+
         private const val KEY_TEST_NAME = "testRunName"
         private const val KEY_TEST_SECONDS = "testPhaseSeconds"
         private const val KEY_TEST_QUICK = "testQuick"

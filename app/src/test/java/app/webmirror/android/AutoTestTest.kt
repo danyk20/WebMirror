@@ -26,15 +26,15 @@ class AutoTestTest {
     // ---- plan ----
 
     @Test
-    fun planHasTheEightPhasesInOrderAndUniqueNames() {
+    fun planHasTheNinePhasesInOrderAndUniqueNames() {
         val plan = TestPlan.phases()
         assertEquals(
             listOf(
-                "default", "jitter-30ms", "jitter-20ms", "no-adaptive-bitrate", "codec-h264", "codec-hevc", "codec-vp9", "codec-av1",
+                "default", "jitter-40ms", "jitter-30ms", "jitter-10ms", "no-adaptive-bitrate", "codec-h264", "codec-hevc", "codec-vp9", "codec-av1",
             ),
             plan.map { it.name },
         )
-        assertEquals(8, plan.size)
+        assertEquals(9, plan.size)
         assertEquals(plan.size, plan.map { it.config.id }.toSet().size)
     }
 
