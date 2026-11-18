@@ -48,7 +48,7 @@ Google Play is planned.
 Releases are signed with one key. Check the certificate before you install:
 
 ```bash
-apksigner verify --print-certs WebMirror-<version>.apk   # e.g. WebMirror-0.9.0.apk
+apksigner verify --print-certs WebMirror-<version>.apk   # e.g. WebMirror-0.1.0.apk
 ```
 
 The SHA-256 digest must be:
