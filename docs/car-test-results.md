@@ -201,3 +201,4 @@ Reports: `docs/test-runs/20261118-011853-parked.*`, `docs/test-runs/20261118-012
   2. "Can't continue gesture due to points mismatch": continuations must start at the end point Android measures with PathMeasure (fixed 41a3a3c).
   3. Android cancels an injected gesture when a new finger joins while another is held. Fingers now start together (first finger waits 60 ms); a later finger lifts and re-places the held ones (65e695c).
 - Verified on the phone from a desk viewer (DevTools touch events, same path as the car): pinch-out and pinch-in with the second finger 400 ms late both zoom Google Maps, no cancelled gestures. Picture stays centred with the compact control bar (owner confirmed in the car).
+- Owner confirmed in the car (2026-11-18): all gestures work on the Tesla screen, including pinch zoom.
