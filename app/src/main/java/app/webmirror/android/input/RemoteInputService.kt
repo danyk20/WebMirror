@@ -45,6 +45,17 @@ class RemoteInputService : AccessibilityService() {
     private var frameToken = 0
     private var lastInputAtMs = 0L
 
+    /** End point of every held (willContinue) stroke, measured the way Android's injector measures it. */
+    private val exactEnds = java.util.IdentityHashMap<GestureDescription.StrokeDescription, FloatArray>()
+
+    /** Where Android considers [path] to end: PathMeasure at full length, or the start point for a tap. */
+    private fun measuredEnd(path: Path, sx: Float, sy: Float, moves: Boolean): FloatArray {
+        if (!moves) return floatArrayOf(sx, sy)
+        val pm = android.graphics.PathMeasure(path, false)
+        val pos = FloatArray(2)
+        return if (pm.getPosTan(pm.length, pos, null)) pos else floatArrayOf(sx, sy)
+    }
+
     private val idleCheck = object : Runnable {
         override fun run() {
             if (engine.hasActive) {
@@ -142,6 +153,7 @@ class RemoteInputService : AccessibilityService() {
 
     private fun resetEngine() {
         frameToken++
+        exactEnds.clear()
         engine.cancelled()
         activeGeometry = null
     }
@@ -153,16 +165,25 @@ class RemoteInputService : AccessibilityService() {
         try {
             val builder = GestureDescription.Builder()
             for (s in segments) {
-                val path = Path().apply {
-                    moveTo(s.fromX, s.fromY)
-                    if (s.moves) lineTo(s.toX, s.toY)
-                }
                 val prev = s.previous as? GestureDescription.StrokeDescription
+                // A continuation must start EXACTLY where Android's injector recorded the previous stroke ending
+                // (it compares floats; a mismatch cancels the whole gesture: "points mismatch"). Android computes that
+                // end with PathMeasure, which can differ from the coordinates we passed by a fraction of a pixel, so
+                // reuse the end point measured the same way.
+                val start = prev?.let { exactEnds.remove(it) }
+                val sx = start?.get(0) ?: s.fromX
+                val sy = start?.get(1) ?: s.fromY
+                val moves = s.toX != sx || s.toY != sy
+                val path = Path().apply {
+                    moveTo(sx, sy)
+                    if (moves) lineTo(s.toX, s.toY)
+                }
                 val stroke = if (prev == null) {
                     GestureDescription.StrokeDescription(path, 0, s.durationMs, s.willContinue)
                 } else {
                     prev.continueStroke(path, 0, s.durationMs, s.willContinue)
                 }
+                if (s.willContinue) exactEnds[stroke] = measuredEnd(path, sx, sy, moves)
                 s.handle = stroke
                 builder.addStroke(stroke)
             }
