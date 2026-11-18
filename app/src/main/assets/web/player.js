@@ -391,10 +391,10 @@
   // start/min/max = target buffer; grow = added on an underrun; shrink = removed after quietS seconds without one. Keep in step with
   // AudioProfile.kt on the phone (the phone has the frame sizes and bit rates).
   const AUDIO_PROFILES = {
-    fast:    { start: 0.04, min: 0.03, max: 0.15, grow: 0.01, shrink: 0.01, quietS: 15 },
-    quality: { start: 0.10, min: 0.08, max: 0.40, grow: 0.03, shrink: 0.01, quietS: 60 }
+    fast:    { start: 0.04, min: 0.03, max: 0.15, grow: 0.01, shrink: 0.01, quietS: 15, drift: 0.05 },
+    quality: { start: 0.10, min: 0.08, max: 0.40, grow: 0.03, shrink: 0.01, quietS: 60, drift: 0.08 }
   };
-  const AUDIO_DRIFT_S = 0.1;       // scheduled time further ahead of currentTime than target + this: re-anchor
+  const AUDIO_DRIFT_S = 0.1;       // default: scheduled time further ahead of currentTime than target + this (profile `drift`): re-anchor
   const AUDIO_MAX_VIDEO_AHEAD_MS = 1500; // a picture due later than this from audio timing is not trusted (normal timing is used)
 
   function audioProfileParams(name) {
@@ -447,7 +447,7 @@
         st.quietSince = ctxNow;
         audioAnchor(st, ctxNow, ptsSec);
         event = 'underrun';
-      } else if (w - ctxNow > st.target + AUDIO_DRIFT_S) {
+      } else if (w - ctxNow > st.target + (st.p.drift || AUDIO_DRIFT_S)) {
         audioAnchor(st, ctxNow, ptsSec);
         event = 'drift';
       } else if (st.target > st.p.min && ctxNow - st.quietSince >= st.p.quietS) {
@@ -715,6 +715,12 @@
     if (!soundActive() || !snd.clock) return;
     if (!snd.fmt) return;
     snd.packets++;
+    if (phoneOffsetMs !== null) {
+      const age = performance.now() - (ptsUs / 1000 + phoneOffsetMs);
+      snd.ageSum = (snd.ageSum || 0) + age;
+      snd.ageN = (snd.ageN || 0) + 1;
+      snd.ageMin = Math.min(snd.ageMin === undefined ? 1e9 : snd.ageMin, age);
+    }
     try {
       if ((flags & FLAG_AUDIO_OPUS) !== 0) {
         if (!window.AudioDecoder || !window.EncodedAudioChunk) return;
@@ -1465,6 +1471,13 @@
           '   ' + (soundActive() ? (audioMaster() ? 'following' : 'on') : snd.muted ? 'muted' : 'off') +
           (c ? '   buf ' + Math.round(audioBufferedMs(snd.clock, c.currentTime)) + ' ms (target ' + Math.round(snd.clock.target * 1000) + ')' : '') +
           '   underruns ' + snd.clock.underruns + '   decoder errors ' + snd.decoderErrors);
+        // Where the sound delay goes: age of a packet when it arrives (phone capture + send + network), and the browser's output delay.
+        if (c && snd.ageN > 0) {
+          const outLat = (typeof c.outputLatency === 'number' && c.outputLatency > 0) ? c.outputLatency : (c.baseLatency || 0);
+          lines.push('audio age ' + Math.round(snd.ageSum / snd.ageN) + ' ms (min ' + Math.round(snd.ageMin) + ')   output ' + Math.round(outLat * 1000) +
+            ' ms (base ' + Math.round((c.baseLatency || 0) * 1000) + ')');
+          snd.ageSum = 0; snd.ageN = 0; snd.ageMin = 1e9;
+        }
       }
       if (hello.codec) lines.push('codec ' + hello.codec + (hello.encoder ? '   encoder ' + hello.encoder : ''));
       if (hello.why) lines.push(hello.why);
