@@ -33,7 +33,7 @@ class StreamHubTest {
         val hub = StreamHub()
         hub.update { it.copy(width = 576, height = 1280, fps = 30, audio = "bluetooth") }
         assertEquals(
-            """{"t":"hello","v":1,"mode":"jpeg","codec":"","why":"","encoder":"","width":576,"height":1280,"fps":30,"audio":"bluetooth","cfg":${StreamConfig().pageJson()},"control":{"allowed":false,"ready":false}}""",
+            """{"t":"hello","v":1,"mode":"jpeg","codec":"","why":"","encoder":"","width":576,"height":1280,"fps":30,"audio":"bluetooth","cfg":${StreamConfig().pageJson()},"control":{"allowed":false,"ready":false,"ownerPresent":false}}""",
             hub.helloJson(),
         )
     }

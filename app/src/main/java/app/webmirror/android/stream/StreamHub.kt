@@ -41,9 +41,11 @@ class StreamHub(
         /** Remote control (plan 2.1 `hello.control`): the phone's switch is on / the accessibility service is connected. */
         val controlAllowed: Boolean = false,
         val controlReady: Boolean = false,
+        /** Some viewer owns the control right now (`hello.control.ownerPresent`), so others need not ask. */
+        val controlOwnerPresent: Boolean = false,
     ) {
         fun toJson(): String =
-            """{"t":"hello","v":$PROTOCOL_VERSION,"mode":"$mode","codec":"$codec","why":${JsonText.quote(why)},"encoder":${JsonText.quote(encoder + if (hardware == true) " (hw)" else if (hardware == false) " (sw)" else "")},"width":$width,"height":$height,"fps":$fps,"audio":"$audio","cfg":$cfg,"control":{"allowed":$controlAllowed,"ready":$controlReady}}"""
+            """{"t":"hello","v":$PROTOCOL_VERSION,"mode":"$mode","codec":"$codec","why":${JsonText.quote(why)},"encoder":${JsonText.quote(encoder + if (hardware == true) " (hw)" else if (hardware == false) " (sw)" else "")},"width":$width,"height":$height,"fps":$fps,"audio":"$audio","cfg":$cfg,"control":{"allowed":$controlAllowed,"ready":$controlReady,"ownerPresent":$controlOwnerPresent}}"""
     }
 
     private val sinks = CopyOnWriteArrayList<StreamSink>()
@@ -80,13 +82,17 @@ class StreamHub(
             sinks.firstOrNull { it.viewerId == dropped.first }
                 ?.onText("""{"t":"control","on":false,"owner":false,"reason":"${dropped.second}"}""")
         }
-        update { it.copy(controlAllowed = allowed, controlReady = ready) }
+        update { it.copy(controlAllowed = allowed, controlReady = ready, controlOwnerPresent = control.ownerId != null) }
     }
+
+    /** Ownership changed: viewers learn through `hello.control.ownerPresent` (no-op when unchanged). */
+    private fun syncOwner() = update { it.copy(controlOwnerPresent = control.ownerId != null) }
 
     /** `{t:"control", on}` of [sink]; returns the answer to send back. */
     fun controlRequest(sink: StreamSink, on: Boolean): ControlArbiter.Reply {
         val reply = control.request(sink.viewerId, on)
         if (!on) inputSink?.releaseAll()
+        syncOwner()
         return reply
     }
 
@@ -220,6 +226,7 @@ class StreamHub(
     fun unregister(sink: StreamSink) {
         if (sinks.remove(sink)) {
             if (control.release(sink.viewerId)) inputSink?.releaseAll()
+            syncOwner()
             events?.onViewerCountChanged(sinks.size)
             recomputeMode()
             viewChanged()

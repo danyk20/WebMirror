@@ -173,7 +173,7 @@ class MirrorService : Service() {
             // Mandatory on Android 14+ before the display is created.
             p.registerCallback(projectionCallback, Handler(Looper.getMainLooper()))
             if (!resuming) {
-                RemoteControlState.allowed.value = false // the safety switch is off at the start of every mirroring session
+                RemoteControlState.allowed.value = settings.remoteControlAllowed // persisted, default on; not reset by sessions
                 hub.reset()
                 bindEvents()
             }
@@ -305,7 +305,6 @@ class MirrorService : Service() {
             return
         }
         active = false
-        RemoteControlState.allowed.value = false
         hub.setControl(false, RemoteInputService.connected.value)
         endCapture()
         releaseLocks()

@@ -8,15 +8,16 @@ import android.graphics.Point
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import app.webmirror.android.Settings
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/** The phone's own switch "Allow control from viewers". In memory only: off after every app start and mirroring session. */
+/** The phone's own switch "Allow control from viewers": a live copy of the persisted `Settings.remoteControlAllowed` (default on). */
 object RemoteControlState {
-    val allowed = MutableStateFlow(false)
+    val allowed = MutableStateFlow(Settings.DEFAULT_REMOTE_CONTROL)
 }
 
 /** Connects the hub to the running accessibility service; a no-op while the service is not connected. */

@@ -6,10 +6,9 @@ import app.webmirror.android.capture.Preset
 import app.webmirror.android.stream.StreamConfig
 
 /** Small SharedPreferences wrapper for the user's persistent choices. */
-class Settings(context: Context) {
+class Settings internal constructor(private val prefs: SharedPreferences) {
 
-    private val prefs: SharedPreferences =
-        context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+    constructor(context: Context) : this(context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE))
 
     init {
         val v = prefs.getInt(KEY_MIGRATION, 0)
@@ -44,6 +43,14 @@ class Settings(context: Context) {
     var audioMode: AudioMode
         get() = AudioMode.fromKey(prefs.getString(KEY_AUDIO, null))
         set(value) = prefs.edit().putString(KEY_AUDIO, value.key).apply()
+
+    /**
+     * "Allow control from viewers" (plan 2.1.3): persisted, default ON, never reset by mirroring start/stop. It only
+     * has an effect while the accessibility service is enabled.
+     */
+    var remoteControlAllowed: Boolean
+        get() = prefs.getBoolean(KEY_REMOTE_CONTROL, DEFAULT_REMOTE_CONTROL)
+        set(value) = prefs.edit().putBoolean(KEY_REMOTE_CONTROL, value).apply()
 
     /** Hold a dim wake lock while mirroring, so the screen lock does not stop the capture (plan M3.5). */
     var keepScreenOn: Boolean
@@ -91,6 +98,8 @@ class Settings(context: Context) {
         private const val KEY_TEST_PATTERN = "testUsePattern"
         private const val KEY_STREAM_CONFIG = "streamConfig"
         private const val KEY_KEEP_SCREEN_ON = "keepScreenOn"
+        private const val KEY_REMOTE_CONTROL = "remoteControlAllowed"
+        const val DEFAULT_REMOTE_CONTROL = true
         private const val KEY_FORCE_JPEG = "forceJpeg"
         private const val FILE = "webmirror"
         private const val KEY_VIRTUAL_IP = "virtualIp"

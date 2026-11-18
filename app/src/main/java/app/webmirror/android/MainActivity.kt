@@ -132,6 +132,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         settings = Settings(this)
+        RemoteControlState.allowed.value = settings.remoteControlAllowed
         TlsStore.refresh(this)
         setContent {
             MaterialTheme {
@@ -283,7 +284,7 @@ private fun MainScreen(
         QualitySection(settings) { MirrorService.applySettings(context) }
 
         HorizontalDivider()
-        ControlSection(state.running, state.viewerCount)
+        ControlSection(settings, state.running, state.viewerCount)
 
         HorizontalDivider()
         DisplaySection(settings) { MirrorService.applySettings(context) }
@@ -375,9 +376,9 @@ private fun QualitySection(settings: Settings, onChanged: () -> Unit) {
     }
 }
 
-/** Remote control from viewers: the safety switch (in memory, off at every start) and the accessibility service status. */
+/** Remote control from viewers: the switch (persisted, default on) and the accessibility service status. */
 @Composable
-private fun ControlSection(running: Boolean, viewers: Int) {
+private fun ControlSection(settings: Settings, running: Boolean, viewers: Int) {
     val context = LocalContext.current
     val allowed by RemoteControlState.allowed.collectAsState()
     val connected by RemoteInputService.connected.collectAsState()
@@ -406,12 +407,11 @@ private fun ControlSection(running: Boolean, viewers: Int) {
     val ready = connected || enabledInSettings
     SectionTitle("Remote control")
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Switch(checked = allowed && running, enabled = running, onCheckedChange = { RemoteControlState.allowed.value = it })
+        Switch(checked = allowed, onCheckedChange = { settings.remoteControlAllowed = it; RemoteControlState.allowed.value = it })
         Text("Allow control from viewers", modifier = Modifier.padding(start = 12.dp))
     }
     Text(
-        if (running) "Off by default and switched off again whenever mirroring stops. While on, one viewer at a time can turn control on in its page and then operate this phone by touching the picture."
-        else "Start mirroring first; this switch is off at the start of every mirroring session.",
+        "On by default and kept until you change it. While on (and the accessibility service is enabled), anyone who opens the page on your hotspot can control this phone; one viewer at a time operates it by touching the picture. Switch it off if you do not trust the people on the network.",
         style = MaterialTheme.typography.bodySmall,
     )
     if (allowed && running) {

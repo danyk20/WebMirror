@@ -104,16 +104,18 @@ class ControlArbiterTest {
         val v2 = Viewer(2)
         hub.register(v1); hub.register(v2)
         hub.setControl(true, true)
-        assertTrue(hub.helloJson().endsWith(""""control":{"allowed":true,"ready":true}}"""))
+        assertTrue(hub.helloJson().endsWith(""""control":{"allowed":true,"ready":true,"ownerPresent":false}}"""))
         hub.controlInput(1, ev)
         assertEquals(0, rec.events.size) // nobody owns yet
         assertTrue(hub.controlRequest(v1, true).owner)
+        assertTrue(hub.helloJson().contains(""""ownerPresent":true"""))
         assertTrue(hub.controlRequest(v2, true).denied)
         hub.controlInput(2, ev)
         hub.controlInput(1, ev)
         assertEquals(1, rec.events.size)
         hub.unregister(v1)
         assertEquals(1, rec.releases)
+        assertTrue(hub.helloJson().contains(""""ownerPresent":false"""))
         assertTrue(hub.controlRequest(v2, true).owner)
     }
 
@@ -129,6 +131,32 @@ class ControlArbiterTest {
         hub.setControl(false, true)
         assertEquals(listOf("""{"t":"control","on":false,"owner":false,"reason":"notAllowed"}"""), v1.texts)
         assertEquals(1, rec.releases)
-        assertTrue(hub.helloJson().contains(""""control":{"allowed":false,"ready":true}"""))
+        assertTrue(hub.helloJson().contains(""""control":{"allowed":false,"ready":true,"ownerPresent":false}"""))
+    }
+
+    @Test
+    fun ownerPresentFollowsTheOwnerAndIsBroadcast() {
+        val hub = StreamHub()
+        val hellos = ArrayList<String>()
+        val v1 = object : StreamSink {
+            override val viewerId = 1
+            override fun onHello(json: String) { hellos.add(json) }
+            override fun onPacket(p: Packet) {}
+            override fun onText(json: String) {}
+        }
+        val v2 = Viewer(2)
+        hub.register(v1); hub.register(v2)
+        hub.setControl(true, true)
+        hellos.clear()
+        hub.controlRequest(v2, true)
+        assertTrue(hellos.last().contains(""""ownerPresent":true"""))
+        hub.controlRequest(v2, false)
+        assertTrue(hellos.last().contains(""""ownerPresent":false"""))
+        hub.controlRequest(v2, true)
+        hub.unregister(v2)
+        assertTrue(hellos.last().contains(""""ownerPresent":false"""))
+        hellos.clear()
+        hub.controlRequest(v1, false) // no change: no new hello
+        assertEquals(0, hellos.size)
     }
 }

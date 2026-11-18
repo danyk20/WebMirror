@@ -105,7 +105,8 @@
   let rttCount = 0;
   let noticeTimer = null;
   // Remote control (plan "Remote control"): allowed/ready come from hello.control; on = this page owns the control.
-  const ctl = { allowed: false, ready: false, on: false, pending: false };
+  const ctl = { allowed: false, ready: false, ownerPresent: false, on: false, pending: false, autoAsked: false };
+  const CTL_OPTOUT_KEY = 'webmirror.controlOptOut'; // set when the user turned control off in this browser: no automatic request
   let ctlNoteTimer = null;
 
   // ---- small helpers ----
@@ -823,6 +824,7 @@
       // The phone releases the control when the socket closes; the next hello says what is allowed now.
       setControlOn(false, false);
       ctl.allowed = false;
+      ctl.autoAsked = false;
       updateBar();
       layout();
     }
@@ -1045,12 +1047,41 @@
     updateBar();
   }
 
+  function ctlOptedOut() {
+    try { return localStorage.getItem(CTL_OPTOUT_KEY) === '1'; } catch (e) { return false; }
+  }
+
+  function ctlSetOptOut(v) {
+    try { if (v) localStorage.setItem(CTL_OPTOUT_KEY, '1'); else localStorage.removeItem(CTL_OPTOUT_KEY); } catch (e) { /* storage blocked */ }
+  }
+
+  // Asks the phone for the control; the answer comes as `control` or `controlDenied`.
+  function requestControl() {
+    ctl.pending = true;
+    updateBar();
+    send({ t: 'control', on: true });
+    // No answer (old phone app, link problem): back to OFF.
+    setTimeout(function () { if (ctl.pending) { ctl.pending = false; updateBar(); showCtlNote('No answer from the phone'); } }, 4000);
+  }
+
   function applyControlHello(c) {
     const allowed = !!(c && c.allowed);
     ctl.ready = !!(c && c.ready);
+    ctl.ownerPresent = !!(c && c.ownerPresent);
     const changed = allowed !== ctl.allowed;
     ctl.allowed = allowed;
     if (!allowed && (ctl.on || ctl.pending)) setControlOn(false, false);
+    // Control starts ON: ask automatically once per "nobody owns it" period, unless the user turned it off in this
+    // browser. If another screen owns it, say so and ask again once its owner is gone (the hello tells).
+    if (!allowed || !ctl.ready || ctl.ownerPresent) ctl.autoAsked = false;
+    if (allowed && ctl.ready && !ctl.on && !ctl.pending) {
+      if (ctl.ownerPresent) {
+        showCtlNote(CTL_REASONS.busy);
+      } else if (!ctl.autoAsked && !ctlOptedOut()) {
+        ctl.autoAsked = true;
+        requestControl();
+      }
+    }
     updateBar();
     if (changed) layout(); // the bar appears or goes away, which may shrink or grow the picture
   }
@@ -1078,13 +1109,11 @@
 
   ctlToggleEl.addEventListener('click', function () {
     if (ctl.on || ctl.pending) {
+      ctlSetOptOut(true);
       setControlOn(false, true);
     } else {
-      ctl.pending = true;
-      updateBar();
-      send({ t: 'control', on: true });
-      // No answer (old phone app, link problem): back to OFF.
-      setTimeout(function () { if (ctl.pending) { ctl.pending = false; updateBar(); showCtlNote('No answer from the phone'); } }, 4000);
+      ctlSetOptOut(false);
+      requestControl();
     }
   });
   menuBtnEl.addEventListener('click', toggleOverlay);
