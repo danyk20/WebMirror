@@ -192,3 +192,12 @@ Reports: `docs/test-runs/20261118-011853-parked.*`, `docs/test-runs/20261118-012
 - Disturbances of 400–1600 ms are far larger than any jitter buffer; they are absorbed by flow control/skipping, not by the buffer. So a small buffer (20–30 ms) costs little.
 - Measured bitrate ~8 Mbit/s although the preset target is 4 Mbit/s: to check (possibly two viewers connected, e.g. a second car tab).
 - Owner's observations in the car: overlay showed **mode hevc**; picture as sharp as before, maybe slightly better; **no more ~2 s lag when shifting Park → Drive** (the backlog fix from 18c6bb6 works in the car).
+
+## Remote control (2026-11-18)
+
+- Car (Tesla browser) reports multi-touch correctly: 1–5 fingers counted on the page.
+- Pinch zoom failed at first. Causes found on the phone and fixed:
+  1. Strokes in one frame had different durations; Android treated the shorter as lifted (fixed 82662a3).
+  2. "Can't continue gesture due to points mismatch": continuations must start at the end point Android measures with PathMeasure (fixed 41a3a3c).
+  3. Android cancels an injected gesture when a new finger joins while another is held. Fingers now start together (first finger waits 60 ms); a later finger lifts and re-places the held ones (65e695c).
+- Verified on the phone from a desk viewer (DevTools touch events, same path as the car): pinch-out and pinch-in with the second finger 400 ms late both zoom Google Maps, no cancelled gestures. Picture stays centred with the compact control bar (owner confirmed in the car).
