@@ -116,17 +116,21 @@ class GestureEngineTest {
 
     @Test
     fun twoFingersAreOneGestureWithTwoStrokesAndAHeldFingerIsContinued() {
+        // On the real phone Android cancels a gesture that adds a finger while another is held, so a finger that
+        // joins after the first one started makes the held one lift, and then both start together as new strokes.
         val e = GestureEngine()
         e.down(1, 100f, 100f, 0.0)
         val a0 = e.frame()[0]
         e.completed()
         e.down(2, 200f, 100f, 10.0)
+        val lift = e.frame()
+        assertEquals(1, lift.size)
+        assertSame(a0.handle, lift[0].previous)
+        assertFalse(lift[0].willContinue)
+        e.completed()
         val f1 = e.frame()
-        // finger 1 did not change but must be part of the frame, as a continuation
-        val a1 = f1.first { it.pointerId == 1 }
-        assertSame(a0.handle, a1.previous)
-        assertTrue(a1.willContinue); assertFalse(a1.moves)
         assertEquals(2, f1.size)
+        assertTrue(f1.all { it.previous == null && it.willContinue && !it.moves })
         e.completed()
         e.move(1, 90f, 100f, 26.0)
         e.move(2, 210f, 100f, 26.0)
@@ -246,5 +250,29 @@ class GestureEngineTest {
         val g = e.frame()
         assertEquals(2, g.size)
         assertEquals(g[0].durationMs, g[1].durationMs)
+    }
+
+    @Test
+    fun aLateFingerLiftsTheHeldOnesThenAllStartTogether() {
+        val e = GestureEngine()
+        e.down(1, 500f, 1000f, 0.0)
+        e.frame(); e.completed()
+        e.move(1, 510f, 1000f, 20.0)
+        e.frame(); e.completed()
+        e.down(2, 700f, 1000f, 300.0) // second finger joins much later
+        val lift = e.frame()
+        assertEquals(1, lift.size)
+        assertEquals(1, lift[0].pointerId)
+        assertFalse("held finger lifts so the new one can join", lift[0].willContinue)
+        e.completed()
+        val together = e.frame()
+        assertEquals(2, together.size)
+        assertTrue(together.all { it.previous == null && it.willContinue })
+        assertEquals(2, e.startedCount)
+        e.completed()
+        e.move(1, 480f, 1000f, 320.0)
+        e.move(2, 730f, 1000f, 320.0)
+        val pinch = e.frame()
+        assertTrue(pinch.all { it.previous != null })
     }
 }

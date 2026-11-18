@@ -42,6 +42,7 @@ class GestureEngine(private val maxPointers: Int = 10) {
         var dirty = true
         var arrivedBusy = false                             // newest event arrived while a frame was in flight
         var lastSegment: Segment? = null
+        var restart = false                                 // lifted only so it can start again together with a new finger
     }
 
     private val pointers = ArrayList<Pointer>()
@@ -51,6 +52,8 @@ class GestureEngine(private val maxPointers: Int = 10) {
     val hasActive: Boolean get() = pointers.isNotEmpty()
     val isInFlight: Boolean get() = inFlight
     val activeCount: Int get() = pointers.size
+    /** Fingers whose touch has already been dispatched (held on the phone). */
+    val startedCount: Int get() = pointers.count { it.started && !it.ending }
 
     private fun find(id: Int): Pointer? = pointers.lastOrNull { it.id == id && !it.ending }
 
@@ -96,6 +99,24 @@ class GestureEngine(private val maxPointers: Int = 10) {
      */
     fun next(): List<Segment>? {
         if (inFlight || pointers.none { it.dirty }) return null
+        // Android cancels a gesture when a new finger joins while others are held. So a late finger first makes every
+        // held finger lift where it is; the next frame then puts them all down again together, as new strokes.
+        if (pointers.any { !it.started && !it.ending } && pointers.any { it.started && !it.ending }) {
+            val out = ArrayList<Segment>()
+            for (p in pointers) {
+                if (!p.started) continue
+                val seg = Segment(p.id, p.lastX, p.lastY, p.targetX, p.targetY, MIN_SEGMENT_MS, false, p.lastSegment?.handle)
+                p.lastSegment = seg
+                p.lastX = p.targetX; p.lastY = p.targetY
+                if (p.targetTs > p.lastTs) p.lastTs = p.targetTs
+                if (!p.ending) p.restart = true
+                p.dirty = false
+                p.arrivedBusy = false
+                out.add(seg)
+            }
+            inFlight = true
+            return out
+        }
         // A touch that starts must not begin in the same instant another one lifts (it would look like two fingers):
         // new touches wait one frame when a started one ends now.
         val deferNew = pointers.any { it.started && it.ending }
@@ -151,6 +172,13 @@ class GestureEngine(private val maxPointers: Int = 10) {
     fun completed() {
         inFlight = false
         pointers.removeAll { it.started && it.ending && !it.dirty }
+        for (p in pointers) {
+            if (!p.restart) continue
+            p.restart = false
+            p.started = false
+            p.lastSegment = null
+            p.dirty = true
+        }
     }
 
     /** The frame was cancelled or could not be dispatched: all touches are gone as far as we can tell. */

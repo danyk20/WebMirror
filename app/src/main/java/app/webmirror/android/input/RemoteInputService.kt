@@ -45,6 +45,9 @@ class RemoteInputService : AccessibilityService() {
     private var frameToken = 0
     private var lastInputAtMs = 0L
 
+    /** Short descriptions of the last frames, logged when the system cancels one (debugging remote gestures). */
+    private val recentFrames = ArrayDeque<String>()
+
     /** End point of every held (willContinue) stroke, measured the way Android's injector measures it. */
     private val exactEnds = java.util.IdentityHashMap<GestureDescription.StrokeDescription, FloatArray>()
 
@@ -142,6 +145,22 @@ class RemoteInputService : AccessibilityService() {
             handler.removeCallbacks(idleCheck)
             handler.postDelayed(idleCheck, IDLE_CHECK_MS)
         }
+        // Android cancels a gesture when a new finger joins while another one is already held. The fingers of a
+        // pinch reach us a few ms apart, so the first touch waits briefly for the others and they all start together.
+        if (ev.action == InputAction.DOWN && !engine.isInFlight && engine.startedCount == 0) {
+            if (!grouping) {
+                grouping = true
+                handler.postDelayed(groupDone, GROUP_MS)
+            }
+            return
+        }
+        if (grouping) return
+        pump()
+    }
+
+    private var grouping = false
+    private val groupDone = Runnable {
+        grouping = false
         pump()
     }
 
@@ -154,6 +173,8 @@ class RemoteInputService : AccessibilityService() {
     private fun resetEngine() {
         frameToken++
         exactEnds.clear()
+        handler.removeCallbacks(groupDone)
+        grouping = false
         engine.cancelled()
         activeGeometry = null
     }
@@ -164,6 +185,7 @@ class RemoteInputService : AccessibilityService() {
         val token = ++frameToken
         try {
             val builder = GestureDescription.Builder()
+            val desc = StringBuilder("#").append(token).append(':')
             for (s in segments) {
                 val prev = s.previous as? GestureDescription.StrokeDescription
                 // A continuation must start EXACTLY where Android's injector recorded the previous stroke ending
@@ -186,7 +208,12 @@ class RemoteInputService : AccessibilityService() {
                 if (s.willContinue) exactEnds[stroke] = measuredEnd(path, sx, sy, moves)
                 s.handle = stroke
                 builder.addStroke(stroke)
+                desc.append(" p").append(s.pointerId).append(if (prev == null) " new" else " cont")
+                    .append(" (").append(sx).append(',').append(sy).append(")->(").append(s.toX).append(',').append(s.toY)
+                    .append(") ").append(s.durationMs).append("ms").append(if (s.willContinue) " hold" else " up")
             }
+            recentFrames.addLast(desc.toString())
+            while (recentFrames.size > 6) recentFrames.removeFirst()
             val accepted = dispatchGesture(builder.build(), object : GestureResultCallback() {
                 override fun onCompleted(gestureDescription: GestureDescription?) {
                     if (token != frameToken) return
@@ -196,7 +223,7 @@ class RemoteInputService : AccessibilityService() {
 
                 override fun onCancelled(gestureDescription: GestureDescription?) {
                     if (token != frameToken) return
-                    Log.i(TAG, "remote control: gesture cancelled by the system")
+                    Log.i(TAG, "remote control: gesture cancelled by the system; last frames:\n  " + recentFrames.joinToString("\n  "))
                     resetEngine()
                 }
             }, handler)
@@ -213,6 +240,8 @@ class RemoteInputService : AccessibilityService() {
     companion object {
         private const val TAG = "WebMirror"
         private const val MAX_POINTERS = 10
+        /** How long the first finger waits for further fingers before the touch starts (ms). */
+        private const val GROUP_MS = 60L
         private const val IDLE_CHECK_MS = 5_000L
         private const val IDLE_RELEASE_MS = 15_000L
 
