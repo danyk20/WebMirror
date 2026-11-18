@@ -153,3 +153,21 @@ Reports: `docs/test-runs/20261118-000858-desk.*` (**parked** — the run was nam
 - Adaptive bitrate lowered quality in both runs without improving delay: too sensitive and too slow to recover. Either tune or default off.
 - The automatic test does not cover the Park → Drive transition (the earlier ~2 s lag); check that manually on the next drive.
 - Next candidate: HEVC as an option (car reports hardware support; phone has a hardware HEVC encoder).
+
+## Desk run with automatic codec choice (2026-11-18, Quick, headless Chrome over USB)
+
+Report: `docs/test-runs/20261118-010857-desk-hevc.*` (the earlier `20261118-005721-desk-hevc` has no e2e: the ping timer was frozen by a dead TLS viewer, fixed in b74e951).
+
+| Phase | Codec / encoder | e2e P95 (ms) | Notes |
+|---|---|---|---|
+| jitter-20ms | HEVC hw | 39 | max 93 (one spike) |
+| jitter-30ms | HEVC hw | 49 | |
+| codec-h264 | H.264 hw | 57 | |
+| no-adaptive-bitrate | HEVC hw | 58 | |
+| codec-hevc / default (jitter 40, auto → HEVC) | HEVC hw | 59 | |
+| codec-vp9 | VP9 **software** | 70 | phone still encodes 30 fps |
+| codec-av1 | — | — | software AV1 encoder cannot be created; fell back to HEVC |
+
+- All phases 30 fps, 0 drops, 4 Mbit/s CBR. At equal bitrate H.264 and HEVC have the same delay; HEVC's benefit would be picture quality per bit, which this test does not measure.
+- Dead-viewer fix verified: a silent HTTPS viewer was dropped after ~12 s while another viewer kept receiving a ping every second (max gap 1.0 s).
+- Found: on Android's Conscrypt the TLS "peek first byte" wrap failed, so the first HTTPS connection after each start was reset and `http://…:8443` was not redirected. Fix in progress (ReplaySocket).
