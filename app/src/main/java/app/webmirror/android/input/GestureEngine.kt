@@ -125,11 +125,14 @@ class GestureEngine(private val maxPointers: Int = 10) {
             if (seg.durationMs > longest) longest = seg.durationMs
             out.add(seg)
         }
-        // Held (not moving) pointers last as long as the frame so every stroke ends together.
+        // Every stroke that stays down lasts exactly as long as the frame. Android samples the gesture over time; a
+        // continued stroke that ends earlier than the others drops out of the later samples, which the injector treats
+        // as that finger lifting, and the next frame's continuation of it is then rejected (gesture cancelled). This is
+        // what broke two-finger gestures such as pinch zoom.
         val result = ArrayList<Segment>(out.size)
         for ((i, p) in frame.withIndex()) {
             var s = out[i]
-            if (!p.dirty && p.started) {
+            if (s.willContinue && s.durationMs != longest) {
                 s = Segment(s.pointerId, s.fromX, s.fromY, s.toX, s.toY, longest, true, s.previous)
             }
             p.lastSegment = s

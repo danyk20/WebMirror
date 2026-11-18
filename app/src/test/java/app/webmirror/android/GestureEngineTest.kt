@@ -225,4 +225,26 @@ class GestureEngineTest {
         assertEquals(17L, GestureEngine.clampDuration(16.7, GestureEngine.MIN_SEGMENT_MS, 100))
         assertEquals(GestureEngine.MIN_SEGMENT_MS, GestureEngine.clampDuration(Double.NaN, GestureEngine.MIN_SEGMENT_MS, 100))
     }
+
+    @Test
+    fun pinchFramesGiveEveryHeldStrokeTheSameDuration() {
+        // Two fingers moving apart at different speeds (pinch): if one continued stroke ended earlier than the other,
+        // Android would treat that finger as lifted mid-frame and cancel the next continuation.
+        val e = GestureEngine()
+        e.down(1, 500f, 1000f, 0.0)
+        e.down(2, 600f, 1000f, 0.0)
+        e.frame()
+        e.completed()
+        e.move(1, 480f, 1000f, 10.0)
+        e.move(2, 650f, 1000f, 40.0)
+        val f = e.frame()
+        assertEquals(2, f.size)
+        assertTrue(f.all { it.willContinue })
+        assertEquals(f[0].durationMs, f[1].durationMs)
+        e.completed()
+        e.move(2, 700f, 1000f, 70.0) // only one finger moves; the other must still span the whole frame
+        val g = e.frame()
+        assertEquals(2, g.size)
+        assertEquals(g[0].durationMs, g[1].durationMs)
+    }
 }
