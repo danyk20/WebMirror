@@ -32,6 +32,9 @@ class WebServer(
     /** Set on the TLS port by [enableTls]; null on the plain port. */
     private var tlsFactory: SSLSocketFactory? = null
 
+    /** The accepted plain socket of the connection being served on this thread (see [SniffingHandler.run]). */
+    private val currentRaw = ThreadLocal<Socket?>()
+
     @Volatile
     private var consumedUnsupported = false
 
@@ -90,6 +93,8 @@ class WebServer(
      */
     private inner class SniffingHandler(private val raw: Socket) : ClientHandler(raw.getInputStream(), raw) {
         override fun run() {
+            // openWebSocket runs synchronously on this thread (HTTPSession.execute -> serve), so the session picks up the raw socket from here.
+            currentRaw.set(raw)
             val real: ClientHandler? = try {
                 prepare()
             } catch (e: Exception) {
@@ -101,6 +106,7 @@ class WebServer(
             } else {
                 real.run() // closes the sockets when the connection ends
             }
+            currentRaw.remove()
             asyncRunner.closed(this)
         }
 
@@ -163,7 +169,7 @@ class WebServer(
         }
     }
 
-    override fun openWebSocket(handshake: IHTTPSession): WebSocket = ClientSession(handshake, hub)
+    override fun openWebSocket(handshake: IHTTPSession): WebSocket = ClientSession(handshake, hub, currentRaw.get())
 
     override fun serveHttp(session: IHTTPSession): Response {
         val uri = session.uri ?: return notFound()

@@ -25,6 +25,8 @@ import java.io.IOException
 class ClientSession(
     handshake: NanoHTTPD.IHTTPSession,
     private val hub: StreamHub,
+    /** The plain TCP socket under any TLS layer; closing it never blocks and unblocks a stuck writer. */
+    private val rawSocket: java.net.Socket? = null,
 ) : NanoWSD.WebSocket(handshake), StreamSink, Expirable {
 
     private sealed interface Outgoing {
@@ -394,12 +396,34 @@ class ClientSession(
         forceCloseSocket()
     }
 
-    /** Closing the handshake input stream closes the underlying socket (best effort). */
+    private val closing = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    /**
+     * Never blocks. Closes the raw TCP socket (below TLS) with SO_LINGER 0, so the close is an RST and does not wait
+     * for a dead peer; closing the SSL streams would try to write close_notify and could block forever. A writer
+     * stuck in send fails as soon as the raw socket is closed. Runs on a short-lived thread as a second safeguard.
+     */
     private fun forceCloseSocket() {
-        try {
-            handshakeRequest.inputStream.close()
-        } catch (e: Exception) {
-            // already closed
+        if (!closing.compareAndSet(false, true)) return
+        AsyncClose.run("ws-closer-$id") {
+            val raw = rawSocket
+            if (raw != null) {
+                try { raw.setSoLinger(true, 0) } catch (e: Exception) { /* already closed */ }
+                raw.close()
+            } else {
+                handshakeRequest.inputStream.close()
+            }
+        }
+    }
+
+    /** A writer stuck in a blocking send on a dead peer ignores interrupt; if it is still alive after a grace period, cut the socket. */
+    private fun watchStuckWriter(w: Thread) {
+        AsyncClose.run("ws-watchdog-$id") {
+            w.join(WRITER_GRACE_MS)
+            if (w.isAlive) {
+                Log.w(TAG, "writer stuck after shutdown, closing the raw socket")
+                forceCloseSocket()
+            }
         }
     }
 
@@ -412,7 +436,10 @@ class ClientSession(
             outbox.reset(false)
             mon.notifyAll()
         }
-        writer?.interrupt()
+        writer?.let {
+            it.interrupt()
+            watchStuckWriter(it)
+        }
     }
 
     companion object {
@@ -422,6 +449,7 @@ class ClientSession(
 
         private val MODE_REGEX = Regex("\"mode\":\"(\\w+)\"")
         private const val WAIT_MS = 200L
+        private const val WRITER_GRACE_MS = 3000L
         private const val STATS_FRESH_MS = 3000L
         private val nextId = java.util.concurrent.atomic.AtomicInteger()
         const val BLAST_PACKETS = 100

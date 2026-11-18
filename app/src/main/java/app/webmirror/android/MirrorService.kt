@@ -402,6 +402,17 @@ class MirrorService : Service() {
         }
     }
 
+    private fun guarded(name: String, task: () -> Unit): Runnable = Runnable {
+        val t0 = System.nanoTime()
+        try {
+            task()
+        } catch (t: Throwable) {
+            Log.w(TAG, "$name failed: $t")
+        }
+        val ms = (System.nanoTime() - t0) / 1_000_000
+        if (ms > 1000) Log.w(TAG, "$name took $ms ms")
+    }
+
     /** Starts the web server and its helpers. Returns an error message, or null on success. */
     private fun startServer(): String? {
         val s = WebServer(PORT, applicationContext.assets, hub)
@@ -412,31 +423,14 @@ class MirrorService : Service() {
             return "Cannot start the server on port $PORT: ${e.message}"
         }
         server = s
-        sweeper = Executors.newSingleThreadScheduledExecutor { r ->
-            Thread(r, "idle-sweeper").apply { isDaemon = true }
+        sweeper = Executors.newScheduledThreadPool(3) { r ->
+            Thread(r, "svc-task").apply { isDaemon = true }
         }.also { ex ->
-            ex.scheduleWithFixedDelay({
-                try {
-                    hub.sweepIdle(IDLE_TIMEOUT_MS)
-                } catch (e: Exception) {
-                    Log.w(TAG, "sweep failed: $e")
-                }
-            }, 2, 2, TimeUnit.SECONDS)
-            ex.scheduleWithFixedDelay({
-                try {
-                    hub.pingAll()
-                } catch (e: Exception) {
-                    Log.w(TAG, "ping failed: $e")
-                }
-            }, 1, 1, TimeUnit.SECONDS)
+            // Separate threads and a guard per task: one stuck or crashing task must not stop the others.
+            ex.scheduleWithFixedDelay(guarded("idle sweep") { hub.sweepIdle(IDLE_TIMEOUT_MS) }, 2, 2, TimeUnit.SECONDS)
+            ex.scheduleWithFixedDelay(guarded("ping") { hub.pingAll() }, 1, 1, TimeUnit.SECONDS)
             // Also catches changes that send no network callback, e.g. the hotspot being toggled.
-            ex.scheduleWithFixedDelay({
-                try {
-                    refreshUrls()
-                } catch (e: Exception) {
-                    Log.w(TAG, "url refresh failed: $e")
-                }
-            }, URL_POLL_SECONDS, URL_POLL_SECONDS, TimeUnit.SECONDS)
+            ex.scheduleWithFixedDelay(guarded("url refresh") { refreshUrls() }, URL_POLL_SECONDS, URL_POLL_SECONDS, TimeUnit.SECONDS)
         }
         _state.update { it.copy(running = true, urls = Addresses.UrlList.EMPTY, viewerCount = 0, serverError = null) }
         registerNetworkCallback()
