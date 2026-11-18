@@ -14,6 +14,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- Release builds are shrunk with R8; each GitHub release also includes the mapping files needed to read crash reports.
+- GitHub Actions updated to their Node.js 24 versions.
 - Smoothest (60 fps) is the default video setting. Installs that already chose a setting keep it.
 
 ## [0.1.0] - 2026-11-18

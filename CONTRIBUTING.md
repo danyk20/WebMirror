@@ -65,6 +65,8 @@ For each release:
 
 The workflow checks that the tag matches `versionName`, runs the tests, signs the APK, verifies the signing certificate and publishes `WebMirror-<version>.apk` with its `.sha256` file. A version with a suffix such as `1.0.0-beta.1` is marked as a pre-release. The signed Play bundle is attached to the workflow run only.
 
+Each release also publishes `WebMirror-<version>-mapping.zip`: the R8 mapping files of that version's obfuscated release build (GitHub and Play). To read a crash stack trace from a user, run it through `retrace` (Android SDK cmdline-tools) with the mapping of exactly the version that crashed.
+
 ## License
 
 Your contributions are licensed under the [MIT License](LICENSE).
