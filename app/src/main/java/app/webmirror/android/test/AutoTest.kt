@@ -1,5 +1,6 @@
 package app.webmirror.android.test
 
+import app.webmirror.android.capture.Preset
 import app.webmirror.android.stream.CodecChooser
 import app.webmirror.android.stream.JsonText
 import app.webmirror.android.stream.StreamConfig
@@ -18,6 +19,8 @@ data class PhaseSpec(
     val config: StreamConfig,
     /** "Force JPEG" (an app setting, not a [StreamConfig] field). */
     val forceJpeg: Boolean = false,
+    /** The quality preset for this phase (an app setting, not a [StreamConfig] field); null = the owner's preset. */
+    val preset: Preset? = null,
 )
 
 /** What the user chose on the start screen. */
@@ -57,7 +60,7 @@ object TestPlan {
     private fun norm(c: StreamConfig): StreamConfig = StreamConfig.fromMap(c.toMap())
 
     fun phases(base: StreamConfig = StreamConfig()): List<PhaseSpec> {
-        fun p(name: String, description: String, c: StreamConfig) = PhaseSpec(name, description, norm(c))
+        fun p(name: String, description: String, c: StreamConfig, preset: Preset? = null) = PhaseSpec(name, description, norm(c), preset = preset)
         // The other options (legacy, low-latency, profile, vbr, intra refresh, fit to viewer, in-flight, drop-after,
         // vsync pacing, jitter 150 ms, JPEG) were measured in the car on 2026-11-18 and made no measurable difference
         // (docs/development/car-test-results.md); they are not repeated. The options themselves still exist in StreamConfig.
@@ -68,6 +71,7 @@ object TestPlan {
             p("codec-hevc", "Forced HEVC", base.copy(codec = StreamConfig.CODEC_HEVC)),
             p("codec-vp9", "Forced VP9 (software encoder allowed)", base.copy(codec = StreamConfig.CODEC_VP9, allowSoftwareEncoder = true)),
             p("codec-av1", "Forced AV1 (software encoder allowed)", base.copy(codec = StreamConfig.CODEC_AV1, allowSoftwareEncoder = true)),
+            p("fps-60", "Smoothest preset: 1280 px at 60 fps (falls back to 30 fps if the viewer cannot keep up)", base, Preset.SMOOTHEST),
         )
     }
 
@@ -164,6 +168,9 @@ object Aggregate {
     /** The "@N fps" of the stream text ("584x1280 @30 fps (h264)"), or null. */
     fun parseStreamFps(text: String?): Int? =
         text?.let { Regex("@(\\d+) fps").find(it)?.groupValues?.get(1)?.toIntOrNull() }
+
+    /** True when the stream text says the rate is the automatic fallback ("584x1280 @30 fps (fallback) (h264)"). */
+    fun isFallbackStream(text: String?): Boolean = text?.contains("(fallback)") == true
 
     fun isJpegStream(text: String?): Boolean = text?.contains("(jpeg)") == true
 }

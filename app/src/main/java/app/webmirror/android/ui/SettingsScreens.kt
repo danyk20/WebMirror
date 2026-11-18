@@ -196,8 +196,12 @@ private fun VideoSettings(settings: Settings) {
             ChoiceRow(
                 p.label,
                 preset == p,
-                supporting = if (p == Preset.SHARPER) "Sharper text, up to ${p.maxLongSide} px and ${p.fps} frames per second."
-                else "Smoother motion, up to ${p.maxLongSide} px and ${p.fps} frames per second.",
+                supporting = when (p) {
+                    Preset.SHARPER -> "Sharper text. ${p.maxLongSide} px, ${p.fps} frames per second."
+                    Preset.SMOOTHER -> "Smooth motion, the default. ${p.maxLongSide} px, ${p.fps} frames per second."
+                    Preset.SMOOTHEST -> "Smoothest motion, about twice the Wi-Fi data. ${p.maxLongSide} px, ${p.fps} frames per second. " +
+                        "Falls back to ${Preset.FALLBACK_FPS} fps automatically if the car can't keep up."
+                },
             ) {
                 preset = p
                 settings.preset = p
@@ -629,6 +633,7 @@ private fun DebuggingSettings(settings: Settings) {
     val streamText = if (state.running && v != null) {
         buildString {
             append("mode ${v.mode}, ${v.codec}\n")
+            if (v.fps > 0) append("${v.width}x${v.height} @${v.fpsText}\n")
             if (v.encoder.isNotEmpty()) append("${v.encoder} (${if (v.hardware == true) "hardware" else "software"})\n")
             if (v.why.isNotEmpty()) append(v.why)
         }.trim()

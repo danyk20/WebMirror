@@ -35,6 +35,9 @@ interface StreamSink {
     /** This viewer's congestion signals for the bitrate controller, or null if it has none. */
     fun congestion(nowMs: Long): BitrateController.ViewerSignal? = null
 
+    /** This viewer's numbers for the 60 to 30 fps fallback (`FpsGovernor`), or null if it has none. */
+    fun fpsViewer(nowMs: Long): FpsGovernor.Viewer? = null
+
     /** The viewer's window in physical pixels (from its `view` message), or null while unknown. */
     val viewBox: ViewBox? get() = null
 }

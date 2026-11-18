@@ -14,6 +14,7 @@ import app.webmirror.android.encode.FrameEncoder
 import app.webmirror.android.encode.JpegEncoder
 import app.webmirror.android.encode.VideoEncoder
 import app.webmirror.android.stream.BitrateController
+import app.webmirror.android.stream.FpsGovernor
 import app.webmirror.android.stream.StreamConfig
 import app.webmirror.android.stream.StreamHub
 
@@ -45,6 +46,13 @@ class ScreenCapture(
     private var baseReport: String? = null
     private var lastTargetLogMs = 0L
 
+    /**
+     * Automatic fallback from 60 to 30 fps when the viewer cannot keep up (preset Smoothest only). Evaluated every
+     * [FpsGovernor.WINDOW_MS] on [handler]; a change rebuilds the encoder at the new rate (same path as a preset change).
+     */
+    private val governor = FpsGovernor()
+    private var lastGovernorMs = 0L
+
     private var preset = initialPreset
     private var config = initialConfig
     private var virtualDisplay: VirtualDisplay? = null
@@ -69,6 +77,7 @@ class ScreenCapture(
     fun start() {
         check(virtualDisplay == null && !released) { "already started" }
         size = targetSize()
+        governor.configure(preset.fps, System.nanoTime() / 1_000_000)
         updatePhone(size)
         CodecSupport.logOnce(size.width, size.height, preset.fps)
         mode = hub.wantedMode()
@@ -94,6 +103,7 @@ class ScreenCapture(
             synchronized(this) {
                 if (preset == p) return@synchronized
                 preset = p
+                governor.configure(p.fps, System.nanoTime() / 1_000_000) // a preset change forgets any fallback
                 applyChange(forceEncoder = true)
             }
         }
@@ -194,11 +204,14 @@ class ScreenCapture(
         if (StreamHub.isVideoMode(mode)) {
             resetController()
             val enc = hub.encoderFor(mode) ?: throw IllegalStateException("the phone has no usable $mode encoder")
-            val e = VideoEncoder(s.width, s.height, preset.fps, controller.value, hub, config, mode, enc.first, enc.second) { setBaseReport(it) }
+            governor.holdOff(System.nanoTime() / 1_000_000) // a new encoder: no verdict on the viewer for a few seconds
+            hub.fpsFallback = governor.inFallback
+            val e = VideoEncoder(s.width, s.height, governor.effectiveFps, controller.value, hub, config, mode, enc.first, enc.second) { setBaseReport(it) }
             activeEncoder = enc.first
             e
         } else {
             activeEncoder = null
+            hub.fpsFallback = false
             resetController()
             setBaseReport("JPEG ${s.width}x${s.height} @${preset.jpegFps} fps, quality ${preset.jpegQuality}\n(H.264 encoder options do not apply in JPEG mode)")
             JpegEncoder(s.width, s.height, preset.jpegFps, controller.value, hub)
@@ -207,7 +220,7 @@ class ScreenCapture(
     /** Floor and ceiling of the adaptive target for the current mode: bit/s for H.264, quality for JPEG. */
     private fun limits(): Pair<Int, Int> =
         if (StreamHub.isVideoMode(mode)) {
-            Pair(config.minBitrateKbps * 1000, preset.h264Bitrate)
+            Pair(config.minBitrateKbps * 1000, preset.bitrateAt(governor.effectiveFps))
         } else {
             Pair(BitrateController.MIN_JPEG_QUALITY, preset.jpegQuality)
         }
@@ -241,18 +254,29 @@ class ScreenCapture(
     private fun emitReport() {
         val text = synchronized(reportLock) {
             val base = baseReport ?: return
-            "$base\ntarget: ${hub.targetText}" + if (config.adaptiveBitrate) " (adaptive, floor ${controller.floor / (if (StreamHub.isVideoMode(mode)) 1000 else 1)})" else ""
+            val fallback = if (governor.inFallback) "\nfps: ${governor.effectiveFps} (automatic fallback from ${preset.fps}; ${preset.fps} fps is retried after ${governor.currentWaitMs / 1000} s)" else ""
+            "$base$fallback\ntarget: ${hub.targetText}" + if (config.adaptiveBitrate) " (adaptive, floor ${controller.floor / (if (StreamHub.isVideoMode(mode)) 1000 else 1)})" else ""
         }
         onEncoderReport(text)
     }
 
     private var lastViewers = 0
 
+    /** Judges the viewers' stats once per [FpsGovernor.WINDOW_MS]; a decision rebuilds the encoder at the new rate. */
+    private fun governorTick(now: Long) {
+        if (!governor.enabled || !StreamHub.isVideoMode(mode) || now - lastGovernorMs < FpsGovernor.WINDOW_MS) return
+        lastGovernorMs = now
+        val change = governor.onWindow(now, hub.metrics.encodedFrames.get(), hub.fpsSignals(now)) ?: return
+        Log.i(TAG, "fps governor: ${change.fps} fps, ${change.reason}")
+        applyChange(forceEncoder = true)
+    }
+
     private val adaptiveTick = object : Runnable {
         override fun run() {
             if (released) return
             try {
                 synchronized(this@ScreenCapture) {
+                    governorTick(System.nanoTime() / 1_000_000)
                     val enc = encoder
                     if (config.adaptiveBitrate && enc != null && !released) {
                         val now = System.nanoTime() / 1_000_000
@@ -308,7 +332,7 @@ class ScreenCapture(
      */
     private fun publish() {
         if (StreamHub.isVideoMode(mode)) return
-        hub.update { it.copy(mode = StreamHub.MODE_JPEG, codec = "", encoder = "", hardware = null, why = hub.whyFor(StreamHub.MODE_JPEG), width = size.width, height = size.height, fps = preset.jpegFps) }
+        hub.update { it.copy(mode = StreamHub.MODE_JPEG, codec = "", encoder = "", hardware = null, why = hub.whyFor(StreamHub.MODE_JPEG), width = size.width, height = size.height, fps = preset.jpegFps, fpsFallback = false) }
     }
 
     private fun targetSize(): CaptureSize.Size {

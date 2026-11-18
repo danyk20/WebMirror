@@ -153,4 +153,20 @@ class StreamConfigTest {
         assertEquals(0x800, EncoderOptions.pickLevel(864, 1920, 15, listed))
         assertNull(EncoderOptions.pickLevel(576, 1280, 30, emptySet()))
     }
+
+    @Test
+    fun levelAt60FpsHasEnoughMacroblockRate() {
+        val all = setOf(0x200, 0x400, 0x800, 0x1000, 0x2000, 0x4000, 0x8000) // 3.1, 3.2, 4, 4.1, 4.2, 5, 5.1
+        // Smoothest: 1280x720 @60 = 3600 MBs, 216000 MB/s: level 3.1 (108000) is too slow, 3.2 (216000) just fits.
+        assertEquals(0x400, EncoderOptions.pickLevel(1280, 720, 60, all))
+        // A phone-shaped 584x1280 @60: 37*80 = 2960 MBs, 177600 MB/s -> 3.2.
+        assertEquals(0x400, EncoderOptions.pickLevel(584, 1280, 60, all))
+        // An encoder that lists no 3.2 gets level 4 (245760), never 3.1.
+        assertEquals(0x800, EncoderOptions.pickLevel(1280, 720, 60, setOf(0x200, 0x800)))
+        // Only 3.1 listed: nothing fits 60 fps, so no level is requested (the encoder decides).
+        assertNull(EncoderOptions.pickLevel(1280, 720, 60, setOf(0x200)))
+        // The same picture at 30 fps still takes 3.1 (unchanged).
+        assertEquals(0x200, EncoderOptions.pickLevel(1280, 720, 30, all))
+    }
+
 }

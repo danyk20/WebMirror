@@ -41,6 +41,8 @@ class Vp9UtilTest {
     fun levelFollowsTheAnnexATable() {
         assertEquals(31, Vp9Util.level(584, 1280, 30))   // the Smoother preset: same as the probe's vp09.00.31.08
         assertEquals(40, Vp9Util.level(864, 1920, 15))   // the Sharper preset
+        assertEquals(40, Vp9Util.level(584, 1280, 60))   // the Smoothest preset: 44.9 Msamples/s is above level 3.1 (36.9) and fits 4.0 (83.6)
+        assertEquals(40, Vp9Util.level(1280, 720, 60))
         assertEquals(10, Vp9Util.level(176, 144, 15))
         assertEquals(41, Vp9Util.level(1920, 1080, 60))
         assertEquals(62, Vp9Util.level(7680, 4320, 120))

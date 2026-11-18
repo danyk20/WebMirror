@@ -8,6 +8,7 @@ import app.webmirror.android.stream.BitrateController
 import app.webmirror.android.stream.ClockSync
 import app.webmirror.android.stream.CodecChooser
 import app.webmirror.android.stream.Expirable
+import app.webmirror.android.stream.FpsGovernor
 import app.webmirror.android.stream.Packet
 import app.webmirror.android.stream.Pairing
 import app.webmirror.android.stream.StreamHub
@@ -117,6 +118,13 @@ class ClientSession(
     @Volatile
     private var pageStatsAtMs = 0L
 
+    /** From the page's last `stats`: frames drawn per second and the cumulative frames it dropped (for `FpsGovernor`). */
+    @Volatile
+    private var pageFps = 0.0
+
+    @Volatile
+    private var pageDropped = 0L
+
     /** No congestion signal before this time: a new viewer (or a new hello) is a reset, not congestion. */
     @Volatile
     private var graceUntilMs = nowMs() + BitrateController.GRACE_MS
@@ -129,6 +137,15 @@ class ClientSession(
                 id, outbox.oldestPendingWaitMs(nowMs), outbox.dropped, pageSkipped,
                 if (fresh) pageDecodeQueue else 0,
             )
+        }
+    }
+
+    override fun fpsViewer(nowMs: Long): FpsGovernor.Viewer? {
+        if (stopped) return null
+        synchronized(mon) {
+            val fresh = pageStatsAtMs > 0 && nowMs - pageStatsAtMs < FpsGovernor.STATS_FRESH_MS
+            // Page drops and skips (vsync replacements are not loss) plus what the outbox dropped for congestion.
+            return FpsGovernor.Viewer(id, pageFps, if (fresh) pageDecodeQueue else 0, pageDropped + pageSkipped + outbox.dropped, fresh)
         }
     }
 
@@ -322,6 +339,8 @@ class ClientSession(
                     // Add what only the server knows, so one log line tells the whole story.
                     pageSkipped = obj.optLong("skipped", 0) - obj.optLong("replaced", 0) // vsync replacements are not congestion
                     pageDecodeQueue = obj.optInt("decodeQueue", 0)
+                    pageFps = obj.optDouble("fps", 0.0)
+                    pageDropped = obj.optLong("dropped", 0)
                     pageStatsAtMs = nowMs()
                     obj.put("vid", id)
                     clock.best(nowMs())?.let { obj.put("clockRttMs", it.rttUs / 1000.0) }

@@ -6,6 +6,7 @@ import app.webmirror.android.stream.StreamConfig
 import app.webmirror.android.stream.StreamHub
 import app.webmirror.android.stream.StreamSink
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -36,6 +37,17 @@ class StreamHubTest {
             """{"t":"hello","v":1,"mode":"jpeg","codec":"","why":"","encoder":"","width":576,"height":1280,"fps":30,"audio":{"mode":"bluetooth"},"cfg":${StreamConfig().pageJson()},"control":{"allowed":false,"ready":false,"ownerPresent":false}}""",
             hub.helloJson(),
         )
+    }
+
+    @Test
+    fun helloNamesTheFpsFallbackOnlyWhenActive() {
+        val hub = StreamHub()
+        hub.update { it.copy(width = 576, height = 1280, fps = 30, fpsFallback = true) }
+        assertTrue(hub.helloJson().contains(""""fps":30,"fpsFallback":true,"audio""""))
+        assertEquals("30 fps (fallback)", StreamHub.HelloInfo(fps = 30, fpsFallback = true).fpsText)
+        assertEquals("60 fps", StreamHub.HelloInfo(fps = 60).fpsText)
+        hub.update { it.copy(fpsFallback = false) }
+        assertFalse(hub.helloJson().contains("fpsFallback"))
     }
 
     @Test

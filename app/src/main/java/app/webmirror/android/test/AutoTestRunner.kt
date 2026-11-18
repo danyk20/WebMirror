@@ -165,7 +165,7 @@ object AutoTestRunner {
                 var result: PhaseResult
                 while (true) {
                     awaitPreconditions(options, i, plan.size, spec.name)
-                    result = runPhase(app, settings, options, spec, i, plan.size, perPhaseS, attempt)
+                    result = runPhase(app, settings, options, spec, i, plan.size, perPhaseS, attempt, originalPreset)
                     if (result.status == PhaseStatus.DISCONNECTED && attempt == 1) {
                         attempt++
                         Log.i(TAG, "phase ${spec.name}: viewer disconnected, repeating once")
@@ -235,11 +235,12 @@ object AutoTestRunner {
 
     private suspend fun runPhase(
         app: Context, settings: Settings, options: TestOptions, spec: PhaseSpec, index: Int, total: Int,
-        perPhaseS: Int, attempt: Int,
+        perPhaseS: Int, attempt: Int, basePreset: Preset,
     ): PhaseResult {
         val hub = MirrorService.hubRef
         val socketChange = settings.streamConfig.diff(spec.config).socket
         settings.forceJpeg = spec.forceJpeg
+        settings.preset = spec.preset ?: basePreset // applied together with the config by applyConfig below
         MirrorService.applyConfig(app, spec.config)
         if (socketChange) {
             // Socket options only apply to new connections: reconnect the viewer so the phase really uses them.
@@ -305,7 +306,9 @@ object AutoTestRunner {
         val video = st.video
         val unsupported = TestPlan.unsupportedNote(spec, encoder, jpegMode, video?.mode)
         val preset = settings.preset
-        val expectedFps = Aggregate.parseStreamFps(streamText) ?: if (jpegMode) preset.jpegFps else preset.fps
+        // The preset's rate counts even after an automatic fallback to 30 fps: a fallback is a poor result, not a lower target.
+        val fellBack = Aggregate.isFallbackStream(streamText)
+        val expectedFps = if (fellBack) preset.fps else Aggregate.parseStreamFps(streamText) ?: if (jpegMode) preset.jpegFps else preset.fps
         val status = when {
             unsupported != null -> PhaseStatus.UNSUPPORTED
             disconnected -> PhaseStatus.DISCONNECTED
@@ -316,13 +319,14 @@ object AutoTestRunner {
         if (unsupported != null) notes.add(unsupported)
         if (disconnected) notes.add(if (page.reconnects > 0) "the viewer reconnected during the measurement" else "the viewer disconnected or stopped reporting")
         if (video?.hardware == false && video.mode != "jpeg") notes.add("software encoder (${video.encoder})")
+        if (fellBack) notes.add("fell back to ${Preset.FALLBACK_FPS} fps (the viewer could not keep up at ${preset.fps})")
         if (attempt > 1) notes.add("repeated after a disconnect")
         if (page.samples == 0) notes.add("no stats for this configuration arrived in the measured window")
         if (page.samples > 0 && page.e2eFrames == 0) notes.add("no e2e measurement (clock offset unknown)")
         Log.i(TAG, "$label done: $status, ${page.samples} stats, e2e p95 ${page.e2eP95}, fps ${page.fpsAvg}")
         return PhaseResult(
             name = spec.name, description = spec.description, cfgId = spec.config.id, config = spec.config.summary() +
-                if (spec.forceJpeg) " | force JPEG" else "",
+                (if (spec.forceJpeg) " | force JPEG" else "") + (if (spec.preset != null) " | preset ${spec.preset.key}" else ""),
             status = status, note = notes.joinToString("; "), attempts = attempt, expectedFps = expectedFps,
             page = page,
             phone = PhoneSide(

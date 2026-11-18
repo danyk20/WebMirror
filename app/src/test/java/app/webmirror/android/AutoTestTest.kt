@@ -1,5 +1,6 @@
 package app.webmirror.android
 
+import app.webmirror.android.capture.Preset
 import app.webmirror.android.stream.StreamConfig
 import app.webmirror.android.test.Aggregate
 import app.webmirror.android.test.PageSummary
@@ -31,12 +32,25 @@ class AutoTestTest {
         val plan = TestPlan.phases()
         assertEquals(
             listOf(
-                "default", "jitter-40ms", "codec-h264", "codec-hevc", "codec-vp9", "codec-av1",
+                "default", "jitter-40ms", "codec-h264", "codec-hevc", "codec-vp9", "codec-av1", "fps-60",
             ),
             plan.map { it.name },
         )
-        assertEquals(6, plan.size)
-        assertEquals(plan.size, plan.map { it.config.id }.toSet().size)
+        assertEquals(7, plan.size)
+        // fps-60 differs from default by the preset only, so its config id equals the default's.
+        assertEquals(plan.size, plan.map { it.config.id to it.preset }.toSet().size)
+        assertEquals(Preset.SMOOTHEST, plan.single { it.name == "fps-60" }.preset)
+        assertEquals(null, plan.single { it.name == "default" }.preset)
+    }
+
+    @Test
+    fun streamTextTellsTheFallback() {
+        assertEquals(60, Aggregate.parseStreamFps("584x1280 @60 fps (h264)"))
+        assertEquals(30, Aggregate.parseStreamFps("584x1280 @30 fps (fallback) (h264)"))
+        assertTrue(Aggregate.isFallbackStream("584x1280 @30 fps (fallback) (h264)"))
+        assertFalse(Aggregate.isFallbackStream("584x1280 @60 fps (h264)"))
+        assertFalse(Aggregate.isJpegStream("584x1280 @30 fps (fallback) (h264)"))
+        assertTrue(Aggregate.isJpegStream("584x1280 @20 fps (jpeg)"))
     }
 
     @Test
@@ -65,7 +79,7 @@ class AutoTestTest {
         for (p in TestPlan.phases()) {
             val changed = p.config.toMap().filter { (k, v) -> base[k] != v }.keys
             when (p.name) {
-                "default" -> assertTrue(changed.isEmpty())
+                "default", "fps-60" -> assertTrue(changed.isEmpty())
                 "codec-vp9", "codec-av1" -> assertEquals(setOf("codec", "allowSoftwareEncoder"), changed)
                 else -> assertEquals("${p.name}: $changed", 1, changed.size)
             }

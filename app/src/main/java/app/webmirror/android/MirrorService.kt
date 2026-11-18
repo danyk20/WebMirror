@@ -72,7 +72,7 @@ data class ServiceState(
     val paused: Boolean = false,
     val lastStats: String? = null,
     val lastProbe: String? = null,
-    /** Size of the picture being sent, e.g. "576x1280 @30 fps", or null when not mirroring. */
+    /** Size of the picture being sent, e.g. "576x1280 @30 fps" or "@30 fps (fallback)", or null when not mirroring. */
     val stream: String? = null,
     /** The latest stream description (mode, codec string, encoder, hardware, why), or null when not mirroring. */
     val video: StreamHub.HelloInfo? = null,
@@ -446,7 +446,7 @@ class MirrorService : Service() {
             }
 
             override fun onStreamChanged(info: StreamHub.HelloInfo) {
-                _state.update { it.copy(stream = "${info.width}x${info.height} @${info.fps} fps (${info.mode})", video = info) }
+                _state.update { it.copy(stream = "${info.width}x${info.height} @${info.fpsText} (${info.mode})", video = info) }
             }
         }
     }

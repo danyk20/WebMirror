@@ -39,6 +39,8 @@ class StreamHub(
         val width: Int = 0,
         val height: Int = 0,
         val fps: Int = 0,
+        /** True while [fps] is the automatic 30 fps fallback of a 60 fps preset (`FpsGovernor`). */
+        val fpsFallback: Boolean = false,
         /** Audio mode key (`hello.audio.mode`): "bluetooth", "browser" or "off". */
         val audio: String = "off",
         /** Browser audio only: "opus" or "pcm" as chosen for the viewers ("" = none) and the [AudioProfile] key (`hello.audio.profile`). */
@@ -52,6 +54,9 @@ class StreamHub(
         /** Some viewer owns the control right now (`hello.control.ownerPresent`), so others need not ask. */
         val controlOwnerPresent: Boolean = false,
     ) {
+        /** "60 fps" or "30 fps (fallback)": the rate the stream really has, for the app and the page. */
+        val fpsText: String get() = if (fpsFallback) "$fps fps (fallback)" else "$fps fps"
+
         /** `{"mode":"browser","codec":"opus","sampleRate":48000,"channels":2,"frameMs":20,"profile":"quality"}`; other modes only have `mode`. */
         private fun audioJson(): String =
             if (audio == AUDIO_BROWSER && audioCodec.isNotEmpty()) {
@@ -61,8 +66,10 @@ class StreamHub(
                 """{"mode":"$audio"}"""
             }
 
-        fun toJson(): String =
-            """{"t":"hello","v":$PROTOCOL_VERSION,"mode":"$mode","codec":"$codec","why":${JsonText.quote(why)},"encoder":${JsonText.quote(encoder + if (hardware == true) " (hw)" else if (hardware == false) " (sw)" else "")},"width":$width,"height":$height,"fps":$fps,"audio":${audioJson()},"cfg":$cfg,"control":{"allowed":$controlAllowed,"ready":$controlReady,"ownerPresent":$controlOwnerPresent}}"""
+        fun toJson(): String {
+            val fallbackJson = if (fpsFallback) ",\"fpsFallback\":true" else ""
+            return """{"t":"hello","v":$PROTOCOL_VERSION,"mode":"$mode","codec":"$codec","why":${JsonText.quote(why)},"encoder":${JsonText.quote(encoder + if (hardware == true) " (hw)" else if (hardware == false) " (sw)" else "")},"width":$width,"height":$height,"fps":$fps$fallbackJson,"audio":${audioJson()},"cfg":$cfg,"control":{"allowed":$controlAllowed,"ready":$controlReady,"ownerPresent":$controlOwnerPresent}}"""
+        }
     }
 
     private val sinks = CopyOnWriteArrayList<StreamSink>()
@@ -283,7 +290,7 @@ class StreamHub(
     /** The video encoder has its parameter sets: announce the stream ([mode] h264 or hevc, with its codec string). */
     fun onVideoConfig(mode: String, codec: String, width: Int, height: Int, fps: Int, encoder: String = "", hardware: Boolean? = null) {
         update {
-            it.copy(mode = mode, codec = codec, encoder = encoder, hardware = hardware, why = whyFor(mode), width = width, height = height, fps = fps)
+            it.copy(mode = mode, codec = codec, encoder = encoder, hardware = hardware, why = whyFor(mode), width = width, height = height, fps = fps, fpsFallback = fpsFallback)
         }
     }
 
@@ -370,6 +377,7 @@ class StreamHub(
             fallbackNote = null
             lastNotice = null
             targetText = ""
+            fpsFallback = false
             lastAudioPlan = AudioPlan.OFF
         }
     }
@@ -430,6 +438,16 @@ class StreamHub(
     /** Congestion signals of every viewer, for the bitrate controller. */
     fun congestionSignals(nowMs: Long = nowMs()): List<BitrateController.ViewerSignal> =
         sinks.mapNotNull { it.congestion(nowMs) }
+
+    /** The viewers' numbers for the 60 to 30 fps fallback ([FpsGovernor]). */
+    fun fpsSignals(nowMs: Long = nowMs()): List<FpsGovernor.Viewer> = sinks.mapNotNull { it.fpsViewer(nowMs) }
+
+    /**
+     * Set by the capture owner before it builds an encoder: the rate it is about to use is the automatic fallback, not the preset's.
+     * Goes into the next `hello` (`onVideoConfig`, or `update` for JPEG).
+     */
+    @Volatile
+    var fpsFallback: Boolean = false
 
     /** Current adaptive target as short text ("3200/4000 kbps", "40/50 quality"), empty when none; shown to viewers. */
     @Volatile

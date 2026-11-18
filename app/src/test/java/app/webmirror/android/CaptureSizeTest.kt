@@ -28,7 +28,15 @@ class CaptureSizeTest {
         assertEquals(15, Preset.SHARPER.fps)
         assertEquals(1280, Preset.SMOOTHER.maxLongSide)
         assertEquals(30, Preset.SMOOTHER.fps)
+        assertEquals(1280, Preset.SMOOTHEST.maxLongSide)
+        assertEquals(60, Preset.SMOOTHEST.fps)
+        assertEquals(6_000_000, Preset.SMOOTHEST.h264Bitrate)
+        assertEquals(20, Preset.SMOOTHEST.jpegFps)
+        assertEquals("smoothest", Preset.SMOOTHEST.key)
+        assertEquals("Smoothest (60 fps)", Preset.SMOOTHEST.label)
+        assertEquals(Preset.SMOOTHEST, Preset.fromKey("smoothest"))
         assertEquals(Preset.SMOOTHER, Preset.fromKey("nonsense"))
+        assertEquals(Preset.SMOOTHER, Preset.fromKey(null))
     }
 
     private fun fit(w: Int, h: Int, max: Int, bw: Int, bh: Int, expW: Int, expH: Int) {

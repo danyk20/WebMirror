@@ -163,8 +163,9 @@ class VideoEncoder(
                 setInteger(MediaFormat.KEY_BIT_RATE, bitrate)
                 setInteger(MediaFormat.KEY_FRAME_RATE, fps)
                 setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, config.keyframeIntervalS)
-                setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 100_000) // static screen still yields >= 10 fps
-                setFloat(KEY_MAX_FPS_TO_ENCODER, fps.toFloat()) // caps 60/120 Hz screens
+                // A static screen still yields >= 10 fps (100 ms is 6 frame intervals at 60 fps, 3 at 30: a repeat never replaces a real frame).
+                setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 100_000)
+                setFloat(KEY_MAX_FPS_TO_ENCODER, fps.toFloat()) // caps 60/120 Hz screens to the encoder rate (60 or 30 here)
             }
             var r = H264Report(keyframes = "every ${config.keyframeIntervalS} s")
             if (full) r = applyOptions(c, format, r)

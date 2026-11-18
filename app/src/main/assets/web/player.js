@@ -36,7 +36,6 @@
     vp9: 'vp09.00.31.08',
     av1: 'av01.0.08M.08'
   };
-  const MAX_DECODE_QUEUE = 3;      // VideoDecoder backlog that counts as overload
   const RAF_STALL_MS = 100;        // vsync pacing: no animation frame for this long = rAF is throttled, draw at once
   const E2E_RAW_MAX = 150;         // most per-frame e2e values sent with one stats message (the phone's automatic test aggregates them)
   const E2E_KEEP = 600;            // most e2e values kept between two stats messages
@@ -934,7 +933,7 @@
           ack(p.raw);
           return;
         }
-        if (dec.decodeQueueSize > MAX_DECODE_QUEUE) {
+        if (dec.decodeQueueSize > decodeQueueLimit(hello ? hello.fps : 0)) {
           // Overloaded (slow or throttled browser): throw away what the decoder still holds, so the
           // backlog is gone at once, and continue at the next keyframe.
           discard(p);
@@ -1033,6 +1032,26 @@
     return hello && hello.fps > 0 ? 1000 / hello.fps : 33;
   }
 
+  // FPS-MATH-BEGIN (pure, tested by app/src/test/js/fps.test.js)
+  const MAX_DECODE_QUEUE = 3;      // VideoDecoder backlog that counts as overload at up to 30 fps (more at higher rates: see decodeQueueLimit)
+  const LATE_SKIP_MIN_MS = 60;     // the late-skip limit (skipLateFrames intervals) is never shorter than this, so 60 fps does not skip on 33 ms of jitter
+
+  // Late-skip limit in ms: skipFrames intervals, but at 60 fps two intervals are only 33 ms, less than normal Wi-Fi jitter.
+  function lateLimitMs(interval, skipFrames) {
+    return skipFrames > 0 ? Math.max(interval * skipFrames, LATE_SKIP_MIN_MS) : Infinity; // Infinity: never skip
+  }
+
+  // Decoder backlog that counts as overload: 3 chunks up to 30 fps, one more per 10 fps above (about 100 ms of video at 60 fps: 6).
+  function decodeQueueLimit(fps) {
+    return Math.max(MAX_DECODE_QUEUE, Math.ceil((fps > 0 ? fps : 30) / 10));
+  }
+
+  // " @60 fps" or " @30 fps (fallback)": the rate the stream really has (the phone lowers it when the viewer cannot keep up).
+  function streamFpsText(h) {
+    return h && h.fps > 0 ? ' @' + h.fps + ' fps' + (h.fpsFallback ? ' (fallback)' : '') : '';
+  }
+  // FPS-MATH-END
+
   function pump() {
     if (pumpTimer !== null) {
       clearTimeout(pumpTimer);
@@ -1042,7 +1061,7 @@
     if (decoder && baseMs !== null) {
       const now = performance.now();
       const interval = frameIntervalMs();
-      const lateLimit = lateSkip > 0 ? interval * lateSkip : Infinity; // Infinity: never skip
+      const lateLimit = lateLimitMs(interval, lateSkip);
       while (queue.length > 0) {
         const p = queue[0];
         if (p.type !== decoder.type) {
@@ -1464,7 +1483,7 @@
     if (ctl.allowed) lines.push('control ' + (ctl.on ? 'ON' : 'off') + '   service ' + (ctl.ready ? 'ready' : 'not ready') + '   fingers ' + fingersNow + ' (max ' + fingersMax + ')');
     if (cfgId) lines.push('cfg ' + cfgId + '   ' + cfgSummary);
     if (hello) {
-      lines.push(hello.width + 'x' + hello.height + '   mode ' + hello.mode + '   audio ' + helloAudio(hello).mode);
+      lines.push(hello.width + 'x' + hello.height + streamFpsText(hello) + '   mode ' + hello.mode + '   audio ' + helloAudio(hello).mode);
       if (snd.fmt && snd.clock) {
         const c = snd.ctx;
         lines.push('audio ' + snd.fmt.codec + ' ' + Math.round((snd.fmt.sampleRate || 48000) / 1000) + 'k ' + (snd.fmt.frameMs || 20) + ' ms ' + snd.clock.profile +
