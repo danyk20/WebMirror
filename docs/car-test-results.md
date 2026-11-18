@@ -171,3 +171,23 @@ Report: `docs/test-runs/20261118-010857-desk-hevc.*` (the earlier `20261118-0057
 - All phases 30 fps, 0 drops, 4 Mbit/s CBR. At equal bitrate H.264 and HEVC have the same delay; HEVC's benefit would be picture quality per bit, which this test does not measure.
 - Dead-viewer fix verified: a silent HTTPS viewer was dropped after ~12 s while another viewer kept receiving a ping every second (max gap 1.0 s).
 - Found: on Android's Conscrypt the TLS "peek first byte" wrap failed, so the first HTTPS connection after each start was reset and `http://…:8443` was not redirected. Fix in progress (ReplaySocket).
+
+## Car test 4 (2026-11-18): automatic codec choice, 8-phase Quick test, parked and driving
+
+Reports: `docs/test-runs/20261118-011853-parked.*`, `docs/test-runs/20261118-012257-driving.*`. Phases run one after another, so a Wi-Fi disturbance hits whichever phase is running at that moment.
+
+| Phase | Parked P95 / max (ms) | Driving P95 / max (ms) | RTT parked / driving (ms) |
+|---|---|---|---|
+| jitter-20ms (HEVC) | **38 / 39** | **40 / 41** | 4 / 4 |
+| codec-h264 | 58 / 60 | 59 / 59 | 5 / 5 |
+| default (jitter 40, auto → HEVC) | 59 / 60 | 80 / 471 | 5 / 47 |
+| codec-hevc | 248 / 773 | 80 / 110 | 70 / 19 |
+| jitter-30ms | 89 / 447 | 78 / 435 | 33 / 48 |
+| no-adaptive-bitrate | 377 / 1639 | 73 / 83 | 224 / 15 |
+| codec-vp9 (software) | 71 / 71 | 71 / 73 | 4 / 3 |
+
+- The car chose **HEVC** automatically (hardware on both sides) and played it at 30 fps.
+- Unlike car test 3, the Wi-Fi link had disturbances in several phases (RTT averages 15–224 ms, a few drops and skips, fps dips to 2.5–18). They come and go over time and do not follow the options: the same codec/buffer was clean in one run and disturbed in the other. Single runs therefore cannot rank the options that differ by a few ms.
+- On a clean link: ~38–40 ms with a 20 ms buffer, ~58–59 ms with the 40 ms default; H.264 and HEVC equal at the same bitrate; software VP9 +12 ms.
+- Disturbances of 400–1600 ms are far larger than any jitter buffer; they are absorbed by flow control/skipping, not by the buffer. So a small buffer (20–30 ms) costs little.
+- Measured bitrate ~8 Mbit/s although the preset target is 4 Mbit/s: to check (possibly two viewers connected, e.g. a second car tab).

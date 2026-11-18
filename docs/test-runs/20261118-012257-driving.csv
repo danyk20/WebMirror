@@ -1,0 +1,11 @@
+# WebMirror automatic test, run driving, started 1794961377220, preset smoother, completed true
+# score = e2e P95 (ms) + fps penalty + 2000 per reconnect + 250 per decoder reset + 5000 if the viewer disconnected. fps penalty = max(0, 0.8 x preset fps - average fps) / (0.8 x preset fps) x 1000. Lower is better. Phases whose option the encoder could not apply are listed last without a rank.
+rank,phase,score,status,e2eAvgMs,e2eP95Ms,e2eMaxMs,fpsAvg,fpsMin,rttAvgMs,lateMs,netLateMs,skipped,replaced,dropped,decoderResets,reconnects,mbps,srvDropped,keyframes,targetMin,targetAvg,samples,attempts,expectedFps,mode,codec,encoder,hardware,encodeFps,note
+1,jitter-20ms,40.00,ok,36.36,40.00,41.00,30.06,29.40,4.03,2.44,3.00,0,0,0,0,0,8.01,0,0,4000,4000.00,9,1,30,hevc,hev1.1.6.L93.B0,c2.qti.hevc.encoder,true,30.01,
+2,codec-h264,59.00,ok,55.36,59.00,59.00,30.01,29.90,4.53,2.33,2.89,0,0,0,0,0,8.01,0,0,4000,4000.00,9,1,30,h264,avc1.42C01F,c2.qti.avc.encoder,true,30.02,
+3,codec-vp9,71.00,ok,68.51,71.00,73.00,30.00,29.90,3.41,2.56,3.11,0,0,0,0,0,8.23,0,0,4000,4000.00,9,1,30,vp9,vp09.00.31.08,c2.android.vp9.encoder,false,29.98,software encoder (c2.android.vp9.encoder)
+4,no-adaptive-bitrate,73.00,ok,66.44,73.00,83.00,29.93,29.50,15.02,7.11,7.67,0,0,0,0,0,8.01,0,0,4000,4000.00,9,1,30,hevc,hev1.1.6.L93.B0,c2.qti.hevc.encoder,true,30.00,
+5,jitter-30ms,78.00,ok,66.03,78.00,435.00,27.56,18.00,48.49,15.22,26.11,1,0,1,0,0,7.40,20,4,3000,3775.00,9,1,30,hevc,hev1.1.6.L93.B0,c2.qti.hevc.encoder,true,30.01,
+6,codec-hevc,80.00,ok,73.68,80.00,110.00,30.01,29.90,19.24,7.78,10.11,0,0,0,0,0,8.01,0,0,4000,4000.00,9,1,30,hevc,hev1.1.6.L93.B0,c2.qti.hevc.encoder,true,30.02,
+7,default,80.00,ok,74.39,80.00,471.00,28.67,24.40,47.48,16.00,21.33,2,0,2,0,0,3.58,0,4,800,1758.85,9,1,30,hevc,hev1.1.6.L93.B0,c2.qti.hevc.encoder,true,29.85,
+,codec-av1,81.00,unsupported,74.70,81.00,99.00,30.01,29.50,19.40,8.56,9.22,0,0,0,0,0,8.01,0,0,4000,4000.00,9,1,30,hevc,hev1.1.6.L93.B0,c2.qti.hevc.encoder,true,30.02,"AV1 was not used (the phone has no usable encoder for it, a viewer cannot decode it in hardware, or the encoder refused it): hevc was measured"
