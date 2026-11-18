@@ -11,7 +11,7 @@ import org.junit.Test
 
 class PairingTest {
     private var now = 1_000_000L
-    private val store = MemoryPairingStore(required = true, pin = "123456")
+    private val store = MemoryPairingStore(required = true, pin = "123456", pinLength = 6)
     private val p = Pairing(store, { now }, Random(42))
 
     private fun ok(r: Pairing.Attempt) = r as Pairing.Attempt.Ok
@@ -127,7 +127,7 @@ class PairingTest {
 
     @Test
     fun pinIsGeneratedOnceWithLeadingZerosAndPersisted() {
-        val s = MemoryPairingStore(required = true)
+        val s = MemoryPairingStore(required = true, pinLength = 6)
         val q = Pairing(s, { now }, object : Random() { override fun nextInt(bound: Int) = 42 })
         assertEquals("000042", q.pin)
         assertEquals("000042", s.pin)
@@ -136,7 +136,7 @@ class PairingTest {
 
     @Test
     fun brokenStoredPinIsReplaced() {
-        val s = MemoryPairingStore(required = true, pin = "12ab")
+        val s = MemoryPairingStore(required = true, pin = "12ab", pinLength = 6)
         val q = Pairing(s, { now }, Random(5))
         assertEquals(6, q.pin.length)
         assertTrue(q.pin.all { it in '0'..'9' })
@@ -147,5 +147,50 @@ class PairingTest {
         assertTrue(p.required)
         p.required = false
         assertFalse(store.required)
+    }
+
+    @Test
+    fun defaultPinHasFourDigits() {
+        val s = MemoryPairingStore(required = true)
+        val q = Pairing(s, { now }, object : Random() { override fun nextInt(bound: Int) = 42 })
+        assertEquals(4, q.pinLength)
+        assertEquals("0042", q.pin)
+    }
+
+    @Test
+    fun changingTheLengthMakesANewPinKeepsTokens() {
+        val t = ok(p.attempt("123456")).token
+        p.pinLength = 4
+        assertEquals(4, p.pinLength)
+        assertEquals(4, p.pin.length)
+        assertEquals(p.pin, store.pin)
+        assertEquals(4, store.pinLength)
+        assertTrue(p.isValidToken(t))
+        assertTrue(p.attempt(p.pin) is Pairing.Attempt.Ok)
+        p.pinLength = 6
+        assertEquals(6, p.pin.length)
+        assertTrue(p.pin.all { it in '0'..'9' })
+    }
+
+    @Test
+    fun sameLengthKeepsThePinAndOtherLengthsAreIgnored() {
+        val pin = p.pin
+        p.pinLength = 6
+        assertEquals(pin, p.pin)
+        p.pinLength = 5
+        assertEquals(6, p.pinLength)
+        assertEquals(pin, p.pin)
+    }
+
+    @Test
+    fun storedPinOfTheOtherLengthIsReplaced() {
+        val s = MemoryPairingStore(required = true, pin = "123456", pinLength = 4)
+        assertEquals(4, Pairing(s, { now }, Random(3)).pin.length)
+    }
+
+    @Test
+    fun newPinFollowsTheLength() {
+        p.pinLength = 4
+        repeat(20) { assertEquals(4, p.newPin().length) }
     }
 }

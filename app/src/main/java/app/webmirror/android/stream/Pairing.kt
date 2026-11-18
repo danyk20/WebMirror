@@ -9,6 +9,9 @@ interface PairingStore {
     var required: Boolean
     var pin: String?
     var tokens: List<String>
+
+    /** Number of digits of the PIN: [Pairing.PIN_DIGITS_SHORT] (default) or [Pairing.PIN_DIGITS_LONG]. */
+    var pinLength: Int
 }
 
 /** [PairingStore] in memory (tests, and the default of a hub that has no pairing). */
@@ -16,6 +19,7 @@ class MemoryPairingStore(
     override var required: Boolean = false,
     override var pin: String? = null,
     override var tokens: List<String> = emptyList(),
+    override var pinLength: Int = Pairing.DEFAULT_PIN_DIGITS,
 ) : PairingStore
 
 /**
@@ -50,6 +54,20 @@ class Pairing(
     var required: Boolean
         get() = synchronized(lock) { store.required }
         set(value) = synchronized(lock) { store.required = value }
+
+    /**
+     * Number of digits of the PIN (4 or 6). Changing it generates a new PIN of that length at once; existing pairing
+     * tokens stay valid. Other values are ignored.
+     */
+    var pinLength: Int
+        get() = synchronized(lock) { store.pinLength }
+        set(value) = synchronized(lock) {
+            if (value != PIN_DIGITS_SHORT && value != PIN_DIGITS_LONG) return
+            if (value != store.pinLength) {
+                store.pinLength = value
+                generatePin()
+            }
+        }
 
     /** The current PIN, created on first use. */
     val pin: String
@@ -103,11 +121,13 @@ class Pairing(
 
     private fun currentPin(): String {
         val p = store.pin
-        return if (p != null && p.length == PIN_DIGITS && p.all { it in '0'..'9' }) p else generatePin()
+        return if (p != null && p.length == store.pinLength && p.all { it in '0'..'9' }) p else generatePin()
     }
 
     private fun generatePin(): String {
-        val p = random.nextInt(1_000_000).toString().padStart(PIN_DIGITS, '0')
+        val digits = store.pinLength
+        val bound = if (digits == PIN_DIGITS_LONG) 1_000_000 else 10_000
+        val p = random.nextInt(bound).toString().padStart(digits, '0')
         store.pin = p
         return p
     }
@@ -121,7 +141,9 @@ class Pairing(
     }
 
     companion object {
-        const val PIN_DIGITS = 6
+        const val PIN_DIGITS_SHORT = 4
+        const val PIN_DIGITS_LONG = 6
+        const val DEFAULT_PIN_DIGITS = PIN_DIGITS_SHORT
         const val TOKEN_BYTES = 24 // 192 bits
         const val MAX_TOKENS = 20
         const val MAX_WRONG = 5

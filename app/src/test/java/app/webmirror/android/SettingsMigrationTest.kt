@@ -2,6 +2,8 @@ package app.webmirror.android
 
 import app.webmirror.android.stream.StreamConfig
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SettingsMigrationTest {
@@ -25,5 +27,19 @@ class SettingsMigrationTest {
     fun newDefaultIsTwenty() {
         assertEquals(20, StreamConfig().jitterBufferMs)
         assertEquals(20, StreamConfig.fromJson(null as String?).jitterBufferMs)
+    }
+
+    @Test
+    fun oldSixDigitPinIsDroppedWhenNoLengthWasChosen() {
+        assertTrue(Settings.migratePairingPin(1, false, "123456"))
+        assertTrue(Settings.migratePairingPin(0, false, "000042"))
+    }
+
+    @Test
+    fun chosenLengthOrOtherPinsAreKept() {
+        assertFalse(Settings.migratePairingPin(1, true, "123456"))
+        assertFalse(Settings.migratePairingPin(1, false, "1234"))
+        assertFalse(Settings.migratePairingPin(1, false, null))
+        assertFalse(Settings.migratePairingPin(2, false, "123456"))
     }
 }

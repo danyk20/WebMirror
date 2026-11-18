@@ -46,6 +46,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.webmirror.android.net.AutoCert
+import app.webmirror.android.ui.qrBitmap
 import app.webmirror.android.net.AutoCertLogic
 import app.webmirror.android.net.acme.CertInput
 import app.webmirror.android.net.acme.IssueResult

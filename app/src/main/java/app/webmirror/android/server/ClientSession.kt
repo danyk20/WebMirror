@@ -398,7 +398,8 @@ class ClientSession(
     }
 
     private fun pairJson(reason: String, retryInMs: Long): String =
-        if (retryInMs > 0) """{"t":"pair","reason":"$reason","retryInMs":$retryInMs}""" else """{"t":"pair","reason":"$reason"}"""
+        if (retryInMs > 0) """{"t":"pair","reason":"$reason","pinLength":${hub.pairing.pinLength},"retryInMs":$retryInMs}"""
+        else """{"t":"pair","reason":"$reason","pinLength":${hub.pairing.pinLength}}"""
 
     /** The normal processing of a hello, for a session that is admitted. */
     private fun completeHello(obj: JSONObject) {

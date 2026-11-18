@@ -651,6 +651,13 @@ class MirrorService : Service() {
         /** The current pairing PIN (created on first use). */
         fun pairingPin(context: Context): String = pairing(context).pin
 
+        /** The PIN length (4 or 6) changed: a new PIN of that length is made, paired viewers stay paired. */
+        fun setPairingPinLength(context: Context, digits: Int): String {
+            val p = pairing(context)
+            p.pinLength = digits
+            return p.pin
+        }
+
         /** "New PIN": paired viewers stay paired. Returns the new PIN. */
         fun newPairingPin(context: Context): String = pairing(context).newPin()
 

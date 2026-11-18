@@ -3,6 +3,7 @@ package app.webmirror.android
 import android.content.Context
 import android.content.SharedPreferences
 import app.webmirror.android.capture.Preset
+import app.webmirror.android.stream.Pairing
 import app.webmirror.android.stream.PairingStore
 import app.webmirror.android.stream.StreamConfig
 
@@ -20,6 +21,11 @@ class Settings internal constructor(private val prefs: SharedPreferences) {
                 val cfg = StreamConfig.fromJson(raw)
                 val j = migrateJitter(v, cfg.jitterBufferMs)
                 if (j != cfg.jitterBufferMs) e.putString(KEY_STREAM_CONFIG, cfg.copy(jitterBufferMs = j).toJson().toString())
+            }
+            // Migration 2: the default PIN length is 4 digits. Installs that never chose a length and still hold the old
+            // 6-digit PIN get a new 4-digit PIN (generated at first use, by [Pairing]).
+            if (migratePairingPin(v, prefs.contains(KEY_PAIRING_PIN_LENGTH), prefs.getString(KEY_PAIRING_PIN, null))) {
+                e.remove(KEY_PAIRING_PIN)
             }
             e.putInt(KEY_MIGRATION, MIGRATION_VERSION).apply()
         }
@@ -58,7 +64,19 @@ class Settings internal constructor(private val prefs: SharedPreferences) {
         get() = prefs.getBoolean(KEY_PAIRING_REQUIRED, DEFAULT_PAIRING_REQUIRED)
         set(value) = prefs.edit().putBoolean(KEY_PAIRING_REQUIRED, value).apply()
 
-    /** The 6-digit pairing PIN, or null until the first one was generated. */
+    /** Digits of the pairing PIN (4 or 6). Default 4; the user chooses under Settings > Security. */
+    var pairingPinLength: Int
+        get() = prefs.getInt(KEY_PAIRING_PIN_LENGTH, Pairing.DEFAULT_PIN_DIGITS).let {
+            if (it == Pairing.PIN_DIGITS_LONG) it else Pairing.PIN_DIGITS_SHORT
+        }
+        set(value) = prefs.edit().putInt(KEY_PAIRING_PIN_LENGTH, value).apply()
+
+    /** What the system asks to share when the user taps Start (Android 14+; older versions always share everything). */
+    var captureSource: CaptureSource
+        get() = CaptureSource.fromKey(prefs.getString(KEY_CAPTURE_SOURCE, null))
+        set(value) = prefs.edit().putString(KEY_CAPTURE_SOURCE, value.key).apply()
+
+    /** The pairing PIN, or null until the first one was generated. */
     var pairingPin: String?
         get() = prefs.getString(KEY_PAIRING_PIN, null)
         set(value) = prefs.edit().putString(KEY_PAIRING_PIN, value).apply()
@@ -84,6 +102,9 @@ class Settings internal constructor(private val prefs: SharedPreferences) {
         override var tokens: List<String>
             get() = pairingTokens
             set(value) { pairingTokens = value }
+        override var pinLength: Int
+            get() = pairingPinLength
+            set(value) { pairingPinLength = value }
     }
 
     /** Hold a dim wake lock while mirroring, so the screen lock does not stop the capture (plan M3.5). */
@@ -120,12 +141,21 @@ class Settings internal constructor(private val prefs: SharedPreferences) {
 
     companion object {
         private const val KEY_MIGRATION = "migrationVersion"
-        const val MIGRATION_VERSION = 1
+        const val MIGRATION_VERSION = 2
 
         /** Migration 1: the old defaults 80 and 40 ms become the new default 20 ms; other values are the user's. */
         fun migrateJitter(fromVersion: Int, jitterMs: Int): Int =
             if (fromVersion < 1 && (jitterMs == 80 || jitterMs == 40)) StreamConfig().jitterBufferMs else jitterMs
 
+        /**
+         * Migration 2: true when the stored PIN must be dropped (so a 4-digit one is generated): the user never chose a
+         * length ([lengthChosen] false) and the stored PIN is the old 6-digit one.
+         */
+        fun migratePairingPin(fromVersion: Int, lengthChosen: Boolean, storedPin: String?): Boolean =
+            fromVersion < 2 && !lengthChosen && storedPin != null && storedPin.length == Pairing.PIN_DIGITS_LONG
+
+        private const val KEY_PAIRING_PIN_LENGTH = "pairingPinLength"
+        private const val KEY_CAPTURE_SOURCE = "captureSource"
         private const val KEY_TEST_NAME = "testRunName"
         private const val KEY_TEST_SECONDS = "testPhaseSeconds"
         private const val KEY_TEST_QUICK = "testQuick"
@@ -164,5 +194,15 @@ enum class AudioMode(val key: String, val label: String, val available: Boolean)
         /** Unknown or not yet available values fall back to Bluetooth. */
         fun fromKey(key: String?): AudioMode =
             entries.firstOrNull { it.key == key && it.available } ?: BLUETOOTH
+    }
+}
+
+/** What the user wants to share when tapping Start (Android 14+ only). */
+enum class CaptureSource(val key: String, val label: String) {
+    ENTIRE_SCREEN("entire", "Entire screen"),
+    USER_CHOICE("choose", "Let me choose each time");
+
+    companion object {
+        fun fromKey(key: String?): CaptureSource = entries.firstOrNull { it.key == key } ?: ENTIRE_SCREEN
     }
 }

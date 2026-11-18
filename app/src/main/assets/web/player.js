@@ -111,7 +111,7 @@
   let noticeTimer = null;
   // Pairing (plan 2.1.4): the PIN panel is shown while the phone waits for the PIN; no ping arrives meanwhile.
   const TOKEN_KEY = 'webmirror.pairToken';
-  const PIN_LENGTH = 6;
+  let pinLength = 6;              // digits of the PIN; the phone sends the real length in every `pair` message
   const PAIR_PROMPT = 'Enter the PIN shown in the WebMirror app on the phone';
   let pairing = false;
   let pairDigits = '';
@@ -734,7 +734,7 @@
     const left = pairLockUntil > 0 ? Math.ceil((pairLockUntil - performance.now()) / 1000) : 0;
     if (pairLockUntil > 0 && left <= 0) { pairLockUntil = 0; pairNote = ''; }
     let dots = '';
-    for (let i = 0; i < PIN_LENGTH; i++) dots += (i < pairDigits.length ? '\u25CF' : '\u25CB');
+    for (let i = 0; i < pinLength; i++) dots += (i < pairDigits.length ? '\u25CF' : '\u25CB');
     pairPinEl.textContent = dots;
     if (pairLockUntil > 0) {
       pairMsgEl.textContent = 'Too many attempts, try again in ' + left + ' s';
@@ -772,6 +772,8 @@
       sock.wmTokenSent = false;
     }
     pairDigits = '';
+    const len = Number(m.pinLength);
+    if (len >= 1 && len <= 12) pinLength = Math.floor(len);
     if (m.reason === 'wrong') pairNote = 'Wrong PIN';
     else if (m.reason === 'locked') pairLockUntil = performance.now() + (Number(m.retryInMs) || 0);
     else if (!pairing) pairNote = '';
@@ -794,7 +796,7 @@
       send({ t: 'pair', pin: pairDigits });
       pairNote = 'Checking…';
       pairDigits = '';
-    } else if (k.length === 1 && k >= '0' && k <= '9' && pairDigits.length < PIN_LENGTH) {
+    } else if (k.length === 1 && k >= '0' && k <= '9' && pairDigits.length < pinLength) {
       pairDigits += k;
       pairNote = '';
     }

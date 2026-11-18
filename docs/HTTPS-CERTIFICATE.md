@@ -6,7 +6,7 @@ The app can get one for you, for free, on the phone, in about two minutes. You n
 
 ## Get a free certificate in the app
 
-Open WebMirror, scroll to **HTTPS certificate** and tap **Get a free certificate**.
+Open WebMirror, go to **Settings → Secure connection (HTTPS)** (or tap the "Secure address" item in the Home setup checklist) and tap **Get a free certificate**.
 
 1. **Create your free address.** Already have a DuckDNS name? Skip this step; don't add it again. Otherwise tap **Open duckdns.org** and sign in (Google, GitHub, ...). In "sub domain" type a name, for example `mycar-mirror`, then tap "add domain". You don't need to change the "current ip": the app sets it. Your address will be `<name>.duckdns.org`.
 2. **Copy your token.** It is shown at the top of the DuckDNS page after you sign in. Back in the app, enter your DuckDNS name (`name`, `name.duckdns.org` or the full link all work; the app shows the final `name.duckdns.org`) and paste the token (**Paste** reads the clipboard, **Show** reveals it).
@@ -183,7 +183,7 @@ Use any way you like: USB cable (put it in Downloads), cloud drive, or messaging
 
 #### 3.4 Import in the app
 
-1. Open WebMirror on the phone and scroll to the section **HTTPS certificate**.
+1. Open WebMirror on the phone and go to **Settings → Secure connection (HTTPS)**.
 2. Tap **Import certificate (.p12)**.
 3. Pick your `.p12` file in the file picker.
 4. In the dialog **Certificate password** type the password and tap **Import**.
@@ -266,7 +266,7 @@ Everything else (the DuckDNS name and the address) stays the same.
 - The name in the address bar must be one of the **DNS names** shown in the app. You must not use the IP address (`https://169.254.77.1:8443` always fails, because a certificate cannot be issued for it). Use `<your-name>.duckdns.org`.
 
 **The car says the connection is not private.**
-- The certificate may be a test certificate or expired. Open the app's **HTTPS certificate** section: if it shows "This is a TEST certificate", tap **Get a real certificate**; if it is expired, tap **Renew now**.
+- The certificate may be a test certificate or expired. Open **Settings → Secure connection (HTTPS)** in the app: if it shows "This is a TEST certificate", tap **Get a real certificate**; if it is expired, tap **Renew now**.
 
 **The browser says the certificate is expired.**
 - See step 5. Renew and import again.
