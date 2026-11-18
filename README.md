@@ -1,6 +1,8 @@
-# WebMirror
+<p align="center"><img src="docs/images/icon-rounded.svg" width="96" alt="WebMirror icon"></p>
 
-Mirror your Android phone's screen to the browser in your car, with no app on the car side.
+<h1 align="center">WebMirror</h1>
+
+<p align="center">Mirror your Android phone's screen to the browser in your car, with no app on the car side.</p>
 
 [![CI](https://github.com/danyk20/WebMirror/actions/workflows/ci.yml/badge.svg)](https://github.com/danyk20/WebMirror/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/danyk20/WebMirror?sort=semver)](https://github.com/danyk20/WebMirror/releases/latest)
