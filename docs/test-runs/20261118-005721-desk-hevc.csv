@@ -1,0 +1,11 @@
+# WebMirror automatic test, run desk-hevc, started 1794959841187, preset smoother, completed true
+# score = e2e P95 (ms) + fps penalty + 2000 per reconnect + 250 per decoder reset + 5000 if the viewer disconnected. fps penalty = max(0, 0.8 x preset fps - average fps) / (0.8 x preset fps) x 1000. Lower is better. Phases whose option the encoder could not apply are listed last without a rank.
+rank,phase,score,status,e2eAvgMs,e2eP95Ms,e2eMaxMs,fpsAvg,fpsMin,rttAvgMs,lateMs,netLateMs,skipped,replaced,dropped,decoderResets,reconnects,mbps,srvDropped,keyframes,targetMin,targetAvg,samples,attempts,expectedFps,mode,codec,encoder,hardware,encodeFps,note
+1,jitter-30ms,1000001.67,ok,,,,30.01,29.90,,1.67,2.89,0,0,0,0,0,4.00,0,0,4000,4000.00,9,1,30,hevc,hev1.1.6.L93.B0,c2.qti.hevc.encoder,true,29.96,no e2e measurement (clock offset unknown)
+2,jitter-20ms,1000002.00,ok,,,,30.02,29.50,,2.00,3.89,0,0,0,0,0,3.99,0,0,4000,4000.00,9,1,30,hevc,hev1.1.6.L93.B0,c2.qti.hevc.encoder,true,30.06,no e2e measurement (clock offset unknown)
+3,default,1000002.33,ok,,,,30.00,29.50,,2.33,4.22,0,0,0,0,0,3.99,0,0,4000,4000.00,9,1,30,hevc,hev1.1.6.L93.B0,c2.qti.hevc.encoder,true,30.06,no e2e measurement (clock offset unknown)
+4,codec-hevc,1000002.67,ok,,,,30.00,30.00,,2.67,3.33,0,0,0,0,0,4.00,0,0,4000,4000.00,9,1,30,hevc,hev1.1.6.L93.B0,c2.qti.hevc.encoder,true,30.03,no e2e measurement (clock offset unknown)
+5,no-adaptive-bitrate,1000002.67,ok,,,,30.00,30.00,,2.67,3.67,0,0,0,0,0,4.00,0,0,4000,4000.00,9,1,30,hevc,hev1.1.6.L93.B0,c2.qti.hevc.encoder,true,30.02,no e2e measurement (clock offset unknown)
+6,codec-h264,1000002.78,ok,,,,30.01,29.90,,2.78,4.00,0,0,0,0,0,4.01,0,0,4000,4000.00,9,1,30,h264,avc1.42C01F,c2.qti.avc.encoder,true,30.03,no e2e measurement (clock offset unknown)
+7,codec-vp9,1000002.78,ok,,,,30.00,30.00,,2.78,8.00,0,0,0,0,0,4.23,0,0,4000,4000.00,9,1,30,vp9,vp09.00.31.08,c2.android.vp9.encoder,false,30.00,software encoder (c2.android.vp9.encoder); no e2e measurement (clock offset unknown)
+,codec-av1,1000002.67,unsupported,,,,30.00,30.00,,2.67,4.11,0,0,0,0,0,4.00,0,0,4000,4000.00,9,1,30,hevc,hev1.1.6.L93.B0,c2.qti.hevc.encoder,true,30.02,"AV1 was not used (the phone has no usable encoder for it, a viewer cannot decode it in hardware, or the encoder refused it): hevc was measured; no e2e measurement (clock offset unknown)"
