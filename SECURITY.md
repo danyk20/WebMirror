@@ -13,7 +13,7 @@ Only the latest release receives security fixes. Please update before you report
 
 Do not open a public issue for a security problem.
 
-Report it privately with GitHub: open the [Security tab](https://github.com/danyk20/WebMirror/security), choose **Report a vulnerability**, and describe the problem. Include:
+Report it privately through GitHub: **[Report a vulnerability](https://github.com/danyk20/WebMirror/security/advisories/new)** (or open the [Security tab](https://github.com/danyk20/WebMirror/security) and choose **Report a vulnerability**). Only the maintainer can see the report. Include:
 
 - what you found and why it matters,
 - the app version and Android version,
