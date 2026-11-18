@@ -15,8 +15,8 @@ android {
         targetSdk = 37
         // Single source of truth for the version. versionCode = major * 10000 + minor * 100 + patch (0.1.0 -> 100, 1.2.3 -> 10203).
         // The release workflow requires the git tag (v<versionName>) to equal versionName.
-        versionCode = 200
-        versionName = "0.2.0"
+        versionCode = 201
+        versionName = "0.2.1"
         buildConfigField("String", "UPDATE_REPO", "\"danyk20/WebMirror\"")
     }
 

@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-18
+
 ### Fixed
 
 - Updates: "Download and install" did nothing while WebMirror was not yet allowed to install apps. It now opens Android's permission page and continues by itself when you come back.
@@ -49,6 +51,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Release signing from environment variables or Gradle properties.
 - Documentation, safety notice and MIT license.
 
-[Unreleased]: https://github.com/danyk20/WebMirror/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/danyk20/WebMirror/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/danyk20/WebMirror/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/danyk20/WebMirror/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/danyk20/WebMirror/releases/tag/v0.1.0
