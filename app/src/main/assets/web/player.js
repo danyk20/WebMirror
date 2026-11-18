@@ -215,31 +215,44 @@
 
   // ---- layout: canvas fills the window keeping the aspect ratio ----
   // LAYOUT-MATH-BEGIN (pure; app/src/test/js/layout.test.js runs exactly this text under node)
-  const MIN_BAR = 64;              // CSS px: smallest black bar that holds the remote-control controls
-  // Picture rectangle (centred, aspect kept) inside a vw x vh window for an iw x ih picture. With withBar, a black
-  // bar for the controls is reserved on the side with the larger black area (right bar for a picture that is
-  // narrower than the window, bottom bar for one that is flatter; a tie takes the right bar); if that bar is
-  // thinner than minBar the picture shrinks until a bar of minBar exists. The bar rectangle never touches the picture.
-  function computeLayout(vw, vh, iw, ih, withBar, minBar) {
+  // Compact remote-control controls (CSS px, see style.css): the vertical stack (right bar) is CTL_W wide and CTL_STACK_H
+  // tall, the horizontal row (bottom bar) is CTL_ROW_H tall. A bar must be thicker than the controls plus CTL_PAD.
+  const CTL_W = 104;
+  const CTL_ROW_H = 44;
+  const CTL_PAD = 8;
+  const CTL_GAP = 4;               // gap between the picture and the bar content
+  const NEED_SIDE = CTL_W + CTL_PAD;
+  const NEED_BOTTOM = CTL_ROW_H + CTL_PAD;
+  // Picture rectangle (centred, aspect kept) inside a vw x vh window for an iw x ih picture. The picture is ALWAYS the
+  // largest one that fits the window, centred, exactly as without remote control; the controls go into the black bar
+  // (the right bar, or the bottom bar when that one is larger; a tie takes the right bar), centred in it, CTL_GAP away
+  // from the picture. Only when neither bar is thick enough (needSide / needBottom) the picture shrinks, by the smallest
+  // amount that makes one of them fit and symmetrically (so it stays centred and both bars grow equally).
+  function computeLayout(vw, vh, iw, ih, withBar, needSide, needBottom) {
     let scale = Math.min(vw / iw, vh / ih);
     let side = '';
     if (withBar) {
       const bx = (vw - iw * scale) / 2;
       const by = (vh - ih * scale) / 2;
-      const horizontal = bx >= by;
-      if ((horizontal ? bx : by) < minBar) {
-        const limit = horizontal ? (vw - 2 * minBar) / iw : (vh - 2 * minBar) / ih;
-        scale = Math.min(scale, Math.max(limit, 0.02));
+      const okSide = bx >= needSide;
+      const okBottom = by >= needBottom;
+      if (okSide && okBottom) side = bx >= by ? 'right' : 'bottom';
+      else if (okSide) side = 'right';
+      else if (okBottom) side = 'bottom';
+      else {
+        const sSide = Math.max((vw - 2 * needSide) / iw, 0.02);
+        const sBottom = Math.max((vh - 2 * needBottom) / ih, 0.02);
+        if (sSide >= sBottom) { side = 'right'; scale = Math.min(scale, sSide); }
+        else { side = 'bottom'; scale = Math.min(scale, sBottom); }
       }
-      side = horizontal ? 'right' : 'bottom';
     }
     const cw = Math.max(1, Math.floor(iw * scale));
     const ch = Math.max(1, Math.floor(ih * scale));
     const left = Math.floor((vw - cw) / 2);
     const top = Math.floor((vh - ch) / 2);
     let bar = null;
-    if (side === 'right') bar = { side: 'right', x: left + cw, y: 0, w: vw - (left + cw), h: vh };
-    else if (side === 'bottom') bar = { side: 'bottom', x: 0, y: top + ch, w: vw, h: vh - (top + ch) };
+    if (side === 'right') bar = { side: 'right', x: left + cw + CTL_GAP, y: 0, w: vw - (left + cw + CTL_GAP), h: vh };
+    else if (side === 'bottom') bar = { side: 'bottom', x: 0, y: top + ch + CTL_GAP, w: vw, h: vh - (top + ch + CTL_GAP) };
     return { cw: cw, ch: ch, left: left, top: top, bar: bar };
   }
 
@@ -254,7 +267,7 @@
   function layout() {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    const L = computeLayout(vw, vh, canvas.width, canvas.height, ctl.allowed, MIN_BAR);
+    const L = computeLayout(vw, vh, canvas.width, canvas.height, ctl.allowed, NEED_SIDE, NEED_BOTTOM);
     canvas.style.width = L.cw + 'px';
     canvas.style.height = L.ch + 'px';
     canvas.style.left = L.left + 'px';
@@ -1014,10 +1027,10 @@
 
   function updateBar() {
     ctlToggleEl.className = ctl.pending ? 'pending' : ctl.on ? 'on' : 'off';
-    ctlLabelEl.textContent = ctl.pending ? 'Control\n...' : ctl.on ? 'Control\nON' : 'Control\nOFF';
+    ctlLabelEl.textContent = ctl.pending ? 'Control ...' : ctl.on ? 'Control on' : 'Control off';
     canvas.className = ctl.on ? 'controlling' : '';
     fingersEl.hidden = !ctl.on;
-    fingersEl.textContent = 'Fingers ' + fingersNow + '\nmax ' + fingersMax;
+    fingersEl.textContent = 'Fingers ' + fingersNow + '/' + fingersMax;
     ctlToggleEl.hidden = !ctl.allowed;
   }
 

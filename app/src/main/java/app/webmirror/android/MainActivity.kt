@@ -380,7 +380,30 @@ private fun QualitySection(settings: Settings, onChanged: () -> Unit) {
 private fun ControlSection(running: Boolean, viewers: Int) {
     val context = LocalContext.current
     val allowed by RemoteControlState.allowed.collectAsState()
-    val ready by RemoteInputService.connected.collectAsState()
+    val connected by RemoteInputService.connected.collectAsState()
+    // Also read the system setting: it is live (observer) and refreshed on every resume, so the status is right even if
+    // the connected flag was missed.
+    var enabledInSettings by remember { mutableStateOf(RemoteInputService.isEnabledInSettings(context)) }
+    androidx.compose.runtime.DisposableEffect(context) {
+        val refresh = { enabledInSettings = RemoteInputService.isEnabledInSettings(context) }
+        val observer = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) = refresh()
+        }
+        context.contentResolver.registerContentObserver(
+            android.provider.Settings.Secure.getUriFor(android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES), false, observer,
+        )
+        val lifecycle = (context as? androidx.lifecycle.LifecycleOwner)?.lifecycle
+        val resumeObserver = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) refresh()
+        }
+        lifecycle?.addObserver(resumeObserver)
+        refresh()
+        onDispose {
+            context.contentResolver.unregisterContentObserver(observer)
+            lifecycle?.removeObserver(resumeObserver)
+        }
+    }
+    val ready = connected || enabledInSettings
     SectionTitle("Remote control")
     Row(verticalAlignment = Alignment.CenterVertically) {
         Switch(checked = allowed && running, enabled = running, onCheckedChange = { RemoteControlState.allowed.value = it })

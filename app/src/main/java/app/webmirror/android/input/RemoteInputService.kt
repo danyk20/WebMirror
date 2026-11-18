@@ -195,6 +195,18 @@ class RemoteInputService : AccessibilityService() {
         private const val IDLE_CHECK_MS = 5_000L
         private const val IDLE_RELEASE_MS = 15_000L
 
+        /** True when the user enabled this service in Settings > Accessibility (it is listed in ENABLED_ACCESSIBILITY_SERVICES). */
+        fun isEnabledInSettings(context: android.content.Context): Boolean {
+            val list = android.provider.Settings.Secure.getString(
+                context.contentResolver, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+            ) ?: return false
+            val me = android.content.ComponentName(context, RemoteInputService::class.java)
+            return list.split(':').any { entry ->
+                val c = android.content.ComponentName.unflattenFromString(entry)
+                c != null && c == me
+            }
+        }
+
         @Volatile
         var instance: RemoteInputService? = null
             private set
