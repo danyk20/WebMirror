@@ -191,3 +191,4 @@ Reports: `docs/test-runs/20261118-011853-parked.*`, `docs/test-runs/20261118-012
 - On a clean link: ~38–40 ms with a 20 ms buffer, ~58–59 ms with the 40 ms default; H.264 and HEVC equal at the same bitrate; software VP9 +12 ms.
 - Disturbances of 400–1600 ms are far larger than any jitter buffer; they are absorbed by flow control/skipping, not by the buffer. So a small buffer (20–30 ms) costs little.
 - Measured bitrate ~8 Mbit/s although the preset target is 4 Mbit/s: to check (possibly two viewers connected, e.g. a second car tab).
+- Owner's observations in the car: overlay showed **mode hevc**; picture as sharp as before, maybe slightly better; **no more ~2 s lag when shifting Park → Drive** (the backlog fix from 18c6bb6 works in the car).
