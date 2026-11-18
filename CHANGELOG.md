@@ -5,6 +5,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- Updates: "Download and install" did nothing while WebMirror was not yet allowed to install apps. It now opens Android's permission page and continues by itself when you come back.
+- Updates: release notes are shown as clean text instead of raw Markdown.
+
 ## [0.2.0] - 2026-11-18
 
 ### Added

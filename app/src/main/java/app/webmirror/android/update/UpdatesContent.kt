@@ -14,6 +14,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,8 +54,18 @@ private fun GithubUpdates(context: Context) {
     val state by Updates.state.collectAsState()
     var autoCheck by remember { mutableStateOf(prefs.autoCheck) }
     var autoInstall by remember { mutableStateOf(prefs.autoInstall) }
-    // Re-evaluated on every state change; the permission is granted in system settings, then the user comes back.
-    val canInstall = Updates.canInstallPackages(context)
+    // Re-read on every resume: the permission is granted in system settings, then the user comes back.
+    val resumes = app.webmirror.android.ui.rememberResumeCount()
+    val canInstall = remember(resumes, state) { Updates.canInstallPackages(context) }
+    // Set when "Download and install" had to send the user to the permission page first: continue on return.
+    var resumeInstall by remember { mutableStateOf(false) }
+    LaunchedEffect(resumes, canInstall) {
+        if (resumeInstall && canInstall) { resumeInstall = false; Updates.downloadAndInstall(context) }
+    }
+    val openPermission = {
+        try { context.startActivity(Updates.unknownSourcesIntent(context).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        catch (_: ActivityNotFoundException) { }
+    }
 
     val busy = state is UpdateState.Checking || state is UpdateState.Downloading || state is UpdateState.Installing
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -74,14 +85,19 @@ private fun GithubUpdates(context: Context) {
     }
     if (release != null) {
         Text(release.name, style = MaterialTheme.typography.titleSmall)
-        if (release.notes.isNotBlank()) Text(release.notes, style = MaterialTheme.typography.bodySmall)
-        Button(onClick = { Updates.downloadAndInstall(context) }, enabled = !busy) { Text("Download and install") }
-    }
-    if (!canInstall) {
+        ReleaseNotes(release.notes)
+        Button(onClick = {
+            if (canInstall) Updates.downloadAndInstall(context) else { resumeInstall = true; openPermission() }
+        }, enabled = !busy) { Text("Download and install") }
+        if (!canInstall) {
+            Text(
+                "Android asks once to allow WebMirror to install updates. Switch on \"Allow from this source\", then come back: the download starts by itself.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    } else if (!canInstall) {
         Text("To install updates, allow WebMirror to install unknown apps.", style = MaterialTheme.typography.bodySmall)
-        OutlinedButton(onClick = {
-            context.startActivity(Updates.unknownSourcesIntent(context).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }) { Text("Open settings") }
+        OutlinedButton(onClick = { openPermission() }) { Text("Open settings") }
     }
 
     SwitchRow(
@@ -93,6 +109,27 @@ private fun GithubUpdates(context: Context) {
         autoInstall,
     ) { autoInstall = it; prefs.autoInstall = it }
 }
+
+/** GitHub release notes are Markdown; show them as plain text (headings, bullets, no markup characters). */
+@Composable
+private fun ReleaseNotes(md: String) {
+    if (md.isBlank()) return
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        for (raw in md.lines()) {
+            val line = raw.trim()
+            when {
+                line.isEmpty() -> {}
+                line.startsWith("#") -> Text(plain(line.trimStart('#').trim()), style = MaterialTheme.typography.titleSmall)
+                line.startsWith("- ") || line.startsWith("* ") -> Text("\u2022 " + plain(line.substring(2)), style = MaterialTheme.typography.bodySmall)
+                else -> Text(plain(line), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+/** Drops inline Markdown: `code`, **bold**, _emphasis_ and [text](link) -> text. */
+internal fun plain(s: String): String =
+    s.replace(Regex("""\[([^\]]+)]\([^)]*\)"""), "$1").replace("**", "").replace("`", "").replace(Regex("""(^|\s)_([^_]+)_(?=\s|$|[.,;:])"""), "$1$2")
 
 @Composable
 private fun SwitchRow(title: String, subtitle: String, checked: Boolean, onChange: (Boolean) -> Unit) {
