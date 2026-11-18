@@ -8,7 +8,7 @@ The app can get one for you, for free, on the phone, in about two minutes. You n
 
 Open WebMirror, scroll to **HTTPS certificate** and tap **Get a free certificate**.
 
-1. **Create your free address.** Tap **Open duckdns.org** and sign in (Google, GitHub, ...). In "sub domain" type a name, for example `mycar-mirror`, and tap "add domain". You don't need to change the "current ip": the app sets it. Your address will be `<name>.duckdns.org`.
+1. **Create your free address.** Already have a DuckDNS name? Skip this step; don't add it again. Otherwise tap **Open duckdns.org** and sign in (Google, GitHub, ...). In "sub domain" type a name, for example `mycar-mirror`, then tap "add domain". You don't need to change the "current ip": the app sets it. Your address will be `<name>.duckdns.org`.
 2. **Copy your token.** It is shown at the top of the DuckDNS page after you sign in. Back in the app, enter your DuckDNS name (`name`, `name.duckdns.org` or the full link all work; the app shows the final `name.duckdns.org`) and paste the token (**Paste** reads the clipboard, **Show** reveals it).
 3. **Agree to Let's Encrypt terms.** Tick "I agree to the Let's Encrypt Subscriber Agreement" (the link opens <https://letsencrypt.org/repository/>). Let's Encrypt is a free, non-profit certificate authority.
 4. **Get certificate.** The app shows its progress. It says: "This takes about one to two minutes. Keep the app open." You can cancel at any time.

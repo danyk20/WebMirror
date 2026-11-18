@@ -804,7 +804,7 @@ private fun CertificateSection(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (autoRun.running) {
                 OutlinedButton(onClick = { AutoCert.cancelRun() }) { Text("Cancel") }
-            } else {
+            } else if (!auto.staging) {
                 Button(onClick = { AutoCert.startRenewNow(context) }) { Text("Renew now") }
             }
             OutlinedButton(onClick = onOpenWizard, enabled = !autoRun.running) { Text("Change name or token") }

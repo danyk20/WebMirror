@@ -75,7 +75,7 @@ internal fun CertWizardScreen(onClose: () -> Unit) {
     var name by rememberSaveable { mutableStateOf(if (saved.enabled) saved.subdomain else "") }
     var token by rememberSaveable { mutableStateOf("") }
     var showToken by rememberSaveable { mutableStateOf(false) }
-    var agreed by rememberSaveable { mutableStateOf(false) }
+    var agreed by rememberSaveable { mutableStateOf(saved.agreedToTermsAt > 0) }
     var staging by rememberSaveable { mutableStateOf(false) }
     var showDev by rememberSaveable { mutableStateOf(false) }
 
@@ -120,8 +120,8 @@ internal fun CertWizardScreen(onClose: () -> Unit) {
         HorizontalDivider()
         Text("1. Create your free address", style = MaterialTheme.typography.titleMedium)
         Text(
-            "Sign in at duckdns.org (Google, GitHub, …). In \"sub domain\" type a name, for example mycar-mirror, " +
-                "and tap \"add domain\". You don't need to change the \"current ip\": the app sets it.",
+            "Already have a DuckDNS name? Skip this step; don't add it again. Otherwise sign in at duckdns.org " +
+                "(Google, GitHub, …). In \"sub domain\" type a name, for example mycar-mirror, then tap \"add domain\". You don't need to change the \"current ip\": the app sets it.",
         )
         Text("Your address will be <name>.duckdns.org.")
         OutlinedButton(onClick = { openUrl(context, "https://www.duckdns.org") }) { Text("Open duckdns.org") }

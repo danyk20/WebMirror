@@ -17,6 +17,8 @@ data class AutoCertState(
     val lastError: String? = null,
     /** Error from the last DuckDNS address update after the virtual address changed. */
     val ipError: String? = null,
+    /** When the user first agreed to the Let's Encrypt terms (set on a successful setup); 0 = never. */
+    val agreedToTermsAt: Long = 0,
 ) {
     val fqdn: String get() = "$subdomain.duckdns.org"
 }
@@ -41,7 +43,8 @@ object AutoCertLogic {
 
     fun onSuccess(s: AutoCertState, notBeforeMs: Long, notAfterMs: Long, nowMs: Long, accountPkcs8: ByteArray, accountX509: ByteArray) =
         s.copy(enabled = true, notBeforeMs = notBeforeMs, notAfterMs = notAfterMs, lastAttemptMs = nowMs, lastError = null,
-            accountPkcs8 = accountPkcs8, accountX509 = accountX509)
+            accountPkcs8 = accountPkcs8, accountX509 = accountX509,
+            agreedToTermsAt = if (s.agreedToTermsAt > 0) s.agreedToTermsAt else nowMs)
 
     fun onFailure(s: AutoCertState, nowMs: Long, message: String) = s.copy(lastAttemptMs = nowMs, lastError = message)
 
@@ -57,6 +60,7 @@ object AutoCertLogic {
             subdomain = subdomain,
             token = token.trim().ifEmpty { if (existing.enabled) existing.token else "" },
             staging = staging,
+            agreedToTermsAt = existing.agreedToTermsAt,
             accountPkcs8 = if (keepKey) existing.accountPkcs8 else null,
             accountX509 = if (keepKey) existing.accountX509 else null,
         )

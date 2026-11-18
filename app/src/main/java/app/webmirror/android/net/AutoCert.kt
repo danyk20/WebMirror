@@ -94,6 +94,7 @@ object AutoCert {
             notAfterMs = p.getLong("notAfter", 0),
             staging = p.getBoolean("staging", false),
             lastAttemptMs = p.getLong("lastAttempt", 0),
+            agreedToTermsAt = p.getLong("agreedToTermsAt", 0),
             lastError = p.getString("lastError", null),
             ipError = p.getString("ipError", null),
             accountX509 = p.getString("accountX509", null)?.let { Base64.decode(it, Base64.NO_WRAP) },
@@ -119,6 +120,7 @@ object AutoCert {
                 .putLong("notAfter", s.notAfterMs)
                 .putBoolean("staging", s.staging)
                 .putLong("lastAttempt", s.lastAttemptMs)
+                .putLong("agreedToTermsAt", s.agreedToTermsAt)
                 .putString("lastError", s.lastError)
                 .putString("ipError", s.ipError)
                 .putString("accountX509", s.accountX509?.let { Base64.encodeToString(it, Base64.NO_WRAP) })
