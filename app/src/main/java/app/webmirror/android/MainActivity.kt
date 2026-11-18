@@ -3,8 +3,6 @@ package app.webmirror.android
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.media.projection.MediaProjectionConfig
-import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.net.VpnService
 import android.os.Build
@@ -161,23 +159,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /**
-     * Android 14+ (API 34): the app chooses what the consent dialog offers, with `MediaProjectionConfig`:
-     * the entire screen only (default) or the user's choice between one app and the entire screen. The SDK 37
-     * has no newer variant of this API. Below 34 the system always captures the entire screen.
-     */
     private fun requestCapture() {
-        val mpm = getSystemService(MediaProjectionManager::class.java)
-        val intent = if (Build.VERSION.SDK_INT >= 34) {
-            val config = when (settings.captureSource) {
-                CaptureSource.ENTIRE_SCREEN -> MediaProjectionConfig.createConfigForDefaultDisplay()
-                CaptureSource.USER_CHOICE -> MediaProjectionConfig.createConfigForUserChoice()
-            }
-            mpm.createScreenCaptureIntent(config)
-        } else {
-            mpm.createScreenCaptureIntent()
-        }
-        captureConsent.launch(intent)
+        captureConsent.launch(CaptureRequest.createIntent(this))
     }
 
     /** Switch handler. The address was validated by the UI before calling with `on = true`. */

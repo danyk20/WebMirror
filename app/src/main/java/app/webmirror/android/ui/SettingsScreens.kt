@@ -233,6 +233,28 @@ private fun CaptureSettings(settings: Settings) {
         ) { source = CaptureSource.USER_CHOICE; settings.captureSource = source }
     }
     if (!supported) Note("Your Android version always shares the entire screen.")
+    if (Build.VERSION.SDK_INT >= 33) {
+        val context = LocalContext.current
+        var added by remember { mutableStateOf(false) }
+        GroupTitle("Quick Settings tile")
+        Note("Start and stop mirroring from the Quick Settings panel without opening the app.")
+        OutlinedButton(
+            enabled = !added,
+            onClick = {
+                val sbm = context.getSystemService(android.app.StatusBarManager::class.java)
+                sbm.requestAddTileService(
+                    android.content.ComponentName(context, app.webmirror.android.tile.MirrorTileService::class.java),
+                    "WebMirror",
+                    android.graphics.drawable.Icon.createWithResource(context, app.webmirror.android.R.drawable.ic_tile),
+                    context.mainExecutor,
+                ) { result ->
+                    if (result == android.app.StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ADDED ||
+                        result == android.app.StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ALREADY_ADDED
+                    ) added = true
+                }
+            },
+        ) { Text(if (added) "WebMirror tile added" else "Add WebMirror to Quick Settings") }
+    }
 }
 
 @Composable

@@ -44,7 +44,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import app.webmirror.android.tile.MirrorTileService
 import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.Executors
@@ -118,6 +121,10 @@ class MirrorService : Service() {
         super.onCreate()
         hubRef = hub
         hub.inputSink = RemoteInput
+        // Keep the Quick Settings tile current even while the shade is closed.
+        scope.launch {
+            _state.map { it.running to it.paused }.distinctUntilChanged().collect { MirrorTileService.requestUpdate(this@MirrorService) }
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -137,6 +144,7 @@ class MirrorService : Service() {
         if (active) stopAll(null)
         hubRef = null
         scope.cancel()
+        MirrorTileService.requestUpdate(this)
         super.onDestroy()
     }
 

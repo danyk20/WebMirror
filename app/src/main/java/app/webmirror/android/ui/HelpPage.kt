@@ -70,6 +70,7 @@ internal val HELP_SECTIONS: List<HelpSection> = listOf(
                 "Enter the PIN shown on Home. You only need to do this once per browser.",
             ),
             p("For passengers only. The driver must never watch the screen while driving."),
+            p("Tip: add the WebMirror tile to Quick Settings (swipe down twice, tap the pencil/edit button) to start and stop mirroring without opening the app."),
         ),
     ),
     HelpSection(
