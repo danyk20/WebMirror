@@ -19,3 +19,20 @@ app/release/
 *.jks
 *.pem
 *.keystore
+
+# Environment, IDE and OS files
+.env
+.env.*
+*.log
+.idea/
+.vscode/
+.fleet/
+*.swp
+Thumbs.db
+.kotlin/
+**/build/
+signing.properties
+keystore.properties
+*.p8
+*.pfx
+*.key

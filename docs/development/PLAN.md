@@ -20,7 +20,7 @@
 | U3 | Whether HTTPS with a real certificate is needed (WebCodecs only exists on secure pages). | Decides whether a domain + certificate is mandatory | M1 car test |
 | U4 | What resolution/fps the MCU2 can decode smoothly. | Sets the preset numbers | M3 car test |
 
-**Current state of the machine.** Project folder `/Users/danielkosc/Documents/Projects/WebMirror` is empty and not a git repo. Installed: JDK 17, `adb`, `node`. Missing: Android Studio, Android SDK, Gradle.
+**Current state of the machine.** Project folder `the project folder` is empty and not a git repo. Installed: JDK 17, `adb`, `node`. Missing: Android Studio, Android SDK, Gradle.
 
 ---
 
@@ -122,7 +122,7 @@ The UI ("Advanced streaming options") shows the effective encoder state (profile
 
 ### 2.1.2 Automatic test (`test/`)
 
-One button on the phone runs the whole comparison from the car. The test pattern (`TestPatternActivity`: moving bar, scrolling text, frame counter, millisecond clock, coloured noise, phase name and remaining time in a corner; Back aborts) or whatever is on screen is the content. Preconditions (mirroring running, not paused, at least one viewer) are waited for, never failed. Each phase of `TestPlan.phases(base)` (an editable list of full `StreamConfig`s; base = the owner's current settings; 6 phases: `default` = the owner's current settings as the baseline, `jitter-40ms` (the one robustness comparison for poor Wi-Fi), and `codec-h264`, `codec-hevc`, `codec-vp9`, `codec-av1` (forced codecs; the last two with `allowSoftwareEncoder` so the S22 can try its software encoders). A forced-codec phase is skipped (status `skipped`, reason in the note, listed last without a rank) when `TestPlan.skipReason` finds that `CodecChooser.choose` would not pick that codec: no usable encoder on the phone, or a viewer cannot decode it in hardware (H.264: at all); the phase is otherwise run even if it equals what auto picks. Another codec measured anyway is still marked unsupported. Removed on 2026-11-18: legacy, no-lowlatency-encoder, profile-high, vbr, intra-refresh-on, fit-to-viewer-on, inflight-3, inflight-12, drop-after-50ms, drop-after-400ms, pacing-vsync, jitter-150ms, jpeg and the old hevc phase (no measurable difference in two car runs, docs/car-test-results.md), and then jitter-30ms, jitter-10ms and no-adaptive-bitrate (car and desk measurements settled jitter 20 ms and adaptive bitrate on); the options themselves remain in `StreamConfig` and the UI) is applied with `MirrorService.applyConfig`, then 5 s settle (not measured) and 40 s (Quick: 20 s) measured. Stats count only if their `cfgId` is the phase's, they cover time after the settle period, and they come from the same viewer. Socket-option changes reconnect the viewer so they take effect. A phase during which the viewer disconnected or reconnected is repeated once. Phases whose encoder option could not be applied are marked `unsupported` and listed last without a rank. At the end the owner's `StreamConfig`, preset and Force-JPEG are restored.
+One button on the phone runs the whole comparison from the car. The test pattern (`TestPatternActivity`: moving bar, scrolling text, frame counter, millisecond clock, coloured noise, phase name and remaining time in a corner; Back aborts) or whatever is on screen is the content. Preconditions (mirroring running, not paused, at least one viewer) are waited for, never failed. Each phase of `TestPlan.phases(base)` (an editable list of full `StreamConfig`s; base = the owner's current settings; 6 phases: `default` = the owner's current settings as the baseline, `jitter-40ms` (the one robustness comparison for poor Wi-Fi), and `codec-h264`, `codec-hevc`, `codec-vp9`, `codec-av1` (forced codecs; the last two with `allowSoftwareEncoder` so the S22 can try its software encoders). A forced-codec phase is skipped (status `skipped`, reason in the note, listed last without a rank) when `TestPlan.skipReason` finds that `CodecChooser.choose` would not pick that codec: no usable encoder on the phone, or a viewer cannot decode it in hardware (H.264: at all); the phase is otherwise run even if it equals what auto picks. Another codec measured anyway is still marked unsupported. Removed on 2026-11-18: legacy, no-lowlatency-encoder, profile-high, vbr, intra-refresh-on, fit-to-viewer-on, inflight-3, inflight-12, drop-after-50ms, drop-after-400ms, pacing-vsync, jitter-150ms, jpeg and the old hevc phase (no measurable difference in two car runs, docs/development/car-test-results.md), and then jitter-30ms, jitter-10ms and no-adaptive-bitrate (car and desk measurements settled jitter 20 ms and adaptive bitrate on); the options themselves remain in `StreamConfig` and the UI) is applied with `MirrorService.applyConfig`, then 5 s settle (not measured) and 40 s (Quick: 20 s) measured. Stats count only if their `cfgId` is the phase's, they cover time after the settle period, and they come from the same viewer. Socket-option changes reconnect the viewer so they take effect. A phase during which the viewer disconnected or reconnected is repeated once. Phases whose encoder option could not be applied are marked `unsupported` and listed last without a rank. At the end the owner's `StreamConfig`, preset and Force-JPEG are restored.
 
 Score (lower is better): `e2e P95 + fps penalty + 2000 per reconnect + 250 per decoder reset + 5000 if the viewer disconnected`; fps penalty = `max(0, 0.8 x preset fps - average fps) / (0.8 x preset fps) x 1000`. E2e P95 is taken over all frames drawn in the measured window (from `stats.e2eRaw`). Each phase also reports the chosen mode, the exact codec string, the encoder name, hardware or software, and the phone's encode fps (frames out of the encoder per second in the measured window, `StreamMetrics.encodedFrames`). Reports: `filesDir/tests/<yyyyMMdd-HHmmss>-<runName>.json` and `.csv` (`adb shell run-as app.webmirror.android cat files/tests/<name>.csv`), listed in the app under "Test results" with a table sorted by score and a Share button; the page gets a `notice` "Test finished — best: <phase>".
 
@@ -210,8 +210,8 @@ Settings > Audio: Bluetooth (default, section 2.4 unchanged), **In the browser**
 WebMirror/
 ├── .gitignore                      # standard Android + *.p12 *.jks *.pem local.properties
 ├── README.md                       # how to build, run, test in the car
-├── docs/PLAN.md                    # copy of this plan
-├── docs/car-test-results.md        # filled in after each car test
+├── docs/development/PLAN.md        # copy of this plan
+├── docs/development/car-test-results.md  # filled in after each car test
 ├── settings.gradle.kts, build.gradle.kts, gradle/libs.versions.toml
 └── app/
     ├── build.gradle.kts
@@ -270,7 +270,7 @@ Each milestone ends with a **Done when** list. Do not start the next milestone u
 **M0.2 Create the project**
 1. Android Studio → New Project → "Empty Activity" (Compose). Name `WebMirror`, package `app.webmirror.android`, save location = the existing project folder, language Kotlin, **Minimum SDK API 29**, build config Kotlin DSL. Keep the compile/target SDK the wizard proposes.
 2. `git init`, add `.gitignore` (Android template plus `*.p12`, `*.jks`, `*.pem`, `*.keystore`), first commit.
-3. Copy this plan to `docs/PLAN.md`.
+3. Copy this plan to `docs/development/PLAN.md`.
 4. Run the app on the phone once to prove the toolchain works.
 
 **M0.3 Manifest**
@@ -360,7 +360,7 @@ Purpose: answer U1, U2, U3 before writing any video code.
 4. Convert: `openssl pkcs12 -export -inkey key.pem -in fullchain.pem -out webmirror.p12`. Copy to the phone, import in the app.
 5. Note the expiry date in `README.md` (renew every ~60 days).
 
-**M1.4 Car test 1** — fill `docs/car-test-results.md`
+**M1.4 Car test 1** — fill `docs/development/car-test-results.md`
 Setup: phone hotspot on, mobile data on, car Wi-Fi joined to the hotspot with "Remain connected in Drive" enabled, app started, virtual IP on.
 Open `/probe.html` through each row; record "loads?" and press Share in the app to save each JSON.
 
@@ -375,13 +375,13 @@ Open `/probe.html` through each row; record "loads?" and press Share in the app 
 
 Repeat the rows that worked while a passenger watches with the car in Drive, to confirm the page stays up.
 
-**Decision gate after M1 (write the decision into `docs/car-test-results.md`):**
+**Decision gate after M1 (write the decision into `docs/development/car-test-results.md`):**
 - Which URL form is the official one for the car.
 - `VideoDecoder` present and H.264 supported on the HTTPS row → car mode is H.264, HTTPS is mandatory for the car.
 - Otherwise → car mode is JPEG; do M4 before M3 and treat HTTPS as optional.
 - If no row loads at all → stop and review (next option: study how TeslAA/TslaMirror route, e.g. tunnel routes + packet handling).
 
-**Done when** the table is filled, JSON files are saved in `docs/`, and the decision is written down.
+**Done when** the table is filled, JSON files are saved in `docs/development/`, and the decision is written down.
 
 ---
 
@@ -478,7 +478,7 @@ codec.start()
 5. **Keep screen on** setting: while mirroring hold `PowerManager.SCREEN_DIM_WAKE_LOCK` (deprecated but functional; add `@Suppress("DEPRECATION")`). Release on stop.
 6. **Sync helper**: page `/sync.html` is not needed; instead document in README: play any "audio video sync test" clip on the phone and move the slider until the flash matches the beep.
 
-**Car test 2** (record in `docs/car-test-results.md`): for each preset, 5 minutes parked and 5 minutes driving as passenger: fps, dropped frames, queue size, subjective smoothness; the delay value that gives lip sync over Bluetooth; whether the stream survives a Park → Drive change and a phone signal loss.
+**Car test 2** (record in `docs/development/car-test-results.md`): for each preset, 5 minutes parked and 5 minutes driving as passenger: fps, dropped frames, queue size, subjective smoothness; the delay value that gives lip sync over Bluetooth; whether the stream survives a Park → Drive change and a phone signal loss.
 Then **tune the numbers in §2.3** to the highest settings the car holds with zero growing queue.
 
 **Done when** audio over Bluetooth and picture are in sync in the car to within what the eye can tell, and the stream runs 20 minutes while driving without manual reload.

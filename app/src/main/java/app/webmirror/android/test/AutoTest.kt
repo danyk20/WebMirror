@@ -60,7 +60,7 @@ object TestPlan {
         fun p(name: String, description: String, c: StreamConfig) = PhaseSpec(name, description, norm(c))
         // The other options (legacy, low-latency, profile, vbr, intra refresh, fit to viewer, in-flight, drop-after,
         // vsync pacing, jitter 150 ms, JPEG) were measured in the car on 2026-11-18 and made no measurable difference
-        // (docs/car-test-results.md); they are not repeated. The options themselves still exist in StreamConfig.
+        // (docs/development/car-test-results.md); they are not repeated. The options themselves still exist in StreamConfig.
         return listOf(
             p("default", "Your current settings (baseline)", base),
             p("jitter-40ms", "Player jitter buffer 40 ms", base.copy(jitterBufferMs = 40)),

@@ -1,6 +1,6 @@
 # Car test results
 
-Fill in after each car test. Save every probe JSON (Share button in the app) next to this file in `docs/`.
+Fill in after each car test. Save every probe JSON (Share button in the app) next to this file.
 
 ## Car test 1 (M1.4): address matrix
 
@@ -106,15 +106,15 @@ Probe results from the car:
 | JPEG-only viewer joins / leaves | stream switches h264 → jpeg → h264 live |
 | App in background | keeps streaming |
 | Screen locked | capture stops (Android); viewers get `paused` and stay connected; server keeps running as a specialUse foreground service |
-| HTTPS on 8443 with the imported certificate | serves `mirror.danielkosc.eu` with a valid chain |
+| HTTPS on 8443 with the imported certificate | serves `mirror.example.com` with a valid chain |
 | Resume after pause (new consent) | works; service back to type mediaProjection, viewers get the stream again |
 | Rotation | stream reconfigures to 1280x584 within ~10 s of rotating and the player rescales |
 
-Certificate: Let's Encrypt for `mirror.danielkosc.eu`, issued 2026-11-17, expires 2027-02-15, renewed manually with a DNS TXT record. hostcreators' `ns1` sometimes answers from a stale copy of the zone; the renewal helper therefore waits for ns2–ns4 only.
+Certificate: Let's Encrypt for `mirror.example.com`, issued 2026-11-17, expires 2027-02-15, renewed manually with a DNS TXT record. The DNS provider's `ns1` sometimes answers from a stale copy of the zone; the renewal helper therefore waits for ns2–ns4 only.
 
 ## Car test 2 (2026-11-17, first real mirroring in the car)
 
-- `https://mirror.danielkosc.eu:8443` loads with a valid certificate; WebCodecs available; **H.264 plays in the car**, parked and while driving.
+- `https://mirror.example.com:8443` loads with a valid certificate; WebCodecs available; **H.264 plays in the car**, parked and while driving.
 - Typing the address without the scheme, or with the wrong one, fails: `http://` to 8443 gives ERR_EMPTY_RESPONSE; `https://169.254.77.1:8443` cannot work (certificate is for the name only).
 - **Freeze on shifting into Drive was the car dropping the phone's hotspot**, not a decoder block. Fixed with the Tesla Wi-Fi option "Remain connected in Drive" for the hotspot. The page kept showing "Connected, 0 fps" because nothing detected the dead connection; heartbeat + auto-reconnect being added.
 - JPEG mode (Force JPEG) also plays in Drive; started at 10–15 fps, rose to ~30 fps later.
@@ -123,7 +123,7 @@ Certificate: Let's Encrypt for `mirror.danielkosc.eu`, issued 2026-11-17, expire
 
 ## Desk run of the automatic test (2026-11-17, Quick mode, viewer = headless Chrome on the Mac over USB)
 
-Full report: `docs/test-runs/20261117-205929-desk.csv` / `.json`. All 16 phases completed, no reconnects, no decoder resets, no drops; adaptive bitrate stayed at 4000 kbps (no false congestion after the fix in bba69d5).
+Full report: `docs/development/test-runs/20261117-205929-desk.csv` / `.json`. All 16 phases completed, no reconnects, no decoder resets, no drops; adaptive bitrate stayed at 4000 kbps (no false congestion after the fix in bba69d5).
 
 - Capture → draw delay (e2e P95) is ~98 ms with defaults; **80 ms of it is the jitter buffer**. `jitter-30ms` gave 48 ms, `jitter-150ms` 167 ms. The pipeline itself (encode + transfer + decode) is roughly 15–20 ms on this link.
 - On this fast, clean link the other options make no measurable difference (97–102 ms); they are meant for the car's slower, jittery Wi-Fi, so the car runs are what matters.
@@ -132,7 +132,7 @@ Full report: `docs/test-runs/20261117-205929-desk.csv` / `.json`. All 16 phases 
 
 ## Car test 3 (2026-11-18): probe + automatic test, parked and driving
 
-Reports: `docs/test-runs/20261118-000858-desk.*` (**parked** — the run was named "desk" by mistake) and `docs/test-runs/20261118-001628-driving.*`. Both runs completed all 16 phases, no reconnects, no decoder resets.
+Reports: `docs/development/test-runs/20261118-000858-desk.*` (**parked** — the run was named "desk" by mistake) and `docs/development/test-runs/20261118-001628-driving.*`. Both runs completed all 16 phases, no reconnects, no decoder resets.
 
 **Probe (Tesla Chrome 148, https):** `VideoDecoder.isConfigSupported` true for H.264 (Baseline/Main/High), **HEVC** (`hev1`/`hvc1`, L93 and L120) and **VP9**, all also with `prefer-hardware` at 720p and 1080p. AV1 only without hardware (software decode). `isConfigSupported` does not prove real decoding works; an HEVC stream test is needed.
 
@@ -156,7 +156,7 @@ Reports: `docs/test-runs/20261118-000858-desk.*` (**parked** — the run was nam
 
 ## Desk run with automatic codec choice (2026-11-18, Quick, headless Chrome over USB)
 
-Report: `docs/test-runs/20261118-010857-desk-hevc.*` (the earlier `20261118-005721-desk-hevc` has no e2e: the ping timer was frozen by a dead TLS viewer, fixed in b74e951).
+Report: `docs/development/test-runs/20261118-010857-desk-hevc.*` (the earlier `20261118-005721-desk-hevc` has no e2e: the ping timer was frozen by a dead TLS viewer, fixed in b74e951).
 
 | Phase | Codec / encoder | e2e P95 (ms) | Notes |
 |---|---|---|---|
@@ -174,7 +174,7 @@ Report: `docs/test-runs/20261118-010857-desk-hevc.*` (the earlier `20261118-0057
 
 ## Car test 4 (2026-11-18): automatic codec choice, 8-phase Quick test, parked and driving
 
-Reports: `docs/test-runs/20261118-011853-parked.*`, `docs/test-runs/20261118-012257-driving.*`. Phases run one after another, so a Wi-Fi disturbance hits whichever phase is running at that moment.
+Reports: `docs/development/test-runs/20261118-011853-parked.*`, `docs/development/test-runs/20261118-012257-driving.*`. Phases run one after another, so a Wi-Fi disturbance hits whichever phase is running at that moment.
 
 | Phase | Parked P95 / max (ms) | Driving P95 / max (ms) | RTT parked / driving (ms) |
 |---|---|---|---|

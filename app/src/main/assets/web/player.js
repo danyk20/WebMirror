@@ -1,5 +1,5 @@
 // WebMirror player. Plain script, no modules; no ?. , ??, or BigInt (old Chromium in the car).
-// Protocol: docs/PLAN.md section 2.1. Decoders are chosen per mode (hello.mode): "jpeg", "h264", "hevc", "vp9" and "av1" (the video modes share packet type 1 and one decoder implementation).
+// Protocol: docs/development/PLAN.md section 2.1. Decoders are chosen per mode (hello.mode): "jpeg", "h264", "hevc", "vp9" and "av1" (the video modes share packet type 1 and one decoder implementation).
 (function () {
   'use strict';
 
