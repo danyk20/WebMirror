@@ -795,15 +795,22 @@ private fun CertificateSection(
         auto.ipError?.let { ErrorText(it) }
         autoRun.lines.lastOrNull()?.takeIf { autoRun.running }?.let { Text(it, fontFamily = FontFamily.Monospace, fontSize = 12.sp) }
         (autoRun.result as? IssueResult.Failure)?.takeIf { it !is IssueResult.Cancelled }?.let { ErrorText(it.message) }
+        if (auto.staging) {
+            ErrorText("This is a TEST certificate. Browsers and the car do NOT trust it.")
+            Button(onClick = onOpenWizard, enabled = !autoRun.running, modifier = Modifier.fillMaxWidth()) {
+                Text("Get a real certificate")
+            }
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (autoRun.running) {
                 OutlinedButton(onClick = { AutoCert.cancelRun() }) { Text("Cancel") }
             } else {
                 Button(onClick = { AutoCert.startRenewNow(context) }) { Text("Renew now") }
             }
-            OutlinedButton(onClick = { AutoCert.turnOff(context, removeCertificate = true) }, enabled = !autoRun.running) {
-                Text("Turn off automatic certificate")
-            }
+            OutlinedButton(onClick = onOpenWizard, enabled = !autoRun.running) { Text("Change name or token") }
+        }
+        OutlinedButton(onClick = { AutoCert.turnOff(context, removeCertificate = true) }, enabled = !autoRun.running) {
+            Text("Turn off automatic certificate")
         }
     } else {
         Button(onClick = onOpenWizard, modifier = Modifier.fillMaxWidth()) { Text("Get a free certificate") }

@@ -17,7 +17,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
@@ -54,6 +58,7 @@ import java.util.Date
 @Composable
 fun AutoTestSection(settings: Settings, onOpenReport: (String) -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val run by AutoTestRunner.state.collectAsState()
     val service by MirrorService.state.collectAsState()
     var name by remember { mutableStateOf(settings.testRunName) }
@@ -61,8 +66,15 @@ fun AutoTestSection(settings: Settings, onOpenReport: (String) -> Unit) {
     var quick by remember { mutableStateOf(settings.testQuick) }
     var usePattern by remember { mutableStateOf(settings.testUsePattern) }
     var reports by remember { mutableStateOf<List<TestReports.Info>>(emptyList()) }
-    LaunchedEffect(run.status, run.lastReport) {
+    var refresh by remember { mutableStateOf(0) }
+    var confirmAll by remember { mutableStateOf(false) }
+    LaunchedEffect(run.status, run.lastReport, refresh) {
         reports = withContext(Dispatchers.IO) { TestReports.list(context) }
+    }
+    // Reload when returning from the detail screen (it may have deleted a report).
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        refresh++
+        onDispose { }
     }
     val active = run.active
     val plan = remember { TestPlan.phases() }
@@ -132,6 +144,23 @@ fun AutoTestSection(settings: Settings, onOpenReport: (String) -> Unit) {
 
     Text("Test results", style = MaterialTheme.typography.titleMedium)
     if (reports.isEmpty()) Text("(none yet)", style = MaterialTheme.typography.bodySmall)
+    else OutlinedButton(onClick = { confirmAll = true }, enabled = !active) { Text("Delete all results") }
+    if (confirmAll) {
+        AlertDialog(
+            onDismissRequest = { confirmAll = false },
+            text = { Text("Delete all ${reports.size} test results? This cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmAll = false
+                    scope.launch {
+                        withContext(Dispatchers.IO) { TestReports.deleteAll(context) }
+                        refresh++
+                    }
+                }) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { confirmAll = false }) { Text("Cancel") } },
+        )
+    }
     for (r in reports) {
         val date = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(r.startedAtMs))
         OutlinedButton(onClick = { onOpenReport(r.stem) }, modifier = Modifier.fillMaxWidth()) {
@@ -190,6 +219,8 @@ fun TestReportScreen(stem: String, onBack: () -> Unit) {
     val context = LocalContext.current
     var report by remember(stem) { mutableStateOf<TestReports.Loaded?>(null) }
     var failed by remember(stem) { mutableStateOf(false) }
+    var confirmDelete by remember(stem) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     LaunchedEffect(stem) {
         val r = withContext(Dispatchers.IO) { TestReports.load(context, stem) }
         report = r
@@ -203,6 +234,23 @@ fun TestReportScreen(stem: String, onBack: () -> Unit) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = onBack) { Text("Back") }
             Button(onClick = { shareReport(context, stem) }, enabled = report != null) { Text("Share (JSON + CSV)") }
+            OutlinedButton(onClick = { confirmDelete = true }) { Text("Delete") }
+        }
+        if (confirmDelete) {
+            AlertDialog(
+                onDismissRequest = { confirmDelete = false },
+                text = { Text("Delete this test result? This cannot be undone.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        confirmDelete = false
+                        scope.launch {
+                            withContext(Dispatchers.IO) { TestReports.delete(context, stem) }
+                            onBack()
+                        }
+                    }) { Text("Delete") }
+                },
+                dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+            )
         }
         if (failed) Text("Cannot read this report.", color = MaterialTheme.colorScheme.error)
         val r = report ?: return@Column

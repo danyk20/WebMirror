@@ -70,14 +70,17 @@ private fun clipboardText(context: Context): String? =
 internal fun CertWizardScreen(onClose: () -> Unit) {
     val context = LocalContext.current
     val run by AutoCert.run.collectAsState()
-    var name by rememberSaveable { mutableStateOf("") }
+    val saved = remember { AutoCert.state.value }
+    val hasSavedToken = saved.enabled && saved.token.isNotEmpty()
+    var name by rememberSaveable { mutableStateOf(if (saved.enabled) saved.subdomain else "") }
     var token by rememberSaveable { mutableStateOf("") }
     var showToken by rememberSaveable { mutableStateOf(false) }
     var agreed by rememberSaveable { mutableStateOf(false) }
     var staging by rememberSaveable { mutableStateOf(false) }
+    var showDev by rememberSaveable { mutableStateOf(false) }
 
     val sub = CertInput.normalizeSubdomain(name)
-    val tokenOk = CertInput.isValidToken(token)
+    val tokenOk = CertInput.isValidToken(token) || (token.isEmpty() && hasSavedToken)
     val success = run.result as? IssueResult.Success
 
     Column(
@@ -120,6 +123,7 @@ internal fun CertWizardScreen(onClose: () -> Unit) {
             "Sign in at duckdns.org (Google, GitHub, …). In \"sub domain\" type a name, for example mycar-mirror, " +
                 "and tap \"add domain\". You don't need to change the \"current ip\": the app sets it.",
         )
+        Text("Your address will be <name>.duckdns.org.")
         OutlinedButton(onClick = { openUrl(context, "https://www.duckdns.org") }) { Text("Open duckdns.org") }
 
         HorizontalDivider()
@@ -151,6 +155,7 @@ internal fun CertWizardScreen(onClose: () -> Unit) {
             isError = token.isNotBlank() && !tokenOk,
             supportingText = {
                 if (token.isNotBlank() && !tokenOk) Text("The token has 36 characters, like 123e4567-e89b-12d3-a456-426614174000.")
+                else if (token.isEmpty() && hasSavedToken) Text("Leave empty to keep the saved token")
             },
             enabled = !run.running,
             modifier = Modifier.fillMaxWidth(),
@@ -172,15 +177,9 @@ internal fun CertWizardScreen(onClose: () -> Unit) {
             style = MaterialTheme.typography.bodySmall,
         )
 
-        if (BuildConfig.DEBUG) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Switch(checked = staging, onCheckedChange = { staging = it }, enabled = !run.running)
-                Text("Use Let's Encrypt test server (staging)", modifier = Modifier.padding(start = 12.dp))
-            }
-        }
-
         HorizontalDivider()
         Text("4. Get the certificate", style = MaterialTheme.typography.titleMedium)
+        Text("This takes about one to two minutes. Keep the app open.")
         if (run.running) {
             OutlinedButton(onClick = { AutoCert.cancelRun() }, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
         } else {
@@ -188,7 +187,7 @@ internal fun CertWizardScreen(onClose: () -> Unit) {
                 onClick = { AutoCert.startSetup(context, sub!!, token, staging) },
                 enabled = sub != null && tokenOk && agreed,
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Get certificate") }
+            ) { Text(if (BuildConfig.DEBUG && staging) "Get TEST certificate (not trusted)" else "Get certificate") }
         }
         if (run.lines.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -211,5 +210,22 @@ internal fun CertWizardScreen(onClose: () -> Unit) {
                 "Cloudflare DNS (to check the record) only while getting or renewing the certificate.",
             style = MaterialTheme.typography.bodySmall,
         )
+
+        if (BuildConfig.DEBUG) {
+            HorizontalDivider()
+            Text("For app developers only", style = MaterialTheme.typography.titleMedium)
+            if (!showDev) {
+                TextButton(onClick = { showDev = true }) { Text("Show developer options") }
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(checked = staging, onCheckedChange = { staging = it }, enabled = !run.running)
+                    Text("Use Let's Encrypt test server (staging)", modifier = Modifier.padding(start = 12.dp))
+                }
+                Text(
+                    "Test certificates are NOT trusted by browsers or the car. Leave this off.",
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
     }
 }

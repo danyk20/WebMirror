@@ -143,12 +143,9 @@ object AutoCert {
 
     // ---- issuing ----
 
-    /** Wizard: first issuance. [subdomain] and [token] must already be valid-looking; the issuer validates again. */
+    /** Wizard: first issuance. [subdomain] must be valid-looking; an empty [token] keeps the saved one; the issuer validates again. */
     fun startSetup(context: Context, subdomain: String, token: String, staging: Boolean) {
-        val base = AutoCertState(
-            enabled = false, subdomain = subdomain, token = token.trim(),
-            staging = BuildConfig.DEBUG && staging,
-        )
+        val base = AutoCertLogic.setupBase(load(context), subdomain, token, BuildConfig.DEBUG && staging)
         startRun(context.applicationContext, base)
     }
 

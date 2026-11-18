@@ -8,10 +8,10 @@ The app can get one for you, for free, on the phone, in about two minutes. You n
 
 Open WebMirror, scroll to **HTTPS certificate** and tap **Get a free certificate**.
 
-1. **Create your free address.** Tap **Open duckdns.org** and sign in (Google, GitHub, ...). In "sub domain" type a name, for example `mycar-mirror`, and tap "add domain". You don't need to change the "current ip": the app sets it.
+1. **Create your free address.** Tap **Open duckdns.org** and sign in (Google, GitHub, ...). In "sub domain" type a name, for example `mycar-mirror`, and tap "add domain". You don't need to change the "current ip": the app sets it. Your address will be `<name>.duckdns.org`.
 2. **Copy your token.** It is shown at the top of the DuckDNS page after you sign in. Back in the app, enter your DuckDNS name (`name`, `name.duckdns.org` or the full link all work; the app shows the final `name.duckdns.org`) and paste the token (**Paste** reads the clipboard, **Show** reveals it).
 3. **Agree to Let's Encrypt terms.** Tick "I agree to the Let's Encrypt Subscriber Agreement" (the link opens <https://letsencrypt.org/repository/>). Let's Encrypt is a free, non-profit certificate authority.
-4. **Get certificate.** The app shows its progress. It usually takes one to two minutes. You can cancel at any time.
+4. **Get certificate.** The app shows its progress. It says: "This takes about one to two minutes. Keep the app open." You can cancel at any time.
 
 When it is done the app shows the address to open in the car, `https://<name>.duckdns.org:8443`, with a QR code.
 
@@ -26,6 +26,14 @@ Renewal needs the phone to be online (mobile data or Wi-Fi) at some point in the
 If you change the virtual address in the app, the app updates the DuckDNS address by itself. An error is shown in the section if that fails.
 
 **Turn off automatic certificate** forgets your token and the Let's Encrypt account key and removes the certificate. Importing a `.p12` by hand also turns automatic mode off.
+
+### Change the name or the token
+
+When automatic mode is on, the section also shows **Change name or token**. It opens the same wizard with your name filled in. Leave the token field empty to keep the saved token ("Leave empty to keep the saved token"), or paste a new one.
+
+### Test certificates (debug builds only)
+
+Debug builds of the app have, at the very bottom of the wizard under "For app developers only", a collapsed section (**Show developer options**) with a switch for the Let's Encrypt test server. Test certificates are NOT trusted by browsers or the car. Leave this off. With it on, the button reads "Get TEST certificate (not trusted)". If a test certificate is installed, the section shows "This is a TEST certificate. Browsers and the car do NOT trust it." and a **Get a real certificate** button that opens the wizard. Switching between test and real starts a new Let's Encrypt account automatically.
 
 ### Privacy and storage
 
@@ -256,6 +264,9 @@ Everything else (the DuckDNS name and the address) stays the same.
 
 **Certificate error: "name mismatch" (or similar).**
 - The name in the address bar must be one of the **DNS names** shown in the app. You must not use the IP address (`https://169.254.77.1:8443` always fails, because a certificate cannot be issued for it). Use `<your-name>.duckdns.org`.
+
+**The car says the connection is not private.**
+- The certificate may be a test certificate or expired. Open the app's **HTTPS certificate** section: if it shows "This is a TEST certificate", tap **Get a real certificate**; if it is expired, tap **Renew now**.
 
 **The browser says the certificate is expired.**
 - See step 5. Renew and import again.

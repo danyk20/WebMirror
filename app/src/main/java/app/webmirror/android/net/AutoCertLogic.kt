@@ -45,6 +45,23 @@ object AutoCertLogic {
 
     fun onFailure(s: AutoCertState, nowMs: Long, message: String) = s.copy(lastAttemptMs = nowMs, lastError = message)
 
+    /**
+     * Starting state for a wizard run. An empty [token] keeps the saved one. The saved ACME account key is reused only
+     * when the server (staging or production) stays the same: an account of one server does not exist on the other.
+     */
+    fun setupBase(existing: AutoCertState, subdomain: String, token: String, staging: Boolean): AutoCertState {
+        val keepKey = existing.enabled && existing.staging == staging &&
+            existing.accountPkcs8 != null && existing.accountX509 != null
+        return AutoCertState(
+            enabled = false,
+            subdomain = subdomain,
+            token = token.trim().ifEmpty { if (existing.enabled) existing.token else "" },
+            staging = staging,
+            accountPkcs8 = if (keepKey) existing.accountPkcs8 else null,
+            accountX509 = if (keepKey) existing.accountX509 else null,
+        )
+    }
+
     /** Hint shown in the wizard for each kind of failure. */
     fun hint(f: app.webmirror.android.net.acme.IssueResult.Failure): String = when (f) {
         is app.webmirror.android.net.acme.IssueResult.DuckDnsRejected -> "Check the name and the token. Copy the token again from duckdns.org."

@@ -49,6 +49,21 @@ class AutoCertLogicTest {
         assertTrue(AutoCertLogic.shouldNotify(on, false, 1 * day))
     }
 
+    @Test fun setupKeepsAccountKeyOnlyForSameServer() {
+        val saved = on.copy(accountPkcs8 = byteArrayOf(1), accountX509 = byteArrayOf(2), staging = true)
+        val same = AutoCertLogic.setupBase(saved, "y", "", staging = true)
+        assertNotNull(same.accountPkcs8)
+        assertEquals("t", same.token)
+        assertEquals("y", same.subdomain)
+        val switched = AutoCertLogic.setupBase(saved, "y", "newtoken", staging = false)
+        assertNull(switched.accountPkcs8)
+        assertNull(switched.accountX509)
+        assertEquals("newtoken", switched.token)
+        assertFalse(switched.staging)
+        val fresh = AutoCertLogic.setupBase(AutoCertState(), "y", "", staging = false)
+        assertEquals("", fresh.token)
+    }
+
     @Test fun hints() {
         assertTrue(AutoCertLogic.hint(IssueResult.DuckDnsRejected("x")).contains("token"))
         assertTrue(AutoCertLogic.hint(IssueResult.RateLimited(null, "x")).contains("Wait"))

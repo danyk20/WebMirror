@@ -37,6 +37,25 @@ object TestReports {
         return stem
     }
 
+    /** A stem is a plain file name part: no separators, no "..". */
+    fun validStem(stem: String): Boolean =
+        stem.isNotEmpty() && !stem.contains('/') && !stem.contains('\\') && !stem.contains("..") && !stem.contains('\u0000')
+
+    /** Deletes both files of a report; true if the stem is valid and no file is left. */
+    fun delete(context: Context, stem: String): Boolean {
+        if (!validStem(stem)) return false
+        val files = listOf(jsonFile(context, stem), csvFile(context, stem))
+        for (f in files) if (f.exists()) f.delete()
+        return files.none { it.exists() }
+    }
+
+    /** Deletes every saved report; returns how many reports (stems) were removed. */
+    fun deleteAll(context: Context): Int {
+        val stems = dir(context).listFiles { f -> f.name.endsWith(".json") || f.name.endsWith(".csv") }
+            ?.map { it.name.substringBeforeLast('.') }?.distinct().orEmpty()
+        return stems.count { delete(context, it) }
+    }
+
     /** Newest first. */
     fun list(context: Context): List<Info> =
         (dir(context).listFiles { f -> f.name.endsWith(".json") }?.toList().orEmpty())
