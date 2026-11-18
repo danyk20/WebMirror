@@ -23,6 +23,9 @@ import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
 import app.webmirror.android.capture.ScreenCapture
+import app.webmirror.android.input.RemoteControlState
+import app.webmirror.android.input.RemoteInput
+import app.webmirror.android.input.RemoteInputService
 import app.webmirror.android.net.Addresses
 import app.webmirror.android.net.TlsStore
 import app.webmirror.android.net.VirtualIpService
@@ -39,6 +42,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import org.json.JSONObject
 import java.io.IOException
@@ -112,6 +116,7 @@ class MirrorService : Service() {
     override fun onCreate() {
         super.onCreate()
         hubRef = hub
+        hub.inputSink = RemoteInput
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -168,6 +173,7 @@ class MirrorService : Service() {
             // Mandatory on Android 14+ before the display is created.
             p.registerCallback(projectionCallback, Handler(Looper.getMainLooper()))
             if (!resuming) {
+                RemoteControlState.allowed.value = false // the safety switch is off at the start of every mirroring session
                 hub.reset()
                 bindEvents()
             }
@@ -299,6 +305,8 @@ class MirrorService : Service() {
             return
         }
         active = false
+        RemoteControlState.allowed.value = false
+        hub.setControl(false, RemoteInputService.connected.value)
         endCapture()
         releaseLocks()
         stopServer()
@@ -437,6 +445,11 @@ class MirrorService : Service() {
         TlsStore.refresh(this)
         scope.launch { TlsStore.state.collect { applyTls(it.info) } }
         scope.launch { VirtualIpService.state.collect { refreshUrls() } }
+        // Remote control: the phone's switch and the accessibility service state go to the hub (and in hello.control to the viewers).
+        scope.launch {
+            combine(RemoteControlState.allowed, RemoteInputService.connected) { a, r -> a to r }
+                .collect { hub.setControl(it.first, it.second) }
+        }
         refreshUrls()
         Log.i(TAG, "server started on port $PORT: ${_state.value.urls}")
         return null

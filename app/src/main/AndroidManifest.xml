@@ -54,6 +54,20 @@
                 android:value="Keeps the local web server and connected viewers alive while screen capture is paused, so capture can be resumed without disconnecting browsers." />
         </service>
 
+        <!-- Performs touches sent from a viewer (dispatchGesture only). Enabled by the user in Accessibility settings. -->
+        <service
+            android:name=".input.RemoteInputService"
+            android:label="@string/remote_input_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/remote_input_service" />
+        </service>
+
         <!-- Not exported: the system (uid 1000) binds VpnService regardless; the permission is required by the platform. -->
         <service
             android:name=".net.VirtualIpService"

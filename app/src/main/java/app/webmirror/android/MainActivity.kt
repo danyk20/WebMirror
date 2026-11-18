@@ -69,6 +69,8 @@ import app.webmirror.android.capture.Preset
 import app.webmirror.android.encode.CodecSupport
 import app.webmirror.android.stream.StreamConfig
 import app.webmirror.android.stream.StreamHub
+import app.webmirror.android.input.RemoteControlState
+import app.webmirror.android.input.RemoteInputService
 import app.webmirror.android.net.Ipv4
 import app.webmirror.android.net.TlsStore
 import app.webmirror.android.net.VirtualIpService
@@ -281,6 +283,9 @@ private fun MainScreen(
         QualitySection(settings) { MirrorService.applySettings(context) }
 
         HorizontalDivider()
+        ControlSection(state.running, state.viewerCount)
+
+        HorizontalDivider()
         DisplaySection(settings) { MirrorService.applySettings(context) }
 
         HorizontalDivider()
@@ -368,6 +373,40 @@ private fun QualitySection(settings: Settings, onChanged: () -> Unit) {
             }
         }
     }
+}
+
+/** Remote control from viewers: the safety switch (in memory, off at every start) and the accessibility service status. */
+@Composable
+private fun ControlSection(running: Boolean, viewers: Int) {
+    val context = LocalContext.current
+    val allowed by RemoteControlState.allowed.collectAsState()
+    val ready by RemoteInputService.connected.collectAsState()
+    SectionTitle("Remote control")
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Switch(checked = allowed && running, enabled = running, onCheckedChange = { RemoteControlState.allowed.value = it })
+        Text("Allow control from viewers", modifier = Modifier.padding(start = 12.dp))
+    }
+    Text(
+        if (running) "Off by default and switched off again whenever mirroring stops. While on, one viewer at a time can turn control on in its page and then operate this phone by touching the picture."
+        else "Start mirroring first; this switch is off at the start of every mirroring session.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    if (allowed && running) {
+        Text("Viewers can control this phone now ($viewers connected).", color = MaterialTheme.colorScheme.error)
+    }
+    Text(
+        if (ready) "Accessibility service: active" else "Accessibility service: not enabled",
+        style = MaterialTheme.typography.titleMedium,
+        color = if (ready) ComposeColor(0xFF008C3C) else MaterialTheme.colorScheme.error,
+    )
+    Text(
+        "Touches are performed by an Android accessibility service. It only injects the touches sent from a viewer; it reads no screen content. " +
+            "In Accessibility settings open Installed apps (or Downloaded apps), choose WebMirror remote control and switch it on.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    OutlinedButton(onClick = {
+        context.startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }) { Text("Open accessibility settings") }
 }
 
 @Composable

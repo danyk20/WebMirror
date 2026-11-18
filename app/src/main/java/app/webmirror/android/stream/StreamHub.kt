@@ -1,5 +1,8 @@
 package app.webmirror.android.stream
 
+import app.webmirror.android.input.ControlArbiter
+import app.webmirror.android.input.InputEvent
+import app.webmirror.android.input.InputSink
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
@@ -35,9 +38,12 @@ class StreamHub(
         val audio: String = "off",
         /** The page-side part of [StreamConfig] as a JSON object text (`hello.cfg`). */
         val cfg: String = StreamConfig().pageJson(),
+        /** Remote control (plan 2.1 `hello.control`): the phone's switch is on / the accessibility service is connected. */
+        val controlAllowed: Boolean = false,
+        val controlReady: Boolean = false,
     ) {
         fun toJson(): String =
-            """{"t":"hello","v":$PROTOCOL_VERSION,"mode":"$mode","codec":"$codec","why":${JsonText.quote(why)},"encoder":${JsonText.quote(encoder + if (hardware == true) " (hw)" else if (hardware == false) " (sw)" else "")},"width":$width,"height":$height,"fps":$fps,"audio":"$audio","cfg":$cfg}"""
+            """{"t":"hello","v":$PROTOCOL_VERSION,"mode":"$mode","codec":"$codec","why":${JsonText.quote(why)},"encoder":${JsonText.quote(encoder + if (hardware == true) " (hw)" else if (hardware == false) " (sw)" else "")},"width":$width,"height":$height,"fps":$fps,"audio":"$audio","cfg":$cfg,"control":{"allowed":$controlAllowed,"ready":$controlReady}}"""
     }
 
     private val sinks = CopyOnWriteArrayList<StreamSink>()
@@ -55,6 +61,39 @@ class StreamHub(
     private var lastNotice: String? = null
     private var lastNoticeAtMs = 0L
     private var lastNoticeTtlMs = 0L
+
+    /** Who may control the phone (see "Remote control" in the plan). */
+    val control = ControlArbiter()
+
+    /** Where accepted input events go (the accessibility service); set by the service owner. */
+    @Volatile
+    var inputSink: InputSink? = null
+
+    /**
+     * The phone's switch or the accessibility service changed: tells the viewers (new `hello`), and when somebody
+     * owned the control and lost it, that viewer is told and its touches are lifted.
+     */
+    fun setControl(allowed: Boolean, ready: Boolean) {
+        val dropped = control.setState(allowed, ready)
+        if (dropped != null) {
+            inputSink?.releaseAll()
+            sinks.firstOrNull { it.viewerId == dropped.first }
+                ?.onText("""{"t":"control","on":false,"owner":false,"reason":"${dropped.second}"}""")
+        }
+        update { it.copy(controlAllowed = allowed, controlReady = ready) }
+    }
+
+    /** `{t:"control", on}` of [sink]; returns the answer to send back. */
+    fun controlRequest(sink: StreamSink, on: Boolean): ControlArbiter.Reply {
+        val reply = control.request(sink.viewerId, on)
+        if (!on) inputSink?.releaseAll()
+        return reply
+    }
+
+    /** An already validated `input` event of viewer [viewerId]; dropped unless that viewer owns the control. */
+    fun controlInput(viewerId: Int, ev: InputEvent) {
+        if (control.canInput(viewerId)) inputSink?.submit(ev)
+    }
 
     /** Totals for the automatic test (bytes sent, keyframe requests). */
     val metrics = StreamMetrics()
@@ -180,6 +219,7 @@ class StreamHub(
 
     fun unregister(sink: StreamSink) {
         if (sinks.remove(sink)) {
+            if (control.release(sink.viewerId)) inputSink?.releaseAll()
             events?.onViewerCountChanged(sinks.size)
             recomputeMode()
             viewChanged()
@@ -239,7 +279,8 @@ class StreamHub(
     /** Forgets everything about the previous stream (used when mirroring stops). */
     fun reset() {
         synchronized(lock) {
-            info = HelloInfo(cfg = config.pageJson())
+            info = HelloInfo(cfg = config.pageJson(), controlAllowed = info.controlAllowed, controlReady = info.controlReady)
+            control.clearOwner()
             lastJpeg = null
             gop.clear()
             lastKeyframeRequestMs = null

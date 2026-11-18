@@ -11,6 +11,12 @@ interface StreamSink {
     /** A short message for the viewer's screen (plan 2.1 `notice`); [json] is the whole text message. */
     fun onNotice(json: String) {}
 
+    /** Any text message for this viewer (JSON object with a `t` field), e.g. a `control` answer. */
+    fun onText(json: String) {}
+
+    /** Stable id of this viewer (remote control owner arbitration); -1 for sinks that are not viewers. */
+    val viewerId: Int get() = -1
+
     /** Closes this viewer's connection (the page reconnects by itself). */
     fun disconnect() {}
 

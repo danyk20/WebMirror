@@ -5,4 +5,6 @@
     <string name="notification_text">WebMirror is mirroring the screen</string>
     <string name="notification_paused">Paused - open WebMirror and tap Start</string>
     <string name="notification_stop">Stop</string>
+    <string name="remote_input_service_label">WebMirror remote control</string>
+    <string name="remote_input_description">WebMirror uses this only to perform the touches (taps, swipes, pinch) that are sent from a WebMirror viewer, for example the car screen, while \"Allow control from viewers\" is switched on in the WebMirror app. It does not read the screen or any text, and it does not watch what you do.</string>
 </resources>

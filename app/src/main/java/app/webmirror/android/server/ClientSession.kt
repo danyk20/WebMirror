@@ -1,6 +1,8 @@
 package app.webmirror.android.server
 
 import android.util.Log
+import app.webmirror.android.input.InputEvent
+import app.webmirror.android.input.RateLimiter
 import app.webmirror.android.stream.BitrateController
 import app.webmirror.android.stream.ClockSync
 import app.webmirror.android.stream.CodecChooser
@@ -66,6 +68,11 @@ class ClientSession(
     override val viewBox: ViewBox? get() = viewPx
 
     private val id = nextId.incrementAndGet()
+
+    override val viewerId: Int get() = id
+
+    /** At most 120 `input` messages per second from this viewer (up/cancel are never refused). */
+    private val inputLimiter = RateLimiter()
 
     /** Clock offset to this page, from ping/pong round trips (plan 2.1). */
     private val clock = ClockSync()
@@ -135,6 +142,14 @@ class ClientSession(
     }
 
     override fun onNotice(json: String) {
+        if (stopped) return
+        synchronized(mon) {
+            addControl(Outgoing.Text(json))
+            mon.notifyAll()
+        }
+    }
+
+    override fun onText(json: String) {
         if (stopped) return
         synchronized(mon) {
             addControl(Outgoing.Text(json))
@@ -267,11 +282,29 @@ class ClientSession(
                     hub.reportProbe(results?.toString(2) ?: text)
                 }
                 "blast" -> blast()
-                else -> Unit // unknown types (including future "input") are ignored
+                "control" -> onText(hub.controlRequest(this, obj.optBoolean("on", false)).toJson())
+                "input" -> handleInput(obj)
+                else -> Unit // unknown types are ignored
             }
         } catch (e: Exception) {
             Log.w(TAG, "bad message ignored: $e")
         }
+    }
+
+    /**
+     * `{t:"input", e, id, x, y, ts, w?, h?}` (remote control). Everything is validated and rate limited here; the hub
+     * drops it unless this viewer owns the control. Never throws.
+     */
+    private fun handleInput(obj: JSONObject) {
+        val e = obj.optString("e")
+        val essential = e == "up" || e == "cancel"
+        if (!inputLimiter.allow(nowMs(), essential)) return
+        if (!hub.control.canInput(id)) return
+        val ev = InputEvent.validate(
+            e, obj.optInt("id", -1), obj.optDouble("x", Double.NaN), obj.optDouble("y", Double.NaN),
+            obj.optDouble("ts", Double.NaN), obj.optInt("w", 0), obj.optInt("h", 0),
+        ) ?: return
+        hub.controlInput(id, ev)
     }
 
     /** `{t:"view", w, h, dpr}`: the page's window in CSS pixels and the device pixel ratio. */
