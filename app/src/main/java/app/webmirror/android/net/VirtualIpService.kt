@@ -38,6 +38,7 @@ class VirtualIpService : VpnService() {
                 .setSession("WebMirror virtual address")
                 .addAddress(ip, 32)
                 .addAllowedApplication(packageName)
+                .allowBypass()
                 .setBlocking(true)
                 .establish()
         } catch (e: Exception) {

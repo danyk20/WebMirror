@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
+import app.webmirror.android.net.acme.UrlConnectionTransport
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -204,6 +205,7 @@ object AutoCert {
             }
             val key = if (base.accountPkcs8 != null && base.accountX509 != null) AcmeAccountKey(base.accountPkcs8, base.accountX509) else null
             val issuer = CertIssuer(
+                transport = UrlConnectionTransport(context.applicationContext),
                 directoryUrl = if (BuildConfig.DEBUG && base.staging) AcmeDirectories.STAGING else AcmeDirectories.PRODUCTION,
                 progress = progress,
             )
@@ -240,7 +242,7 @@ object AutoCert {
         scope.launch(Dispatchers.IO) {
             val s = load(app)
             if (!s.enabled || s.token.isEmpty()) return@launch
-            val err = DuckDns.updateIp(s.subdomain, s.token, ip)
+            val err = DuckDns.updateIp(s.subdomain, s.token, ip, UrlConnectionTransport(app))
             save(app, s.copy(ipError = err?.let { "Could not update the DuckDNS address: $it" }))
         }
     }

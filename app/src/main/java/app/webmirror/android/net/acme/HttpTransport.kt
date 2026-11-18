@@ -1,5 +1,9 @@
 package app.webmirror.android.net.acme
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -16,9 +20,38 @@ interface HttpTransport {
 }
 
 /** Real transport over HttpURLConnection. Never logs URLs (DuckDNS URLs contain the token). */
-class UrlConnectionTransport(private val connectTimeoutMs: Int = 15_000, private val readTimeoutMs: Int = 30_000) : HttpTransport {
+class UrlConnectionTransport(
+    context: Context? = null,
+    private val connectTimeoutMs: Int = 10_000,
+    private val readTimeoutMs: Int = 30_000,
+) : HttpTransport {
+    private val cm: ConnectivityManager? = context?.applicationContext?.getSystemService(ConnectivityManager::class.java)
+
+    /**
+     * The real internet network, bypassing the app's own virtual-address VPN (which has no routes or DNS).
+     * Prefers validated, then Wi-Fi over cellular, over anything else.
+     */
+    private fun underlyingNetwork(): Network? = try {
+        cm?.allNetworks?.mapNotNull { n ->
+            val c = cm.getNetworkCapabilities(n) ?: return@mapNotNull null
+            if (!c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
+                !c.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)) return@mapNotNull null
+            var score = 0
+            if (c.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) score += 4
+            if (c.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) score += 2
+            else if (c.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) score += 1
+            n to score
+        }?.maxByOrNull { it.second }?.first
+    } catch (_: Exception) { null }
+
+    private fun open(url: String): HttpURLConnection {
+        val u = URL(url)
+        val n = underlyingNetwork()
+        return (if (n != null) n.openConnection(u) else u.openConnection()) as HttpURLConnection
+    }
+
     override fun request(method: String, url: String, headers: Map<String, String>, body: ByteArray?): HttpResponse {
-        val conn = URL(url).openConnection() as HttpURLConnection
+        val conn = open(url)
         try {
             conn.requestMethod = method
             conn.connectTimeout = connectTimeoutMs
