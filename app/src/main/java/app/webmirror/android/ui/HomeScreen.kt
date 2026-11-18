@@ -118,7 +118,8 @@ private fun StatusCard() {
                 state.paused -> "Screen sharing ended. Tap Resume."
                 state.running -> listOfNotNull(
                     state.video?.takeIf { it.codec.isNotEmpty() || it.mode.isNotEmpty() }?.let { modeLabel(it.mode) },
-                    state.stream,
+                    // The service's stream text ends with the mode in brackets, e.g. "(hevc)"; the label above already says it.
+                    state.stream?.replace(Regex("""\s*\((h264|hevc|vp9|av1|jpeg|paused)\)$"""), ""),
                 ).joinToString(" · ").ifEmpty { "Starting…" }
                 else -> "Tap Start to share this screen."
             }

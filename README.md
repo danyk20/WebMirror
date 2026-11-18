@@ -94,7 +94,7 @@ Delay from the phone screen to the browser picture, on a clean Wi-Fi link:
 | With browser sound, Fast profile | about 140 ms |
 | With browser sound, High quality profile | about 190 ms |
 
-Frame rate: Sharper 15 fps, Smoother 30 fps (default), Smoothest up to 60 fps (option, about twice the Wi-Fi data, automatic fallback to 30 fps). The 60 fps option has not been measured in a car yet.
+Frame rate: Sharper 15 fps, Smoother 30 fps (default), Smoothest up to 60 fps (option, about twice the Wi-Fi data, automatic fallback to 30 fps). At the desk the 60 fps option delivered 59–60 fps with about 32 ms delay and no dropped frames while scrolling; it has not been measured in a car yet. Videos only reach 60 fps if the video itself is 60 fps (most are 24–30 fps).
 
 Measured with the app's built-in automatic test on a Samsung Galaxy S22, at a desk and in a car. Sound adds delay because the picture waits for the sound to stay in sync. Details: [car test results](docs/development/car-test-results.md).
 
