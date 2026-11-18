@@ -15,7 +15,6 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
-        // TODO: replace with the real GitHub "owner/repo" once the repository exists (404 is treated as "no update information").
         buildConfigField("String", "UPDATE_REPO", "\"danyk20/WebMirror\"")
     }
 
@@ -35,9 +34,33 @@ android {
         }
     }
 
+    // Release signing. The key never lives in this repository. Its location and password come from, in this order:
+    //  - environment variables SIGNING_KEYSTORE_FILE, SIGNING_STORE_PASSWORD, SIGNING_KEY_ALIAS, SIGNING_KEY_PASSWORD (CI), or
+    //  - Gradle properties WEBMIRROR_RELEASE_STORE_FILE, ..._STORE_PASSWORD, ..._KEY_ALIAS, ..._KEY_PASSWORD
+    //    (e.g. in ~/.gradle/gradle.properties on the developer's machine).
+    // Without them, release builds are simply left unsigned.
+    fun signingValue(env: String, prop: String): String? =
+        System.getenv(env)?.takeIf { it.isNotBlank() } ?: (project.findProperty(prop) as String?)?.takeIf { it.isNotBlank() }
+    val releaseStoreFile = signingValue("SIGNING_KEYSTORE_FILE", "WEBMIRROR_RELEASE_STORE_FILE")
+    val releaseStorePassword = signingValue("SIGNING_STORE_PASSWORD", "WEBMIRROR_RELEASE_STORE_PASSWORD")
+    if (releaseStoreFile != null && releaseStorePassword != null) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(releaseStoreFile)
+                storePassword = releaseStorePassword
+                keyAlias = signingValue("SIGNING_KEY_ALIAS", "WEBMIRROR_RELEASE_KEY_ALIAS") ?: "webmirror"
+                keyPassword = signingValue("SIGNING_KEY_PASSWORD", "WEBMIRROR_RELEASE_KEY_PASSWORD") ?: releaseStorePassword
+                enableV1Signing = false
+                enableV2Signing = true
+                enableV3Signing = true
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release")
         }
     }
     compileOptions {
