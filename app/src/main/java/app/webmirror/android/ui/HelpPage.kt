@@ -156,7 +156,7 @@ internal val HELP_SECTIONS: List<HelpSection> = listOf(
             p("In the car, tap \"Tap for sound\" on the page once (browsers do not play sound before a tap). After that the same button turns the sound off and on. The browser remembers your choice; the sound starts again after your next touch."),
             p("To keep picture and sound together, the picture waits for the sound. With browser sound the delay grows to about 0.1-0.15 seconds. The small delay slider in the page's menu then only fine-tunes (-300 to +300 ms)."),
             p("Some apps (for example Netflix) block sound capture; their sound stays silent."),
-            p("If the phone plays the sound too, lower its volume and check whether the car still gets sound."),
+            p("You can keep the phone muted: the car still gets the sound. (Tested on a Samsung phone with Android 16; if your phone behaves differently, lower the phone's volume instead.)"),
             h("Sound profile"),
             bullets(
                 "High quality (default): best sound, slightly more delay.",
