@@ -117,7 +117,7 @@ internal val HELP_SECTIONS: List<HelpSection> = listOf(
         "Settings explained",
         listOf(
             h("Video & quality"),
-            p("Sharper gives a clearer picture (1920 px, 15 frames per second), Smoother gives more motion (1280 px, 30 frames per second, the default), and Smoothest gives the smoothest motion (1280 px, 60 frames per second) but needs about twice the Wi-Fi data. Smoothest falls back to 30 frames per second by itself if the browser cannot keep up, and tries 60 again after a minute or more. \"Keep screen on\" stops the phone from locking while you share (sharing stops when the screen locks). \"Force JPEG mode\" always sends pictures instead of video; use it only if video does not work."),
+            p("Sharper gives a clearer picture (1920 px, 15 frames per second), Smoother gives smooth motion with half the Wi-Fi data (1280 px, 30 frames per second), and Smoothest, the default, gives the smoothest motion (1280 px, 60 frames per second) with about twice the Wi-Fi data of Smoother. Smoothest falls back to 30 frames per second by itself if the browser cannot keep up, and tries 60 again after a minute or more. \"Keep screen on\" stops the phone from locking while you share (sharing stops when the screen locks). \"Force JPEG mode\" always sends pictures instead of video; use it only if video does not work."),
             h("Screen capture"),
             p("Choose what Android shares when you tap Start: the entire screen, or let Android ask you each time (one app or the entire screen). Android 13 and older always share the entire screen."),
             h("Audio"),

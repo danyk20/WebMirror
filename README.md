@@ -23,7 +23,7 @@ How it works in one sentence: the phone turns on its Wi-Fi hotspot, the Tesla jo
 
 - **Nothing to install in the car.** Open a web address or scan a QR code.
 - **Low delay.** About 40 ms picture delay in measurements, with optional in-sync sound.
-- **Up to 60 fps (option).** Smoother (30 fps) is the default; "Smoothest" sends 60 fps and falls back to 30 fps by itself if the car cannot keep up.
+- **Up to 60 fps.** The default "Smoothest" setting sends 60 fps and falls back to 30 fps by itself if the car cannot keep up.
 - **Automatic codec choice.** H.264, HEVC, VP9 or AV1 through WebCodecs, whichever the phone and the browser both handle in hardware. JPEG fallback on plain `http`.
 - **Sound in the browser** (Opus or PCM), or over Bluetooth with a delay slider.
 - **Remote touch control from the car**, including multi-touch gestures such as pinch.
@@ -94,7 +94,7 @@ Delay from the phone screen to the browser picture, on a clean Wi-Fi link:
 | With browser sound, Fast profile | about 140 ms |
 | With browser sound, High quality profile | about 190 ms |
 
-Frame rate: Sharper 15 fps, Smoother 30 fps (default), Smoothest up to 60 fps (option, about twice the Wi-Fi data, automatic fallback to 30 fps). At the desk the 60 fps option delivered 59–60 fps with about 32 ms delay and no dropped frames while scrolling; it has not been measured in a car yet. Videos only reach 60 fps if the video itself is 60 fps (most are 24–30 fps).
+Frame rate: Sharper 15 fps, Smoother 30 fps, Smoothest up to 60 fps (default; about twice the Wi-Fi data of Smoother, automatic fallback to 30 fps). At the desk the 60 fps option delivered 59–60 fps with about 32 ms delay and no dropped frames while scrolling; it has not been measured in a car yet. Videos only reach 60 fps if the video itself is 60 fps (most are 24–30 fps).
 
 Measured with the app's built-in automatic test on a Samsung Galaxy S22, at a desk and in a car. Sound adds delay because the picture waits for the sound to stay in sync. Details: [car test results](docs/development/car-test-results.md).
 

@@ -27,6 +27,9 @@ enum class Preset(
         /** The rate `FpsGovernor` drops to when the viewer cannot keep up with a higher one. */
         const val FALLBACK_FPS = 30
 
-        fun fromKey(key: String?): Preset = entries.firstOrNull { it.key == key } ?: SMOOTHER
+        fun fromKey(key: String?): Preset = entries.firstOrNull { it.key == key } ?: DEFAULT
+
+        /** Used until the user picks a preset: 60 fps, with the automatic fallback to 30 fps. */
+        val DEFAULT = SMOOTHEST
     }
 }

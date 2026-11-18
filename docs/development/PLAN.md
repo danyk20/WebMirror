@@ -164,8 +164,8 @@ The phone can only attach one output to the screen capture at a time (Android 14
 | Preset | Longest side of the image | Max fps | H.264 bitrate | JPEG quality |
 |---|---|---|---|---|
 | Sharper | 1920 px | 15 | 6 Mbit/s | 70 |
-| Smoother (default) | 1280 px | 30 (JPEG: 20) | 4 Mbit/s | 50 |
-| Smoothest (60 fps) | 1280 px | 60 (JPEG: 20) | 6 Mbit/s | 50 |
+| Smoother | 1280 px | 30 (JPEG: 20) | 4 Mbit/s | 50 |
+| Smoothest (60 fps, default) | 1280 px | 60 (JPEG: 20) | 6 Mbit/s | 50 |
 
 Smoothest: `KEY_FRAME_RATE` and `max-fps-to-encoder` 60, keyframe interval in seconds unchanged (a GOP is 120 frames), `KEY_REPEAT_PREVIOUS_FRAME_AFTER` 100 ms as before. The adaptive bitrate controller works as for the other presets (ceiling 6 Mbit/s).
 

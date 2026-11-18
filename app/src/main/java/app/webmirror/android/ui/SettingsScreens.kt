@@ -198,8 +198,8 @@ private fun VideoSettings(settings: Settings) {
                 preset == p,
                 supporting = when (p) {
                     Preset.SHARPER -> "Sharper text. ${p.maxLongSide} px, ${p.fps} frames per second."
-                    Preset.SMOOTHER -> "Smooth motion, the default. ${p.maxLongSide} px, ${p.fps} frames per second."
-                    Preset.SMOOTHEST -> "Smoothest motion, about twice the Wi-Fi data. ${p.maxLongSide} px, ${p.fps} frames per second. " +
+                    Preset.SMOOTHER -> "Smooth motion with half the Wi-Fi data. ${p.maxLongSide} px, ${p.fps} frames per second."
+                    Preset.SMOOTHEST -> "Smoothest motion, the default. ${p.maxLongSide} px, ${p.fps} frames per second. " +
                         "Falls back to ${Preset.FALLBACK_FPS} fps automatically if the car can't keep up."
                 },
             ) {
