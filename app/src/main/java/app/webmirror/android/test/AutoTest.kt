@@ -1,5 +1,6 @@
 package app.webmirror.android.test
 
+import app.webmirror.android.stream.CodecChooser
 import app.webmirror.android.stream.JsonText
 import app.webmirror.android.stream.StreamConfig
 import java.util.Locale
@@ -61,16 +62,30 @@ object TestPlan {
         // vsync pacing, jitter 150 ms, JPEG) were measured in the car on 2026-11-18 and made no measurable difference
         // (docs/car-test-results.md); they are not repeated. The options themselves still exist in StreamConfig.
         return listOf(
-            p("default", "All current defaults (codec auto, jitter 20 ms, adaptive bitrate)", base),
+            p("default", "Your current settings (baseline)", base),
             p("jitter-40ms", "Player jitter buffer 40 ms", base.copy(jitterBufferMs = 40)),
-            p("jitter-30ms", "Player jitter buffer 30 ms", base.copy(jitterBufferMs = 30)),
-            p("jitter-10ms", "Player jitter buffer 10 ms", base.copy(jitterBufferMs = 10)),
-            p("no-adaptive-bitrate", "Adaptive bitrate off", base.copy(adaptiveBitrate = false)),
             p("codec-h264", "Forced H.264", base.copy(codec = StreamConfig.CODEC_H264)),
             p("codec-hevc", "Forced HEVC", base.copy(codec = StreamConfig.CODEC_HEVC)),
             p("codec-vp9", "Forced VP9 (software encoder allowed)", base.copy(codec = StreamConfig.CODEC_VP9, allowSoftwareEncoder = true)),
             p("codec-av1", "Forced AV1 (software encoder allowed)", base.copy(codec = StreamConfig.CODEC_AV1, allowSoftwareEncoder = true)),
         )
+    }
+
+    /**
+     * Why a forced-codec phase cannot run (null: it can, or it is not a forced-codec phase). Uses the same
+     * decision as the live stream ([CodecChooser.choose]): when the forced codec would not be chosen, the phone
+     * would measure another codec, so the phase is skipped instead.
+     */
+    fun skipReason(spec: PhaseSpec, phone: CodecChooser.PhoneCaps, viewers: List<CodecChooser.ViewerCaps>): String? {
+        val codec = spec.config.codec
+        if (codec !in CodecChooser.VIDEO_CODECS || viewers.isEmpty()) return null
+        val label = mapOf("h264" to "H.264", "hevc" to "HEVC", "vp9" to "VP9", "av1" to "AV1").getValue(codec)
+        if (CodecChooser.choose(codec, spec.config.allowSoftwareEncoder, phone, viewers).mode == codec) return null
+        return when {
+            CodecChooser.encoderForMode(codec, phone, spec.config.allowSoftwareEncoder) == null ->
+                "skipped: no usable $label encoder on this phone"
+            else -> "skipped: a viewer cannot decode $label in hardware"
+        }
     }
 
     /** Which encoder-state lines mean "the phone could not do what this phase asked". */
@@ -268,6 +283,9 @@ object PhaseStatus {
     const val DISCONNECTED = "disconnected"
     const val NO_DATA = "no-data"
     const val UNSUPPORTED = "unsupported"
+
+    /** Not run: the phone or a viewer cannot do what the phase asks (see [TestPlan.skipReason]). */
+    const val SKIPPED = "skipped"
 }
 
 /** The measured result of one phase, after scoring. */
@@ -306,7 +324,7 @@ object Scoring {
     val FORMULA: String =
         "score = e2e P95 (ms) + fps penalty + 2000 per reconnect + 250 per decoder reset + 5000 if the viewer " +
             "disconnected. fps penalty = max(0, 0.8 x preset fps - average fps) / (0.8 x preset fps) x 1000. " +
-            "Lower is better. Phases whose option the encoder could not apply are listed last without a rank."
+            "Lower is better. Phases that were skipped or whose option the encoder could not apply are listed last without a rank."
 
     fun score(r: PhaseResult): Double {
         val p = r.page
@@ -322,7 +340,7 @@ object Scoring {
     /** Scores every result and sorts them best first; ranks are 1.. for phases that applied (not "unsupported"). */
     fun rank(results: List<PhaseResult>): List<PhaseResult> {
         val scored = results.map { it.copy(score = score(it)) }
-        val (applied, unsupported) = scored.partition { it.status != PhaseStatus.UNSUPPORTED }
+        val (applied, unsupported) = scored.partition { it.status != PhaseStatus.UNSUPPORTED && it.status != PhaseStatus.SKIPPED }
         val sorted = applied.sortedWith(compareBy({ it.score }, { it.page.e2eP95 ?: Double.MAX_VALUE }, { it.name }))
         val ranked = sorted.mapIndexed { i, r -> r.copy(rank = i + 1) }
         return ranked + unsupported.sortedBy { it.score }

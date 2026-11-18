@@ -11,6 +11,7 @@ import app.webmirror.android.test.ReportFormat
 import app.webmirror.android.test.Scoring
 import app.webmirror.android.test.StatsSample
 import app.webmirror.android.test.TestOptions
+import app.webmirror.android.stream.CodecChooser
 import app.webmirror.android.test.TestPlan
 import app.webmirror.android.test.TestRun
 import org.junit.Assert.assertEquals
@@ -26,16 +27,36 @@ class AutoTestTest {
     // ---- plan ----
 
     @Test
-    fun planHasTheNinePhasesInOrderAndUniqueNames() {
+    fun planHasTheSixPhasesInOrderAndUniqueNames() {
         val plan = TestPlan.phases()
         assertEquals(
             listOf(
-                "default", "jitter-40ms", "jitter-30ms", "jitter-10ms", "no-adaptive-bitrate", "codec-h264", "codec-hevc", "codec-vp9", "codec-av1",
+                "default", "jitter-40ms", "codec-h264", "codec-hevc", "codec-vp9", "codec-av1",
             ),
             plan.map { it.name },
         )
-        assertEquals(9, plan.size)
+        assertEquals(6, plan.size)
         assertEquals(plan.size, plan.map { it.config.id }.toSet().size)
+    }
+
+    @Test
+    fun forcedCodecPhaseIsSkippedWhenItWouldNotBeChosen() {
+        val plan = TestPlan.phases().associateBy { it.name }
+        val hw = { name: String -> CodecChooser.PhoneCodec(hw = name) }
+        val phone = CodecChooser.PhoneCaps(mapOf("h264" to hw("h"), "hevc" to hw("e"), "vp9" to CodecChooser.PhoneCodec(sw = "v")))
+        val viewer = CodecChooser.ViewerCaps(
+            mapOf("h264" to CodecChooser.Support(sw = true, hw = true), "hevc" to CodecChooser.Support(sw = true, hw = true)),
+        )
+        val v = listOf(viewer)
+        assertNull(TestPlan.skipReason(plan.getValue("default"), phone, v))
+        assertNull(TestPlan.skipReason(plan.getValue("jitter-40ms"), phone, v))
+        assertNull(TestPlan.skipReason(plan.getValue("codec-h264"), phone, v))
+        assertNull(TestPlan.skipReason(plan.getValue("codec-hevc"), phone, v))
+        assertTrue(TestPlan.skipReason(plan.getValue("codec-av1"), phone, v)!!.contains("no usable AV1 encoder"))
+        // VP9 has a software encoder only on the phone and the viewer cannot decode it: skipped.
+        assertNotNull(TestPlan.skipReason(plan.getValue("codec-vp9"), phone, v))
+        val noHevcViewer = listOf(CodecChooser.ViewerCaps(mapOf("h264" to CodecChooser.Support(sw = true))))
+        assertTrue(TestPlan.skipReason(plan.getValue("codec-hevc"), phone, noHevcViewer)!!.contains("viewer cannot decode HEVC"))
     }
 
     @Test

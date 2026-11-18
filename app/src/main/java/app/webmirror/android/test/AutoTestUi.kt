@@ -111,7 +111,7 @@ fun AutoTestSection(settings: Settings, onOpenReport: (String) -> Unit) {
         runName = name, phaseSeconds = secondsText.toIntOrNull() ?: TestOptions.DEFAULT_PHASE_SECONDS, quick = quick, useTestPattern = usePattern,
     )
     val totalMin = plan.size * (options.settleSeconds + options.measureSeconds) / 60.0
-    Text("About ${"%.0f".format(totalMin)} minutes in all.", style = MaterialTheme.typography.bodySmall)
+    Text("Up to about ${"%.0f".format(totalMin)} minutes in all (codecs the phone or the car cannot use are skipped).", style = MaterialTheme.typography.bodySmall)
 
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Button(onClick = { AutoTestRunner.start(context, options) }, enabled = !active) { Text("Start test") }

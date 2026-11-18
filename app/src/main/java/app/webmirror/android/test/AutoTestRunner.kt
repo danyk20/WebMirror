@@ -140,7 +140,7 @@ object AutoTestRunner {
         val originalPreset: Preset = settings.preset
         val originalJpeg = settings.forceJpeg
         val startedAt = System.currentTimeMillis()
-        val plan = TestPlan.phases()
+        val plan = TestPlan.phases(originalConfig)
         val results = ArrayList<PhaseResult>()
         val perPhaseS = options.settleSeconds + options.measureSeconds
         var finished = false
@@ -154,6 +154,13 @@ object AutoTestRunner {
                 }
             }
             for ((i, spec) in plan.withIndex()) {
+                val hub = MirrorService.hubRef
+                val skip = if (hub == null) null else TestPlan.skipReason(spec, hub.phone, hub.viewerCaps())
+                if (skip != null) {
+                    Log.i(TAG, "phase ${spec.name}: $skip")
+                    results.add(skippedResult(spec, skip))
+                    continue
+                }
                 var attempt = 1
                 var result: PhaseResult
                 while (true) {
@@ -205,6 +212,13 @@ object AutoTestRunner {
             }
         }
     }
+
+    private fun skippedResult(spec: PhaseSpec, reason: String) = PhaseResult(
+        name = spec.name, description = spec.description, cfgId = spec.config.id, config = spec.config.summary(),
+        status = PhaseStatus.SKIPPED, note = reason, attempts = 0, expectedFps = 0,
+        page = PageSummary(0, null, null, null, null, null, 0, null, null, null, 0, 0, 0, 0, 0, 0),
+        phone = PhoneSide(0.0, 0, null, null, "", ""),
+    )
 
     /** Waits (without a time limit) until mirroring runs and a viewer is connected; shows what is missing. */
     private suspend fun awaitPreconditions(options: TestOptions, index: Int, total: Int, phase: String) {

@@ -194,6 +194,9 @@ class StreamHub(
      */
     fun wantedMode(): String = synchronized(lock) { computeChoice()?.mode ?: lastWantedMode }
 
+    /** The decode capabilities of every registered viewer that said hello (for the automatic test). */
+    fun viewerCaps(): List<CodecChooser.ViewerCaps> = sinks.mapNotNull { it.viewerCaps }
+
     private fun computeChoice(): CodecChooser.Choice? {
         if (forceJpegFlag) return CodecChooser.Choice(MODE_JPEG, null, false, "jpeg: Force JPEG is on")
         val caps = sinks.mapNotNull { it.viewerCaps }
