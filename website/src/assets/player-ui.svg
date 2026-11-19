@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 1170" width="540" height="1170" font-family="system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"><defs>
+<linearGradient id="pbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a1a55"/><stop offset=".55" stop-color="#120f26"/><stop offset="1" stop-color="#0b0d12"/></linearGradient>
+<linearGradient id="art" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#171a45"/><stop offset=".45" stop-color="#6a3f9c"/><stop offset=".8" stop-color="#e8626a"/><stop offset="1" stop-color="#ffb86b"/></linearGradient>
+<radialGradient id="psun" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#fff3c9"/><stop offset=".6" stop-color="#ffd27a"/><stop offset="1" stop-color="#ff9d5c"/></radialGradient>
+<clipPath id="pcl"><rect x="60" y="170" width="420" height="420" rx="36"/></clipPath>
+</defs>
+<rect width="540" height="1170" fill="url(#pbg)"/>
+<text x="30" y="52" font-size="21" font-weight="600" fill="#a9b1c2">9:41</text>
+<g fill="#a9b1c2"><rect x="436" y="36" width="5" height="12" rx="2"/><rect x="446" y="32" width="5" height="16" rx="2"/><rect x="456" y="27" width="5" height="21" rx="2"/><rect x="474" y="29" width="34" height="19" rx="6" fill="none" stroke="#a9b1c2" stroke-width="2.5"/><rect x="478" y="33" width="22" height="11" rx="3"/></g>
+<path d="M44 104l14 12 14-12" fill="none" stroke="#f2f4f8" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="270" y="116" font-size="20" font-weight="600" fill="#a9b1c2" text-anchor="middle" letter-spacing="3">NOW PLAYING</text>
+<g fill="#f2f4f8"><circle cx="458" cy="108" r="4"/><circle cx="474" cy="108" r="4"/><circle cx="490" cy="108" r="4"/></g>
+<g clip-path="url(#pcl)">
+<rect x="60" y="170" width="420" height="420" fill="url(#art)"/>
+<circle cx="270" cy="400" r="92" fill="url(#psun)"/>
+<g fill="#fff" opacity=".22"><rect x="90" y="236" width="150" height="8" rx="4"/><rect x="330" y="270" width="120" height="8" rx="4"/></g>
+<path d="M60 430L150 360L230 420L330 340L430 420L480 390V590H60Z" fill="#4a2f6e"/>
+<path d="M60 480L180 430L290 490L400 440L480 480V590H60Z" fill="#2a1d45"/>
+<path d="M232 590L262 470H278L308 590Z" fill="#15102a"/>
+<path d="M270 480V590" stroke="#ffd9a0" stroke-width="4" stroke-dasharray="14 12" opacity=".8"/>
+</g>
+<text x="60" y="682" font-size="44" font-weight="700" fill="#f2f4f8" letter-spacing="-.5">Midnight Drive</text>
+<text x="60" y="728" font-size="28" fill="#a9b1c2">Example Artist</text>
+<path d="M0 14C-18 2 -22 -8 -15 -15a8.5 8.5 0 0 1 15 2a8.5 8.5 0 0 1 15 -2c7 7 3 17 -15 29z" transform="translate(466 690)" fill="none" stroke="#f2f4f8" stroke-width="4" stroke-linejoin="round"/>
+<rect x="60" y="790" width="420" height="8" rx="4" fill="#fff" opacity=".2"/>
+<rect x="60" y="790" width="160" height="8" rx="4" fill="#fff"/><circle cx="220" cy="794" r="12" fill="#fff"/>
+<text x="60" y="842" font-size="21" fill="#a9b1c2">1:24</text><text x="480" y="842" font-size="21" fill="#a9b1c2" text-anchor="end">3:42</text>
+<g fill="#f2f4f8">
+<g transform="translate(150 940)"><rect x="-20" y="-16" width="5" height="32" rx="2"/><path d="M18 -16L-8 0L18 16Z" stroke="#f2f4f8" stroke-width="4" stroke-linejoin="round"/></g>
+<g transform="translate(390 940)"><rect x="15" y="-16" width="5" height="32" rx="2"/><path d="M-18 -16L8 0L-18 16Z" stroke="#f2f4f8" stroke-width="4" stroke-linejoin="round"/></g>
+<circle cx="270" cy="940" r="58"/><rect x="250" y="918" width="13" height="44" rx="4" fill="#120f26"/><rect x="277" y="918" width="13" height="44" rx="4" fill="#120f26"/>
+</g>
+<g fill="none" stroke="#a9b1c2" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M56 952l34-24M74 928h16v16M56 928l34 24" transform="translate(4 -2)"/><path d="M-14 -4v-4a6 6 0 0 1 6-6h22M10 -20l6 6-6 6M14 4v4a6 6 0 0 1-6 6h-22M-10 20l-6-6 6-6" transform="translate(466 940)"/></g>
+<g stroke="#a9b1c2" stroke-width="4" stroke-linecap="round" fill="none"><path d="M60 1062h24l16-12v36l-16-12h-24z" fill="#a9b1c2" stroke-linejoin="round"/></g>
+<rect x="130" y="1064" width="350" height="6" rx="3" fill="#fff" opacity=".2"/><rect x="130" y="1064" width="230" height="6" rx="3" fill="#a9b1c2"/>
+<rect x="200" y="1148" width="140" height="5" rx="2.5" fill="#f2f4f8" opacity=".35"/></svg>

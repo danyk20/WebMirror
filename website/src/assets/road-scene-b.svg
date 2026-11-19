@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" width="1200" height="600">
+<defs>
+<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1b2c70"/><stop offset=".4" stop-color="#7d5aa6"/><stop offset=".72" stop-color="#ffa27a"/><stop offset="1" stop-color="#ffdca5"/></linearGradient>
+<radialGradient id="sun" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#fff3c9"/><stop offset=".55" stop-color="#ffd27a"/><stop offset="1" stop-color="#ff9d5c"/></radialGradient>
+<radialGradient id="halo" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ffd9a0" stop-opacity=".75"/><stop offset="1" stop-color="#ffd9a0" stop-opacity="0"/></radialGradient>
+<linearGradient id="ground" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a1d3d"/><stop offset="1" stop-color="#0f0b1c"/></linearGradient>
+<linearGradient id="road" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6b4a72"/><stop offset=".25" stop-color="#34284d"/><stop offset="1" stop-color="#171226"/></linearGradient>
+<linearGradient id="glint" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd9a0" stop-opacity=".7"/><stop offset="1" stop-color="#ffd9a0" stop-opacity="0"/></linearGradient>
+</defs>
+<rect width="1200" height="332" fill="url(#sky)"/>
+<circle cx="600" cy="230" r="260" fill="url(#halo)"/>
+<circle cx="600" cy="210" r="54" fill="url(#sun)"/>
+<g fill="#ffd0a8" opacity=".5"><rect x="150" y="120" width="260" height="9" rx="4.5"/><rect x="230" y="146" width="170" height="7" rx="3.5"/><rect x="800" y="90" width="300" height="9" rx="4.5"/><rect x="880" y="116" width="170" height="7" rx="3.5"/><rect x="330" y="236" width="190" height="6" rx="3"/><rect x="700" y="214" width="200" height="6" rx="3"/></g>
+<path fill="#6b3f86" opacity=".85" d="M0 330V285L90 262L170 292L270 246L380 300L450 284L520 330Z"/>
+<path fill="#6b3f86" opacity=".85" d="M680 330L760 290L850 250L950 296L1040 262L1120 290L1200 270V330Z"/>
+<path fill="#3a2759" d="M0 330V305L120 288L230 312L340 296L470 330Z"/>
+<path fill="#3a2759" d="M730 330L860 300L980 314L1090 292L1200 306V330Z"/>
+<rect y="330" width="1200" height="270" fill="url(#ground)"/>
+<path fill="#150f26" d="M470.0 311.5L475.0 325.0H472.7L477.3 336.0H462.7L467.3 325.0H465.0Z"/><path fill="#150f26" d="M430.0 307.0L437.1 326.3H433.9L440.4 342.0H419.6L426.1 326.3H422.9Z"/><path fill="#150f26" d="M390.0 303.0L400.0 329.9H395.5L404.6 352.0H375.4L384.5 329.9H380.0Z"/><path fill="#150f26" d="M330.0 301.5L343.6 338.1H337.4L349.8 368.0H310.2L322.6 338.1H316.4Z"/><path fill="#150f26" d="M250.0 305.0L268.6 355.1H260.1L277.0 396.0H223.0L239.9 355.1H231.4Z"/><path fill="#150f26" d="M130.0 314.0L155.7 383.3H144.0L167.4 440.0H92.6L116.0 383.3H104.3Z"/><path fill="#150f26" d="M40.0 332.0L74.3 424.4H58.7L89.9 500.0H-9.9L21.3 424.4H5.7Z"/><path fill="#150f26" d="M730.0 311.5L735.0 325.0H732.7L737.3 336.0H722.7L727.3 325.0H725.0Z"/><path fill="#150f26" d="M772.0 307.0L779.1 326.3H775.9L782.4 342.0H761.6L768.1 326.3H764.9Z"/><path fill="#150f26" d="M815.0 303.0L825.0 329.9H820.5L829.6 352.0H800.4L809.5 329.9H805.0Z"/><path fill="#150f26" d="M880.0 301.5L893.6 338.1H887.4L899.8 368.0H860.2L872.6 338.1H866.4Z"/><path fill="#150f26" d="M960.0 305.0L978.6 355.1H970.1L987.0 396.0H933.0L949.9 355.1H941.4Z"/><path fill="#150f26" d="M1080.0 314.0L1105.7 383.3H1094.0L1117.4 440.0H1042.6L1066.0 383.3H1054.3Z"/><path fill="#150f26" d="M1170.0 332.0L1204.3 424.4H1188.7L1219.9 500.0H1120.1L1151.3 424.4H1135.7Z"/>
+<path fill="url(#road)" d="M586.0 330H614.0L960 600H240Z"/>
+<path fill="url(#glint)" d="M586.0 330H614.0L742.1 430H457.9Z"/>
+<g fill="none" stroke="#ffe3b5" stroke-opacity=".5" stroke-width="3"><path d="M586.0 330L240 600"/><path d="M614.0 330L960 600"/></g>
+<g fill="#ffe9c4" opacity=".85"><path d="M599.5 330.0H600.5L600.5 331.0H599.5Z"/><path d="M599.3 334.0H600.7L600.9 338.5H599.1Z"/><path d="M598.9 344.6H601.1L601.5 353.4H598.5Z"/><path d="M598.1 361.8H601.9L602.5 375.7H597.5Z"/><path d="M597.0 385.8H603.0L603.9 405.4H596.1Z"/><path d="M595.6 416.4H604.4L605.5 442.5H594.5Z"/><path d="M594.0 453.6H606.0L607.5 487.0H592.5Z"/><path d="M592.0 497.6H608.0L609.9 539.0H590.1Z"/><path d="M589.7 548.2H610.3L612.5 598.3H587.5Z"/></g>
+</svg>
