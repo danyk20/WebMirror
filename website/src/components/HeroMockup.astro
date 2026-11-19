@@ -1,10 +1,10 @@
 ---
-import { Picture } from 'astro:assets';
-import home from '../assets/screens/home.png';
+import ui from '../assets/app-ui.svg';
 import road from '../assets/road-scene.svg';
+import navmap from '../assets/nav-map.svg';
 
-const widths = [240, 480];
-const sizes = '(min-width: 900px) 230px, 26vw';
+const km = ['12.4', '12.3', '12.2'];
+const turn = ['250', '200', '150', '100', '50'];
 // Signal arcs: same geometry as the app icon (concentric arcs, +/-50 degrees).
 const cx = 25.6;
 const cy = 30;
@@ -18,33 +18,49 @@ const arcs = [7, 12, 17].map((r) => {
 <div
   class="hero-mockup"
   role="img"
-  aria-label="Illustration: an Android phone running WebMirror mirrors its screen to a car centre display, in portrait. The phone turns to landscape and the display switches to the full-width landscape picture. While the car is in Drive, a passenger on the right-hand side touches the car display, and the touch is sent back to the phone, which reacts. The passenger's hand leaves and the phone turns back to portrait."
+  aria-label="Illustration: an Android phone running WebMirror, held in landscape, is mirrored full screen on a car centre display. A passenger on the right-hand side taps a split-screen button on the display; the phone turns to portrait and the display splits into the car's navigation map with a moving route and a distance countdown, next to the portrait phone picture. The passenger then taps the mirrored phone on the display, and the phone reacts. The passenger's hand leaves, the phone turns back to landscape and the display returns to full screen."
 >
   <div class="glow" aria-hidden="true"></div>
   <div class="road" aria-hidden="true"><i class="lane far"></i><i class="lane near"></i></div>
 
   <div class="display" aria-hidden="true">
     <div class="screen">
-      <div class="mirrored">
-        <Picture
-          src={home}
-          alt=""
-          formats={['avif', 'webp']}
-          fallbackFormat="webp"
-          widths={widths}
-          sizes={sizes}
-          loading="eager"
-          fetchpriority="high"
-          decoding="async"
-        />
+      <div class="nav">
+        <div class="navin">
+          <div class="track">
+            <img src={navmap.src} width="400" height="500" alt="" decoding="async" />
+            <img src={navmap.src} width="400" height="500" alt="" decoding="async" />
+          </div>
+          <i class="puck"></i>
+          <div class="navcard">
+            <svg class="turn" viewBox="0 0 24 24" focusable="false"><path d="M7 20v-8a3 3 0 0 1 3-3h7M13 5l4 4-4 4" /></svg>
+            <span class="navtxt">
+              <b class="vals v5">{turn.map((v) => <span>{v} m</span>)}</b>
+              <small>Oak Street</small>
+            </span>
+          </div>
+          <div class="eta">
+            <b class="vals v3">{km.map((v) => <span>{v} km</span>)}</b>
+            <small>18 min</small>
+          </div>
+        </div>
       </div>
-      <div class="scene wide">
-        <img class="art" src={road.src} width="1200" height="600" alt="" decoding="async" />
-        <i class="shade"></i>
-        <i class="bar"><b></b></i>
-        <i class="ctl"><s class="ic-pause"></s><s class="ic-play"></s></i>
-        <i class="touch"><u class="ring"></u><u class="dot"></u></i>
+      <div class="half">
+        <div class="mirrored">
+          <img src={ui.src} width="540" height="1170" alt="" decoding="async" />
+          <i class="hl"></i>
+          <i class="toast">Link copied</i>
+          <i class="ptouch"><u class="ring"></u></i>
+        </div>
       </div>
+      <div class="landfull">
+        <div class="scene">
+          <img class="art" src={road.src} width="1200" height="600" alt="" decoding="async" />
+          <i class="shade"></i>
+          <i class="bar"><b></b></i>
+        </div>
+      </div>
+      <i class="splitbtn"><u class="sring"></u></i>
       <div class="status"><span class="gear">D</span><span class="spd">64<small>km/h</small></span></div>
     </div>
   </div>
@@ -57,24 +73,16 @@ const arcs = [7, 12, 17].map((r) => {
     <div class="phone">
       <div class="phone-screen">
         <div class="portrait">
-          <Picture
-            src={home}
-            alt=""
-            formats={['avif', 'webp']}
-            fallbackFormat="webp"
-            widths={widths}
-            sizes={sizes}
-            loading="eager"
-            decoding="async"
-          />
+          <img src={ui.src} width="540" height="1170" alt="" decoding="async" />
+          <i class="hl"></i>
+          <i class="toast">Link copied</i>
+          <i class="ptouch"><u class="ring"></u></i>
         </div>
         <div class="land">
           <div class="scene">
             <img class="art" src={road.src} width="1200" height="600" alt="" decoding="async" />
             <i class="shade"></i>
             <i class="bar"><b></b></i>
-            <i class="ctl"><s class="ic-pause"></s><s class="ic-play"></s></i>
-            <i class="touch"><u class="ring"></u><u class="dot"></u></i>
           </div>
         </div>
       </div>
@@ -86,7 +94,7 @@ const arcs = [7, 12, 17].map((r) => {
       <svg class="hand-art" viewBox="0 0 120 260" focusable="false">
         <path class="sleeve" d="M36 150h66l5 110H32z" />
         <path class="sleeve-line" d="M36 156h66" />
-        <rect class="skin-d" x="42" y="118" width="58" height="48" rx="10" />
+        <rect class="skin-d" x="42" y="118" width="58" height="46" rx="10" />
         <rect class="skin" x="35" y="4" width="22" height="104" rx="11" />
         <rect class="skin" x="58" y="62" width="21" height="62" rx="10.5" />
         <rect class="skin" x="78" y="68" width="20" height="56" rx="10" />
@@ -115,8 +123,7 @@ const arcs = [7, 12, 17].map((r) => {
     aspect-ratio: 100 / 62;
     user-select: none;
   }
-  .hero-mockup :global(picture),
-  .hero-mockup :global(img) {
+  .hero-mockup img {
     display: block;
   }
   .hero-mockup i,
@@ -131,9 +138,9 @@ const arcs = [7, 12, 17].map((r) => {
   /* Soft light on the dash below the display */
   .glow {
     position: absolute;
-    left: 22cqw;
-    top: 47cqw;
-    width: 78cqw;
+    left: 24cqw;
+    top: 44cqw;
+    width: 70cqw;
     height: 15cqw;
     background: radial-gradient(ellipse 50% 100% at 50% 0%, rgb(30 79 216 / 0.5), transparent 72%);
     opacity: 0.85;
@@ -142,10 +149,10 @@ const arcs = [7, 12, 17].map((r) => {
   /* Road below the display: lane lines slide past to say "driving" */
   .road {
     position: absolute;
-    left: 44cqw;
-    top: 55.6cqw;
+    left: 38cqw;
+    top: 50.5cqw;
     width: 56cqw;
-    height: 6cqw;
+    height: 8cqw;
     overflow: hidden;
     -webkit-mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
     mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
@@ -158,13 +165,13 @@ const arcs = [7, 12, 17].map((r) => {
     will-change: transform;
   }
   .lane.far {
-    top: 1.4cqw;
+    top: 2.4cqw;
     height: 0.2cqw;
     background: repeating-linear-gradient(90deg, rgb(255 255 255 / 0.5) 0 2cqw, transparent 2cqw 4cqw);
     opacity: 0.45;
   }
   .lane.near {
-    top: 3.4cqw;
+    top: 5.4cqw;
     height: 0.4cqw;
     background: repeating-linear-gradient(90deg, rgb(255 255 255 / 0.8) 0 4cqw, transparent 4cqw 8cqw);
   }
@@ -172,9 +179,9 @@ const arcs = [7, 12, 17].map((r) => {
   /* Car centre display */
   .display {
     position: absolute;
-    left: 14cqw;
+    left: 18cqw;
     top: 0;
-    width: 86cqw;
+    width: 76cqw;
     aspect-ratio: 16 / 10;
     padding: 1.1cqw;
     box-sizing: border-box;
@@ -194,19 +201,188 @@ const arcs = [7, 12, 17].map((r) => {
     border-radius: 1.8cqw;
     background:
       radial-gradient(ellipse 70% 60% at 50% 40%, #10141d, #000 75%);
-    display: flex;
-    justify-content: center;
   }
-  /* Portrait mirror: centred strip with black side areas (like the WebMirror player) */
-  .mirrored {
-    height: 100%;
-    aspect-ratio: 1080 / 2340;
+
+  /* Split screen. Left (larger): the car's own navigation (generic dark map, scrolls under a fixed puck) */
+  .nav {
+    position: absolute;
+    inset: 0 28.4% 0 0;
+    overflow: hidden;
+  }
+  .navin {
+    position: absolute;
+    inset: 0;
+    background: #0f1420;
+  }
+  .track {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    will-change: transform;
+  }
+  .track img {
+    width: 100%;
+    height: auto;
+  }
+  .puck {
+    position: absolute;
+    left: 50%;
+    top: 66%;
+    width: 4.4cqw;
+    height: 4.4cqw;
+    margin: -2.2cqw 0 0 -2.2cqw;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 0 0.7cqw rgb(76 125 255 / 0.45), 0 0.5cqw 1.2cqw rgb(0 0 0 / 0.6);
+  }
+  .puck::after {
+    content: '';
+    position: absolute;
+    inset: 0.9cqw;
+    background: #1e4fd8;
+    clip-path: polygon(50% 0, 100% 100%, 50% 75%, 0 100%);
+  }
+  .navcard {
+    position: absolute;
+    right: 1.6cqw;
+    top: 6cqw;
+    display: flex;
+    align-items: center;
+    gap: 1cqw;
+    padding: 0.9cqw 1.6cqw 0.9cqw 1cqw;
+    border-radius: 1.4cqw;
+    background: rgb(10 13 24 / 0.88);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1);
+    color: #fff;
+    font: 600 max(8px, 1.9cqw) / 1.15 system-ui, sans-serif;
+  }
+  .turn {
+    width: 3.4cqw;
+    height: 3.4cqw;
+    fill: none;
+    stroke: #fff;
+    stroke-width: 2.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .navtxt { display: block; }
+  .navtxt small,
+  .eta small {
+    display: block;
+    font-size: 0.7em;
+    font-weight: 500;
+    opacity: 0.65;
+  }
+  .eta {
+    position: absolute;
+    right: 1.6cqw;
+    bottom: 1.8cqw;
+    padding: 0.9cqw 1.6cqw;
+    border-radius: 1.4cqw;
+    background: rgb(10 13 24 / 0.88);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1);
+    color: #fff;
+    font: 600 max(8px, 1.9cqw) / 1.15 system-ui, sans-serif;
+    text-align: right;
+  }
+  .vals {
+    display: grid;
+    font-weight: 600;
+  }
+  .vals span {
+    grid-area: 1 / 1;
     opacity: 0;
   }
-  .mirrored :global(picture),
-  .mirrored :global(img) {
-    height: 100%;
-    width: 100%;
+  .vals span:first-child { opacity: 1; }
+  .v5 span { justify-self: start; }
+
+  /* Right: the mirrored phone, exactly the width of a portrait phone picture at display height */
+  .half {
+    position: absolute;
+    inset: 0 0 0 71.6%;
+    background: transparent;
+  }
+  .mirrored {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    background: #000;
+    box-shadow: -1px 0 0 rgb(255 255 255 / 0.14);
+  }
+  .landfull {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+  }
+  .portrait > img, .mirrored > img { width: 100%; height: 100%; }
+
+  /* Tap feedback on the phone UI (same markup on the real phone and in the car) */
+  .hl {
+    position: absolute;
+    left: 11.5%;
+    width: 77%;
+    top: 44.9%;
+    height: 4.8%;
+    border-radius: 6% / 40%;
+    background: rgb(76 125 255 / 0.22);
+    box-shadow: 0 0 0 max(1px, 0.2cqw) #4c7dff;
+    opacity: 0;
+  }
+  .toast {
+    position: absolute;
+    left: 50%;
+    bottom: 12%;
+    transform: translateX(-50%);
+    padding: 0.6cqw 1.4cqw;
+    border-radius: 99px;
+    background: #1e4fd8;
+    box-shadow: 0 0.4cqw 1cqw rgb(0 0 0 / 0.5);
+    color: #fff;
+    font: 600 1.55cqw / 1 system-ui, sans-serif;
+    white-space: nowrap;
+    opacity: 0;
+  }
+  .ptouch { position: absolute; inset: 0; }
+  .ptouch .ring {
+    position: absolute;
+    left: 50%;
+    top: 47.4%;
+    width: 26%;
+    aspect-ratio: 1;
+    margin: -13% 0 0 -13%;
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px rgb(255 255 255 / 0.9), 0 0 0 5px rgb(76 125 255 / 0.5);
+    background: rgb(76 125 255 / 0.28);
+  }
+
+  /* Split-screen button on the car display */
+  .splitbtn {
+    position: absolute;
+    left: 47.8cqw;
+    top: 37.7cqw;
+    width: 4.6cqw;
+    height: 4.6cqw;
+    border-radius: 1.2cqw;
+    background: rgb(10 13 24 / 0.72);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.35);
+    opacity: 0;
+  }
+  .splitbtn::before {
+    content: '';
+    position: absolute;
+    inset: 1.1cqw;
+    border-radius: 0.4cqw;
+    box-shadow: inset 0 0 0 max(1.5px, 0.18cqw) #fff;
+    background: linear-gradient(90deg, rgb(255 255 255 / 0.55) 50%, transparent 50%);
+  }
+  .sring {
+    position: absolute;
+    inset: -1.2cqw;
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px rgb(255 255 255 / 0.9), 0 0 0 5px rgb(76 125 255 / 0.5);
+    background: rgb(76 125 255 / 0.28);
+    opacity: 0;
   }
 
   /* Landscape scene (shared by display and phone) */
@@ -215,9 +391,6 @@ const arcs = [7, 12, 17].map((r) => {
     inset: 0;
     overflow: hidden;
     background: #120d22;
-  }
-  .scene.wide {
-    opacity: 1;
   }
   .art {
     position: absolute;
@@ -245,65 +418,13 @@ const arcs = [7, 12, 17].map((r) => {
     overflow: hidden;
   }
   .bar b {
+    display: block;
     width: 100%;
     height: 100%;
     background: #fff;
     transform-origin: 0 50%;
     transform: scaleX(0.38);
   }
-  .ctl {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 11%;
-    aspect-ratio: 1;
-    margin: -5.5% 0 0 -5.5%;
-    border-radius: 50%;
-    background: rgb(12 14 28 / 0.55);
-    box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 0.75);
-  }
-  .ctl s {
-    position: absolute;
-    inset: 0;
-  }
-  .ic-play {
-    clip-path: polygon(38% 28%, 38% 72%, 74% 50%);
-    background: #fff;
-  }
-  .ic-pause {
-    background:
-      linear-gradient(#fff, #fff) 36% 50% / 9% 42% no-repeat,
-      linear-gradient(#fff, #fff) 64% 50% / 9% 42% no-repeat;
-    opacity: 0;
-  }
-  .touch {
-    position: absolute;
-    inset: 0;
-  }
-  .ring {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 13%;
-    aspect-ratio: 1;
-    margin: -6.5% 0 0 -6.5%;
-    border-radius: 50%;
-    box-shadow: 0 0 0 2px rgb(255 255 255 / 0.9), 0 0 0 5px rgb(76 125 255 / 0.5);
-    background: rgb(76 125 255 / 0.28);
-    opacity: 0.85;
-  }
-  .dot {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 4%;
-    aspect-ratio: 1;
-    margin: -2% 0 0 -2%;
-    border-radius: 50%;
-    background: rgb(255 255 255 / 0.85);
-    opacity: 0;
-  }
-
   /* Phone: landscape layer is pre-rotated so it reads upright once the phone turns */
   .phone-screen {
     position: relative;
@@ -313,15 +434,12 @@ const arcs = [7, 12, 17].map((r) => {
     position: absolute;
     left: 50%;
     top: 50%;
-    width: 50.92cqw;
-    height: 23.5cqw;
+    width: 38.79cqw;
+    height: 17.9cqw;
     transform: translate(-50%, -50%) rotate(90deg);
     opacity: 0;
   }
-  .land .scene {
-    border-radius: 0;
-  }
-
+  
   /* Display status strip: driving cue (generic, not a car UI) */
   .status {
     position: absolute;
@@ -378,12 +496,12 @@ const arcs = [7, 12, 17].map((r) => {
     position: absolute;
     left: 0;
     bottom: 0;
-    width: 25cqw;
+    width: 19cqw;
   }
   .phone {
     box-sizing: border-box;
-    padding: 0.75cqw;
-    border-radius: 3.6cqw;
+    padding: 0.55cqw;
+    border-radius: 2.8cqw;
     background: linear-gradient(160deg, #2a3040 0%, #0d1018 60%, #080a0f 100%);
     box-shadow:
       inset 0 0 0 1px rgb(255 255 255 / 0.12),
@@ -393,7 +511,7 @@ const arcs = [7, 12, 17].map((r) => {
   }
   .phone-screen {
     overflow: hidden;
-    border-radius: 2.9cqw;
+    border-radius: 2.2cqw;
     background: #000;
     line-height: 0;
   }
@@ -401,7 +519,7 @@ const arcs = [7, 12, 17].map((r) => {
     position: absolute;
     inset: 0;
   }
-  .portrait :global(img) {
+  .portrait img {
     width: 100%;
     height: 100%;
   }
@@ -415,16 +533,16 @@ const arcs = [7, 12, 17].map((r) => {
   }
   .hand {
     position: absolute;
-    left: 49.3cqw;
-    top: 26.3cqw;
-    width: 20cqw;
-    height: 43.4cqw;
+    left: 76.3cqw;
+    top: 22cqw;
+    width: 16cqw;
+    height: 34.7cqw;
   }
   .hand-art {
     display: block;
     width: 100%;
     height: 100%;
-    transform-origin: 7.7cqw 0.7cqw;
+    transform-origin: 6.16cqw 0.56cqw;
     transform: rotate(-25deg);
     filter: drop-shadow(0 1cqw 1.4cqw rgb(0 0 0 / 0.45));
     overflow: visible;
@@ -436,8 +554,8 @@ const arcs = [7, 12, 17].map((r) => {
   .hand-art path.skin-d { fill: none; stroke: var(--skin-d); stroke-width: 3; stroke-linecap: round; }
   .pill {
     position: absolute;
-    left: 19cqw;
-    top: 12cqw;
+    left: -18cqw;
+    top: 3cqw;
     display: flex;
     align-items: center;
     gap: 0.6em;
@@ -457,29 +575,32 @@ const arcs = [7, 12, 17].map((r) => {
     background: #7c9dff;
   }
 
-  /* ---- Static state (also the reduced-motion still): landscape phase, hand touching ---- */
-  .mirrored { opacity: 0; }
-  .land { opacity: 1; }
-  .portrait { opacity: 0; }
-  .phone { transform: translate(6.5cqw, 17.4cqw) rotate(-90deg) scale(0.7); }
-  .arcs { transform: translate(11.9cqw, 23cqw) scale(0.7); }
-  .ic-pause { opacity: 0; }
-  .ic-play { opacity: 1; }
-  .road { opacity: 0.55; }
 
-  /* ---- Motion: 14 s loop, transforms and opacity (one small clip-path), only when allowed ---- */
+  /* ---- Static state (also the reduced-motion still): split screen, passenger touching the phone column ---- */
+  .mirrored,
+  .portrait { opacity: 1; }
+  .land { opacity: 0; }
+  .hl { opacity: 1; }
+  .toast { opacity: 1; }
+  .ptouch .ring { opacity: 0.85; }
+  .road { opacity: 0.55; }
+  .arcs { opacity: 0; transform: translate(6.9cqw, 24.6cqw) scale(0.7); }
+
+  /* ---- Motion: 14 s loop, transforms and opacity (clip-path only for the split resize) ---- */
   @media (prefers-reduced-motion: no-preference) {
     .hero-mockup {
       --loop: 14s;
-      --ease: cubic-bezier(0.65, 0, 0.35, 1);
     }
     .phone-float { animation: float var(--loop) ease-in-out infinite; }
     .phone { animation: turn var(--loop) linear infinite; }
     .arcs { animation: arcs-move var(--loop) linear infinite; }
     .portrait { animation: p-phone var(--loop) linear infinite; }
     .land { animation: l-phone var(--loop) linear infinite; }
-    .mirrored { animation: m-port var(--loop) linear infinite; }
-    .scene.wide { animation: m-land var(--loop) linear infinite; }
+    .mirrored { animation: m-col var(--loop) linear infinite; }
+    .landfull { animation: m-full var(--loop) linear infinite; }
+    .navin { animation: nav-in var(--loop) linear infinite; }
+    .splitbtn { animation: sbtn var(--loop) linear infinite; }
+    .sring { animation: ring1 var(--loop) linear infinite; }
     .glow { animation: glow var(--loop) ease-in-out infinite; }
     .arc { animation: pulse 3.5s ease-out infinite backwards; }
     .arc-2 { animation-delay: 0.22s; }
@@ -487,58 +608,80 @@ const arcs = [7, 12, 17].map((r) => {
     .road { animation: road-in var(--loop) linear infinite; }
     .lane.near { animation: slide-near 3.5s linear infinite; }
     .lane.far { animation: slide-far 3.5s linear infinite; }
+    .track { animation: scroll 28s linear infinite; }
 
-    .art { animation: pan var(--loop) linear infinite; }
-    .ctl { animation: ctl var(--loop) linear infinite; }
-    .ic-pause { animation: ic-pause var(--loop) linear infinite; }
-    .ic-play { animation: ic-play var(--loop) linear infinite; }
-    .ring { animation: ring var(--loop) linear infinite; }
-    .dot { animation: dot var(--loop) linear infinite; }
+    .ptouch .ring { animation: ring2 var(--loop) linear infinite; }
+    .hl { animation: hl var(--loop) linear infinite; }
+    .toast { animation: toast var(--loop) linear infinite; }
     .hand { animation: hand var(--loop) linear infinite; }
     .hand-art { animation: press var(--loop) linear infinite; }
+
+    .v3 span { animation: v3 var(--loop) linear infinite; animation-delay: var(--dl, 0s); }
+    .v5 span { animation: v5 var(--loop) linear infinite; animation-delay: var(--dl, 0s); }
+    .v3 span:nth-child(2) { --dl: -9.333s; }
+    .v3 span:nth-child(3) { --dl: -4.667s; }
+    .v5 span:nth-child(2) { --dl: -11.2s; }
+    .v5 span:nth-child(3) { --dl: -8.4s; }
+    .v5 span:nth-child(4) { --dl: -5.6s; }
+    .v5 span:nth-child(5) { --dl: -2.8s; }
   }
 
   @keyframes float {
     0%, 100% { transform: translateY(0); }
     50% { transform: translateY(-0.8cqw); }
   }
-  /* rotate to landscape 3.0-4.6 s, back 10.6-12.2 s */
+  /* phone: landscape, taps at 2.3 s turn to portrait (2.3-3.9 s), back to landscape 9.8-11.4 s */
   @keyframes turn {
-    0%, 21.4% { transform: none; animation-timing-function: cubic-bezier(0.5, 0, 0.8, 0.8); }
-    27.1% { transform: translate(11.5cqw, 3cqw) rotate(-45deg) scale(0.85); animation-timing-function: cubic-bezier(0.2, 0.2, 0.5, 1); }
-    32.9%, 75.7% { transform: translate(6.5cqw, 17.4cqw) rotate(-90deg) scale(0.7); animation-timing-function: cubic-bezier(0.5, 0, 0.8, 0.8); }
-    81.4% { transform: translate(11.5cqw, 3cqw) rotate(-45deg) scale(0.85); animation-timing-function: cubic-bezier(0.2, 0.2, 0.5, 1); }
-    87.1%, 100% { transform: none; }
+    0%, 16.4% { transform: translate(7cqw, 12.55cqw) rotate(-90deg) scale(0.78); animation-timing-function: cubic-bezier(0.5, 0, 0.8, 0.8); }
+    22.1% { transform: translate(9.5cqw, 0.5cqw) rotate(-45deg) scale(0.9); animation-timing-function: cubic-bezier(0.2, 0.2, 0.5, 1); }
+    27.9%, 70% { transform: none; animation-timing-function: cubic-bezier(0.5, 0, 0.8, 0.8); }
+    75.7% { transform: translate(9.5cqw, 0.5cqw) rotate(-45deg) scale(0.9); animation-timing-function: cubic-bezier(0.2, 0.2, 0.5, 1); }
+    81.4%, 100% { transform: translate(7cqw, 12.55cqw) rotate(-90deg) scale(0.78); }
   }
   @keyframes arcs-move {
-    0%, 21.4% { transform: none; animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); }
-    32.9%, 75.7% { transform: translate(11.9cqw, 23cqw) scale(0.7); animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); }
-    87.1%, 100% { transform: none; }
+    0%, 10% { opacity: 1; }
+    16.4%, 82% { opacity: 0; }
+    88%, 100% { opacity: 1; }
   }
   @keyframes p-phone {
-    0%, 24% { opacity: 1; }
-    29%, 81% { opacity: 0; }
-    86%, 100% { opacity: 1; }
+    0%, 19% { opacity: 0; }
+    24%, 74% { opacity: 1; }
+    79%, 100% { opacity: 0; }
   }
   @keyframes l-phone {
+    0%, 19% { opacity: 1; }
+    24%, 74% { opacity: 0; }
+    79%, 100% { opacity: 1; }
+  }
+  /* display: full-screen landscape -> split (map + portrait column) 2.45-3.9 s, back 9.8-11.4 s */
+  @keyframes m-full {
+    0% { opacity: 0; clip-path: inset(0 0 0 0); }
+    7.1% { opacity: 1; }
+    17.5% { opacity: 1; clip-path: inset(0 0 0 0); animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); }
+    24% { opacity: 1; }
+    27.9% { opacity: 0; clip-path: inset(0 0 0 71.6%); }
+    70% { opacity: 0; clip-path: inset(0 0 0 71.6%); animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); }
+    76% { opacity: 1; }
+    81.4% { opacity: 1; clip-path: inset(0 0 0 0); }
+    97.1% { opacity: 1; clip-path: inset(0 0 0 0); }
+    100% { opacity: 0; clip-path: inset(0 0 0 0); }
+  }
+  @keyframes m-col {
     0%, 24% { opacity: 0; }
-    29%, 81% { opacity: 1; }
-    86%, 100% { opacity: 0; }
+    28%, 69% { opacity: 1; }
+    73%, 100% { opacity: 0; }
   }
-  /* display: portrait strip, then expands to full landscape (4.7-6.0 s), collapses 10.6-12.0 s */
-  @keyframes m-port {
-    0% { opacity: 0; transform: translateY(1.6cqw) scale(0.97); }
-    8%, 33% { opacity: 1; transform: none; }
-    38%, 80% { opacity: 0; transform: none; }
-    86%, 96% { opacity: 1; transform: none; }
-    100% { opacity: 0; transform: none; }
+  @keyframes nav-in {
+    0%, 17% { opacity: 0; transform: translateX(-6cqw); animation-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1); }
+    28%, 68% { opacity: 1; transform: none; animation-timing-function: cubic-bezier(0.4, 0, 0.6, 1); }
+    81.4%, 100% { opacity: 0; transform: translateX(-3cqw); }
   }
-  @keyframes m-land {
-    0%, 33% { opacity: 0; clip-path: inset(0 36% 0 36%); animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); }
-    37% { opacity: 1; }
-    43%, 75.7% { opacity: 1; clip-path: inset(0 0 0 0); animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); }
-    85% { opacity: 1; }
-    86%, 100% { opacity: 0; clip-path: inset(0 36% 0 36%); }
+  @keyframes sbtn {
+    0%, 6% { opacity: 0; }
+    9%, 19% { opacity: 1; }
+    24%, 77% { opacity: 0; }
+    83%, 96% { opacity: 1; }
+    99%, 100% { opacity: 0; }
   }
   @keyframes glow {
     0%, 6% { opacity: 0.35; }
@@ -551,58 +694,63 @@ const arcs = [7, 12, 17].map((r) => {
     70%, 100% { opacity: 0; transform: translateX(2.2px); }
   }
   @keyframes road-in {
-    0%, 8% { opacity: 0; }
-    20%, 90% { opacity: 0.55; }
+    0%, 5% { opacity: 0; }
+    12%, 92% { opacity: 0.55; }
     100% { opacity: 0; }
   }
   @keyframes slide-near { to { transform: translateX(-56cqw); } }
   @keyframes slide-far { to { transform: translateX(-28cqw); } }
+  @keyframes scroll { to { transform: translateY(-50%); } }
 
-  /* touch from the passenger: 7.4 s tap, 7.9-8.7 s swipe, hand leaves 9.2-10.2 s */
+  /* passenger: taps the split button at 2.3 s, taps the phone column at 6.5 s */
   @keyframes hand {
-    0%, 43% { opacity: 0; transform: translate(50cqw, 24cqw); }
-    43.6% { opacity: 1; transform: translate(50cqw, 24cqw); animation-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1); }
-    51.4% { opacity: 1; transform: translate(5cqw, 3.5cqw); animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1); }
-    52.9%, 56.4% { opacity: 1; transform: translate(0, 0); animation-timing-function: cubic-bezier(0.45, 0, 0.25, 1); }
-    62.1%, 64.3% { opacity: 1; transform: translate(-9cqw, -1.5cqw); animation-timing-function: cubic-bezier(0.55, 0, 0.7, 0.6); }
-    72.9% { opacity: 1; transform: translate(50cqw, 24cqw); }
-    73%, 100% { opacity: 0; transform: translate(50cqw, 24cqw); }
+    0%, 7% { opacity: 0; transform: translate(35cqw, 45cqw); }
+    7.1% { opacity: 1; transform: translate(35cqw, 45cqw); animation-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1); }
+    14.3% { opacity: 1; transform: translate(-8cqw, 22cqw); animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1); }
+    16.4%, 20% { opacity: 1; transform: translate(-13.25cqw, 18.5cqw); animation-timing-function: cubic-bezier(0.55, 0, 0.7, 0.6); }
+    25.7% { opacity: 1; transform: translate(35cqw, 45cqw); }
+    25.8%, 37.9% { opacity: 0; transform: translate(35cqw, 45cqw); }
+    38% { opacity: 1; transform: translate(35cqw, 45cqw); animation-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1); }
+    44.3% { opacity: 1; transform: translate(4cqw, 3cqw); animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1); }
+    46.4%, 62% { opacity: 1; transform: translate(0, 0); animation-timing-function: cubic-bezier(0.55, 0, 0.7, 0.6); }
+    68.9% { opacity: 1; transform: translate(35cqw, 45cqw); }
+    69%, 100% { opacity: 0; transform: translate(35cqw, 45cqw); }
   }
   @keyframes press {
-    0%, 51.4% { transform: rotate(-25deg) scale(1); }
-    52.9% { transform: rotate(-25deg) scale(0.95); }
-    54.5%, 100% { transform: rotate(-25deg) scale(1); }
+    0%, 14.3% { transform: rotate(-25deg) scale(1); }
+    16.4% { transform: rotate(-25deg) scale(0.95); }
+    18%, 44.3% { transform: rotate(-25deg) scale(1); }
+    46.4% { transform: rotate(-25deg) scale(0.95); }
+    48%, 100% { transform: rotate(-25deg) scale(1); }
   }
-  @keyframes ring {
-    0%, 52.8% { opacity: 0; transform: scale(0.3); }
-    53% { opacity: 0.9; transform: scale(0.35); }
-    58%, 100% { opacity: 0; transform: scale(1.7); }
+  @keyframes ring1 {
+    0%, 16.3% { opacity: 0; transform: scale(0.4); }
+    16.5% { opacity: 0.9; transform: scale(0.55); }
+    21.5%, 100% { opacity: 0; transform: scale(1.5); }
   }
-  @keyframes dot {
-    0%, 52.9% { opacity: 0; transform: translateX(0); }
-    54% { opacity: 0.8; transform: translateX(0); animation-timing-function: cubic-bezier(0.45, 0, 0.25, 1); }
-    56.4% { opacity: 0.8; transform: translateX(0); }
-    62.1% { opacity: 0.8; transform: translateX(-267%); }
-    64.3%, 100% { opacity: 0; transform: translateX(-267%); }
+  @keyframes ring2 {
+    0%, 46.3% { opacity: 0; transform: scale(0.3); }
+    46.5% { opacity: 0.9; transform: scale(0.35); }
+    51.5%, 100% { opacity: 0; transform: scale(1.7); }
   }
-  @keyframes ctl {
-    0%, 52.9% { opacity: 0; transform: scale(0.8); }
-    55% { opacity: 1; transform: scale(1); }
-    69% { opacity: 1; transform: scale(1); }
-    72%, 100% { opacity: 0; transform: scale(1); }
+  @keyframes hl {
+    0%, 46.3% { opacity: 0; }
+    47.5%, 58% { opacity: 1; }
+    62%, 100% { opacity: 0; }
   }
-  @keyframes ic-pause {
-    0%, 53% { opacity: 0; }
-    53.4%, 54% { opacity: 1; }
-    55%, 100% { opacity: 0; }
+  @keyframes toast {
+    0%, 47.5% { opacity: 0; transform: translateX(-50%) translateY(0.8cqw); }
+    49.5%, 58% { opacity: 1; transform: translateX(-50%); }
+    61%, 100% { opacity: 0; transform: translateX(-50%); }
   }
-  @keyframes ic-play {
-    0%, 54% { opacity: 0; }
-    55%, 100% { opacity: 1; }
+  @keyframes v3 {
+    0% { opacity: 0; }
+    2%, 31.3% { opacity: 1; }
+    33.3%, 100% { opacity: 0; }
   }
-  @keyframes pan {
-    0%, 55% { transform: scale(1.08) translateX(0); }
-    62.1%, 69% { transform: scale(1.08) translateX(-3%); animation-timing-function: ease-in-out; }
-    78%, 100% { transform: scale(1.08) translateX(0); }
+  @keyframes v5 {
+    0% { opacity: 0; }
+    2%, 18% { opacity: 1; }
+    20%, 100% { opacity: 0; }
   }
 </style>
