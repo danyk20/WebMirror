@@ -160,6 +160,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      actions: write # start the website build below
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -183,3 +184,10 @@ jobs:
           fi
           gh release create "$GITHUB_REF_NAME" "${args[@]}" \
             "dist/WebMirror-$VERSION.apk" "dist/WebMirror-$VERSION.apk.sha256" "dist/WebMirror-$VERSION-mapping.zip"
+
+      # A release published with GITHUB_TOKEN does not trigger other workflows (the website's `release` trigger stays
+      # silent), so start the website build explicitly: its Download button then shows this version.
+      - name: Update the website
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main
