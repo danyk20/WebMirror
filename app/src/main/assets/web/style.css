@@ -40,8 +40,10 @@ body.player { padding: 0; overflow: hidden; background: #000; position: fixed; l
 #ctlToggle.on { background: #1b873f; border-color: #6fdc8c; }
 #ctlToggle.pending { background: #6b5b1a; border-color: #e0c04a; }
 #soundBtn { box-sizing: border-box; width: 104px; height: 44px; font-size: 13px; font-weight: bold; line-height: 1.2; color: #fff; border: 2px solid #5a626c; border-radius: 10px; white-space: nowrap; padding: 0 4px; }
-#soundBtn[hidden], #kbdBtn[hidden] { display: none; }
+#soundBtn[hidden], #kbdBtn[hidden], #rotBtn[hidden] { display: none; }
 #kbdBtn { box-sizing: border-box; width: 104px; height: 44px; font-size: 13px; font-weight: bold; line-height: 1.2; color: #fff; background: #1a5fb4; border: 2px solid #7fb8ff; border-radius: 10px; white-space: nowrap; padding: 0 4px; }
+#rotBtn { box-sizing: border-box; width: 104px; height: 44px; font-size: 13px; font-weight: bold; line-height: 1.2; color: #fff; background: #1a5fb4; border: 2px solid #7fb8ff; border-radius: 10px; white-space: nowrap; padding: 0 4px; display: flex; align-items: center; justify-content: center; }
+#rotBtn svg { margin-right: 6px; }
 /* The invisible field that makes the car browser open its own keyboard (player.js, Tesla keyboard). 16 px so the page never zooms. */
 #kbdField { position: fixed; left: 0; bottom: 0; width: 8px; height: 8px; margin: 0; padding: 0; border: 0; outline: none; resize: none; overflow: hidden; opacity: 0; font-size: 16px; color: transparent; background: transparent; caret-color: transparent; pointer-events: none; z-index: 0; -webkit-user-select: text; user-select: text; }
 #soundBtn.off { background: #1a5fb4; border-color: #7fb8ff; }

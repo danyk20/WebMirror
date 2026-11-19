@@ -105,6 +105,10 @@ class StreamHub(
     @Volatile
     var inputSink: InputSink? = null
 
+    /** Turns the phone's orientation for `{t:"rotate"}`; false when the permission is missing. Set by the service. */
+    @Volatile
+    var rotator: (() -> Boolean)? = null
+
     /**
      * The phone's switch or the accessibility service changed: tells the viewers (new `hello`), and when somebody
      * owned the control and lost it, that viewer is told and its touches are lifted.

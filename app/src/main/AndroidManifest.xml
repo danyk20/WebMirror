@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -11,6 +12,8 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- "In the browser" sound: capturing the phone's own playback (AudioPlaybackCapture) needs this permission, shown to the user as Microphone. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- "Rotate from the car": turns the phone between portrait and landscape through the system rotation settings. The user allows it once ("Modify system settings"). -->
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" tools:ignore="ProtectedPermissions" />
 
     <application
         android:allowBackup="false"

@@ -5,6 +5,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- Rotate button on the car screen: turns the phone between portrait and landscape as if you turned it by hand. Allow it once in Settings > Remote control > "Rotate from the car" (Android asks for "Modify system settings"). WebMirror puts your own auto-rotate setting back when mirroring stops.
+
 ## [0.2.1] - 2026-11-18
 
 ### Fixed

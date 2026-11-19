@@ -17,6 +17,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import app.webmirror.android.input.PhoneRotation
 import app.webmirror.android.input.RemoteControlState
 import app.webmirror.android.input.TypingState
 import app.webmirror.android.net.AutoCert
@@ -101,6 +102,7 @@ class MainActivity : ComponentActivity() {
         RemoteControlState.allowed.value = settings.remoteControlAllowed
         TypingState.keyboard.value = settings.typingKeyboard
         TlsStore.refresh(this)
+        if (!MirrorService.state.value.running) PhoneRotation.restore(this) // crash recovery
         AutoCert.onAppStart(this)
         Updates.schedule(this)
         handleIntent(intent)

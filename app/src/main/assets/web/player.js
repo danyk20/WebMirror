@@ -60,6 +60,7 @@
   const menuBtnEl = document.getElementById('menuBtn');
   const soundBtnEl = document.getElementById('soundBtn');
   const kbdBtnEl = document.getElementById('kbdBtn');
+  const rotBtnEl = document.getElementById('rotBtn');
   const soundLabelEl = document.getElementById('soundLabel');
   const pairEl = document.getElementById('pair');
   const pairMsgEl = document.getElementById('pairMsg');
@@ -1307,6 +1308,8 @@
       onControlMessage(m);
     } else if (m.t === 'kbd') {
       onKbdMessage(m);
+    } else if (m.t === 'rotate') {
+      if (m.ok === false && m.reason === 'permission') showCtlNote('Allow rotation on the phone: WebMirror > Settings > Remote control > Rotate from the car.');
     } else if (m.t === 'denied') {
       setStatus('Denied: ' + m.reason);
       showMessage('Access denied (' + m.reason + ')');
@@ -1717,6 +1720,7 @@
     fingersEl.textContent = 'Fingers ' + fingersNow + '/' + fingersMax;
     ctlToggleEl.hidden = !ctl.allowed;
     kbdBtnEl.hidden = !kbdButtonVisible(kbd.tesla, kbd.show, ctl.on);
+    rotBtnEl.hidden = !ctl.on;
   }
 
   // Control is on (owner) or off. notifyPhone: tell the phone (not needed when the phone said it).
@@ -1896,6 +1900,7 @@
   }
 
   kbdBtnEl.addEventListener('click', function () { focusKbdField(); });
+  rotBtnEl.addEventListener('click', function () { send({ t: 'rotate' }); });
   // A tap on the picture ends with a user gesture: use it to bring the keyboard back if the user dismissed it.
   function refocusKbd() {
     if (kbd.tesla && kbd.show && ctl.on && document.activeElement !== kbd.field) focusKbdField();

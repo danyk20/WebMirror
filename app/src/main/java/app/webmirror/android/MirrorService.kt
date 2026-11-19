@@ -28,6 +28,7 @@ import app.webmirror.android.audio.BrowserAudio
 import app.webmirror.android.audio.OpusSupport
 import app.webmirror.android.capture.ScreenCapture
 import app.webmirror.android.input.KbdListener
+import app.webmirror.android.input.PhoneRotation
 import app.webmirror.android.input.RemoteControlState
 import app.webmirror.android.input.Typing
 import app.webmirror.android.input.TypingState
@@ -131,6 +132,8 @@ class MirrorService : Service() {
         super.onCreate()
         hubRef = hub
         hub.inputSink = RemoteInput
+        hub.rotator = { PhoneRotation.toggle(this) }
+        PhoneRotation.restore(this) // crash recovery: a rotation left behind by an earlier run
         RemoteInput.kbdListener = KbdListener { hub.kbdChanged(it) }
         // Keep the Quick Settings tile current even while the shade is closed.
         scope.launch {
@@ -154,6 +157,7 @@ class MirrorService : Service() {
     override fun onDestroy() {
         if (active) stopAll(null)
         hubRef = null
+        hub.rotator = null
         scope.cancel()
         MirrorTileService.requestUpdate(this)
         super.onDestroy()
@@ -353,6 +357,7 @@ class MirrorService : Service() {
         }
         active = false
         hub.setControl(false, RemoteInputService.connected.value)
+        PhoneRotation.restore(this)
         endCapture()
         releaseLocks()
         stopServer()

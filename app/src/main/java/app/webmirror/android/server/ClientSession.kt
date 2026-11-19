@@ -365,6 +365,7 @@ class ClientSession(
                 "input" -> handleInput(obj)
                 "type" -> handleType(obj)
                 "key" -> handleKey(obj)
+                "rotate" -> handleRotate()
                 else -> Unit // unknown types are ignored
             }
         } catch (e: Exception) {
@@ -404,6 +405,14 @@ class ClientSession(
         if (!hub.control.canInput(id)) return
         val key = TypingKey.parse(obj.opt("key") as? String) ?: return
         hub.pressKey(id, key)
+    }
+
+    /** `{t:"rotate"}`: same gates as typing. Answers `{t:"rotate", ok}` (`reason:"permission"` when the phone may not change settings). Never throws. */
+    private fun handleRotate() {
+        if (!inputLimiter.allow(nowMs())) return
+        if (!hub.control.canInput(id)) return
+        val ok = try { hub.rotator?.invoke() ?: false } catch (e: Exception) { Log.w(TAG, "rotate: $e"); false }
+        onText(if (ok) """{"t":"rotate","ok":true}""" else """{"t":"rotate","ok":false,"reason":"permission"}""")
     }
 
     /** `{t:"audio", on}`: this page's sound is on (it can play) or off. Capture runs only while somebody wants sound. */

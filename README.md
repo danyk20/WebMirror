@@ -31,6 +31,7 @@ How it works in one sentence: the phone turns on its Wi-Fi hotspot, the Tesla jo
 - **Sound in the browser** (Opus or PCM), or over Bluetooth with a delay slider.
 - **Remote touch control from the car**, including multi-touch gestures such as pinch.
 - **Typing from the car**, with the phone's keyboard in the picture or, on Android 13 or newer, the Tesla browser's own keyboard.
+- **Rotate from the car.** A Rotate button turns the phone between portrait and landscape, for a phone in a charging compartment.
 - **Pairing PIN** (4 or 6 digits, or off) so others on the hotspot cannot watch or control the phone.
 - **Free HTTPS certificate set up on the phone** with DuckDNS and Let's Encrypt, renewed automatically.
 - **Virtual address `169.254.77.1`** that the Tesla browser accepts.

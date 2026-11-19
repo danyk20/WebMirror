@@ -99,6 +99,8 @@ internal val HELP_SECTIONS: List<HelpSection> = listOf(
             h("Typing from the car"),
             p("Settings > Remote control > \"Keyboard for typing from the car\" has two choices. Phone keyboard (the default): the phone's keyboard appears in the mirrored picture and you tap its keys on the car screen. Tesla keyboard: the car browser's own keyboard opens when you tap a text field, and the phone's keyboard stays hidden. If it does not open, tap the Keyboard button next to the Control button."),
             p("The Tesla keyboard needs Android 13 or newer. With it, the accessibility service also learns whether a text field is selected and what kind it is (text, number, password ...), never what is in it. The choice applies at once."),
+            h("Rotating the phone"),
+            p("The Rotate button on the car screen (next to Control) turns the phone between portrait and landscape, as if you turned it by hand. Allow it once in Settings > Remote control > \"Rotate from the car\"; Android asks for \"Modify system settings\". Auto-rotate is switched off while rotated and your own setting is put back when mirroring stops. Apps that lock themselves to one orientation stay that way, just as when turning the phone by hand."),
             h("Turn it off"),
             p("Switch off \"Allow control from the car\". To remove the permission completely, switch the service off in Android's Accessibility settings."),
         ),

@@ -58,6 +58,7 @@ import app.webmirror.android.Settings
 import app.webmirror.android.capture.CaptureSize
 import app.webmirror.android.capture.Preset
 import app.webmirror.android.encode.CodecSupport
+import app.webmirror.android.input.PhoneRotation
 import app.webmirror.android.input.RemoteControlState
 import app.webmirror.android.input.Typing
 import app.webmirror.android.TypingKeyboard
@@ -329,6 +330,17 @@ private fun AudioSettings(settings: Settings) {
     }
 }
 
+private fun openWriteSettings(context: android.content.Context) {
+    try {
+        context.startActivity(
+            Intent(android.provider.Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.fromParts("package", context.packageName, null))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    } catch (e: android.content.ActivityNotFoundException) {
+        // No such settings page on this device: nothing to open.
+    }
+}
+
 private fun micGranted(context: android.content.Context): Boolean =
     androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
@@ -355,6 +367,19 @@ private fun ControlSettings(settings: Settings) {
             "In Accessibility settings open Installed apps (or Downloaded apps), choose WebMirror remote control and switch it on.",
     )
     OutlinedButton(onClick = { openAccessibilitySettings(context) }) { Text("Open accessibility settings") }
+    GroupTitle("Rotate from the car")
+    val resumes = rememberResumeCount()
+    val rotateAllowed = remember(resumes) { PhoneRotation.canWrite(context) }
+    Text(
+        if (rotateAllowed) "Rotate from the car: allowed" else "Rotate from the car: not allowed",
+        style = MaterialTheme.typography.titleMedium,
+        color = if (rotateAllowed) Color(0xFF008C3C) else MaterialTheme.colorScheme.error,
+    )
+    Note(
+        "Lets the Rotate button on the car screen turn the phone between portrait and landscape. " +
+            "Android asks once to allow \"Modify system settings\".",
+    )
+    if (!rotateAllowed) OutlinedButton(onClick = { openWriteSettings(context) }) { Text("Allow") }
     GroupTitle("Keyboard for typing from the car")
     var keyboard by remember { mutableStateOf(settings.typingKeyboard) }
     val teslaOk = Typing.supported(Build.VERSION.SDK_INT)
