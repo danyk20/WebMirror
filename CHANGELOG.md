@@ -5,9 +5,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-19
+
 ### Added
 
 - Rotate button on the car screen: turns the phone between portrait and landscape as if you turned it by hand. Allow it once in Settings > Remote control > "Rotate from the car" (Android asks for "Modify system settings"). WebMirror puts your own auto-rotate setting back when mirroring stops.
+- Project website with setup guide, FAQ and troubleshooting: https://danyk20.github.io/WebMirror/
 
 ## [0.2.1] - 2026-11-18
 
@@ -55,7 +58,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Release signing from environment variables or Gradle properties.
 - Documentation, safety notice and MIT license.
 
-[Unreleased]: https://github.com/danyk20/WebMirror/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/danyk20/WebMirror/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/danyk20/WebMirror/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/danyk20/WebMirror/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/danyk20/WebMirror/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/danyk20/WebMirror/releases/tag/v0.1.0
