@@ -4,6 +4,8 @@
 
 <p align="center"><b>Mirror your Android phone screen to your Tesla.</b><br>Wireless screen sharing from Android to any web browser, optimised for the Tesla in-car browser. No app, cable or account needed in the car.</p>
 
+<p align="center"><a href="https://danyk20.github.io/WebMirror/"><b>Website</b></a> · <a href="https://github.com/danyk20/WebMirror/releases/latest"><b>Download</b></a> · <a href="https://danyk20.github.io/WebMirror/setup/"><b>Setup guide</b></a> · <a href="https://danyk20.github.io/WebMirror/faq/"><b>FAQ</b></a></p>
+
 [![CI](https://github.com/danyk20/WebMirror/actions/workflows/ci.yml/badge.svg)](https://github.com/danyk20/WebMirror/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/danyk20/WebMirror?sort=semver)](https://github.com/danyk20/WebMirror/releases/latest)
 [![License: MIT](https://img.shields.io/github/license/danyk20/WebMirror)](LICENSE)

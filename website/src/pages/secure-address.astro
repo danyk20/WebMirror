@@ -1,0 +1,58 @@
+---
+import PageLayout from '../layouts/PageLayout.astro';
+import Callout from '../components/Callout.astro';
+import { href, REPO } from '../lib/site';
+---
+<PageLayout
+  title="Free https address for the Tesla browser | WebMirror"
+  description="Get a free https address (DuckDNS and Let's Encrypt) on your Android phone in about two minutes, so the Tesla browser plays smooth mirrored video."
+  path="/secure-address/"
+  heading="Get a free secure address"
+  lead="The Tesla browser plays smooth video only on an https address. WebMirror can set one up for free, on the phone, in about two minutes."
+  crumb="Secure address"
+>
+  <div class="prose">
+    <h2 id="why">Why https matters</h2>
+    <p>Over plain <code>http://169.254.77.1:8080</code> the car browser has no WebCodecs, so WebMirror falls back to JPEG pictures at about 10 to 15 fps. For smooth video the page must open over https with a certificate the browser trusts.</p>
+    <p>You need a free DuckDNS account. You can sign in with Google, GitHub or similar.</p>
+
+    <h2 id="steps">Get a certificate in the app</h2>
+    <p>Open WebMirror, go to Settings, Secure connection (HTTPS), and tap <strong>Get a free certificate</strong>. You can also tap "Secure address" in the Setup checklist on Home.</p>
+    <ol class="steps">
+      <li><strong>Create your free address.</strong> Tap "Open duckdns.org" and sign in. In "sub domain" type a name, for example <code>mycar-mirror</code>, then tap "add domain". You do not need to change "current ip": the app sets it. Your address will be <code>&lt;name&gt;.duckdns.org</code>. Already have a DuckDNS name? Skip this step.</li>
+      <li><strong>Copy your token.</strong> It is shown at the top of the DuckDNS page after you sign in. In the app, enter your DuckDNS name and paste the token. "Paste" reads the clipboard and "Show" reveals it.</li>
+      <li><strong>Agree to the Let's Encrypt terms.</strong> Tick "I agree to the Let's Encrypt Subscriber Agreement". Let's Encrypt is a free, non-profit certificate authority.</li>
+      <li><strong>Tap Get certificate.</strong> The app shows its progress and takes about one to two minutes. Keep the app open. You can cancel at any time.</li>
+    </ol>
+    <p>When it is done, the app shows the address to open in the car, <code>https://&lt;name&gt;.duckdns.org:8443</code>, with a QR code. Type <code>https://</code> and the port <code>:8443</code>. Port 8080 is plain http.</p>
+    <Callout kind="tip">
+      <p>In the Tesla, join your phone's hotspot and turn on "Remain connected in Drive" before you open the address.</p>
+    </Callout>
+
+    <h2 id="renewal">Renewal</h2>
+    <p>The certificate renews by itself. The app checks every 12 hours and when it starts, and renews when less than a third of the lifetime is left. "Renew now" renews at once.</p>
+    <p>If a renewal fails and less than 14 days remain, you get the notification "WebMirror could not renew your HTTPS certificate". Open the app, check the error and tap "Renew now". Renewal needs the phone to be online at some point in the last weeks.</p>
+    <p>To change the name or the token, use "Change name or token". Leave the token field empty to keep the saved one. "Turn off automatic certificate" forgets your token and the account key and removes the certificate.</p>
+
+    <h2 id="how">How it works</h2>
+    <ul>
+      <li>The name <code>&lt;your-name&gt;.duckdns.org</code> points to the phone's virtual address (<code>169.254.77.1</code> by default).</li>
+      <li>Let's Encrypt checks that you own the name through a DNS record. No open ports and no server are needed.</li>
+      <li>The certificate and its key stay on the phone. They are never put in the app.</li>
+      <li>Your DuckDNS name and token are stored only on the phone. The token and the account key are encrypted with a key in the Android Keystore.</li>
+      <li>The app talks to DuckDNS, Let's Encrypt and Cloudflare DNS only while getting or renewing the certificate. Nothing is sent to the app author.</li>
+    </ul>
+
+    <h2 id="problems">If something fails</h2>
+    <ul>
+      <li><strong>DuckDNS refused:</strong> check the name and copy the token again.</li>
+      <li><strong>Rate limit:</strong> Let's Encrypt allows only a few certificates per week. Wait and try again.</li>
+      <li><strong>Network problem:</strong> check mobile data or Wi-Fi.</li>
+      <li><strong>Rejected or timeout:</strong> the message says why. Try again in a few minutes.</li>
+      <li><strong>The name does not open in the car:</strong> some routers and DNS resolvers block names that point to private or link-local addresses ("DNS rebinding protection"). See <a href={href('/troubleshooting/')}>troubleshooting</a>.</li>
+    </ul>
+
+    <h2 id="manual">Prefer to do it by hand?</h2>
+    <p>You can make the certificate on a computer with acme.sh and import the .p12 file in the app. The <a href={`${REPO}/blob/main/docs/HTTPS-CERTIFICATE.md`}>full guide on GitHub</a> covers it step by step.</p>
+  </div>
+</PageLayout>

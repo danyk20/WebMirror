@@ -36,3 +36,11 @@ keystore.properties
 *.p8
 *.pfx
 *.key
+
+# Website (Astro)
+website/node_modules/
+website/dist/
+website/.astro/
+
+# Local Claude Code / editor tooling
+.claude/

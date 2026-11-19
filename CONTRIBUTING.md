@@ -70,3 +70,16 @@ Each release also publishes `WebMirror-<version>-mapping.zip`: the R8 mapping fi
 ## License
 
 Your contributions are licensed under the [MIT License](LICENSE).
+
+## Website
+
+The project website (https://danyk20.github.io/WebMirror/) lives in `website/` (Astro, static).
+
+```bash
+cd website
+npm ci
+npm run dev      # local preview with live reload
+npm run check && npm run build
+```
+
+It is published by `.github/workflows/pages.yml` on every push to `main` that touches `website/`, `PRIVACY.md`, `CHANGELOG.md` or `README.md`, and after every release (so the Download button shows the newest version). The privacy and changelog pages are rendered from the repository's `PRIVACY.md` and `CHANGELOG.md`.

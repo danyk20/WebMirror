@@ -1,0 +1,116 @@
+---
+import PageLayout from '../layouts/PageLayout.astro';
+import DeviceMockup from '../components/DeviceMockup.astro';
+import Callout from '../components/Callout.astro';
+import DownloadButton from '../components/DownloadButton.astro';
+import home from '../assets/screens/home.png';
+import settings from '../assets/screens/settings.png';
+import help from '../assets/screens/help.png';
+import { href } from '../lib/site';
+---
+<PageLayout
+  title="Set up WebMirror: mirror your Android phone to a Tesla | WebMirror"
+  description="Step-by-step guide to mirror your Android phone to the Tesla browser: hotspot, PIN, sound, typing and the Quick Settings tile."
+  path="/setup/"
+  heading="Set up WebMirror"
+  lead="Install the app, turn on the hotspot and open one address in the Tesla browser. It takes a few minutes."
+  crumb="Setup"
+>
+  <div class="split">
+    <div class="prose">
+      <h2 id="install">1. Install the app</h2>
+      <ol>
+        <li>Download the APK from the latest release.</li>
+        <li>Open it on the phone. Android asks you to allow installs from the browser or file manager you used. Allow it for that app only.</li>
+        <li>Open WebMirror and follow the setup checklist on Home.</li>
+      </ol>
+      <p><DownloadButton detail /></p>
+      <p class="muted">WebMirror needs Android 10 or newer and a phone that can share a Wi-Fi hotspot. Google Play is planned.</p>
+
+      <h2 id="start">2. Start mirroring in the car</h2>
+      <ol class="steps">
+        <li>Turn on the hotspot on your phone.</li>
+        <li>In the Tesla, join the phone's hotspot and turn on <strong>Remain connected in Drive</strong>.</li>
+        <li>In WebMirror, tap <strong>Start</strong> and allow screen sharing.</li>
+        <li>Open the address shown on Home in the car browser. You can also scan the QR code.</li>
+        <li>Enter the PIN shown on Home. You only do this once per browser.</li>
+      </ol>
+      <Callout kind="safety">
+        <p>For passengers only. The driver must never watch the screen while driving.</p>
+      </Callout>
+      <p>For smooth video, also set up a <a href={href('/secure-address/')}>free secure address</a>. On plain http the picture is less smooth.</p>
+
+      <h2 id="control">3. Control the phone from the car</h2>
+      <p>Remote control lets the person in the car tap the mirrored picture to operate the phone. It needs one permission: the WebMirror remote control accessibility service. It performs the touches sent from the car. It does not read your screen.</p>
+      <ol>
+        <li>Switch on <strong>Allow control from the car</strong> on Home.</li>
+        <li>If it says "Needs permission", open Accessibility settings, choose WebMirror remote control and switch it on.</li>
+      </ol>
+      <p>To turn it off, switch off "Allow control from the car". To remove the permission completely, switch the service off in Android's Accessibility settings.</p>
+      <h3 id="typing">Typing from the car</h3>
+      <p>Open Settings, then Remote control, then "Keyboard for typing from the car".</p>
+      <ul>
+        <li><strong>Phone keyboard</strong> (default): the phone's keyboard appears in the mirrored picture and you tap its keys on the car screen.</li>
+        <li><strong>Tesla keyboard</strong>: the car browser's own keyboard opens when you tap a text field. The phone's keyboard stays hidden. If it does not open, tap the Keyboard button next to the Control button.</li>
+      </ul>
+      <p>The Tesla keyboard needs Android 13 or newer. With it, the accessibility service also learns whether a text field is selected and what kind it is, never what is in it.</p>
+
+      <h2 id="pin">4. Keep it private with the PIN</h2>
+      <p>The PIN stops other people on your hotspot from watching your screen or controlling your phone. Choose under Settings, Security, Viewer protection:</p>
+      <ul>
+        <li><strong>4-digit PIN</strong> (default): quick to type in the car.</li>
+        <li><strong>6-digit PIN</strong>: harder to guess.</li>
+        <li><strong>No protection</strong>: anyone on the same Wi-Fi or hotspot can watch and control the phone. Use only on your own password-protected hotspot.</li>
+      </ul>
+      <p>Enter the PIN once in each browser. "New PIN" makes a new PIN and keeps paired browsers. "Forget paired viewers" unpairs all browsers.</p>
+
+      <h2 id="sound">5. Add sound</h2>
+      <p>Open Settings, then Audio. There are three options:</p>
+      <ul>
+        <li><strong>Car speakers via Bluetooth</strong> (default): the phone plays sound to the car over Bluetooth. It arrives a little later than the picture, so the page has a delay setting.</li>
+        <li><strong>In the browser</strong>: the phone sends its sound to the page and the car browser plays it, in sync with the picture. No Bluetooth needed.</li>
+        <li><strong>Off</strong>: no sound handling.</li>
+      </ul>
+      <p>For browser sound, Android asks for the Microphone permission. WebMirror uses it only to capture the sound the phone plays. In the car, tap "Tap for sound" on the page once. Browsers do not play sound before a tap.</p>
+      <p>Choose a sound profile: <strong>High quality</strong> (default) has the best sound and a little more delay. <strong>Fast</strong> has the lowest delay but can crackle on weak Wi-Fi. Some apps, for example Netflix, block sound capture.</p>
+
+      <h2 id="quick-settings">6. Start faster</h2>
+      <h3>Quick Settings tile</h3>
+      <p>Add the WebMirror tile to Quick Settings: swipe down twice and tap the pencil or edit button. You can then start and stop mirroring without opening the app.</p>
+      <h3>Samsung Modes and Routines</h3>
+      <p>Android does not let apps switch on the hotspot, but Samsung phones can do it when you get in the car. Open Settings, Modes and Routines, Routines, then add a routine:</p>
+      <ul>
+        <li>If: Bluetooth device connected, then choose your car.</li>
+        <li>Then: Mobile Hotspot, On. Optionally add "Open an app", WebMirror.</li>
+      </ul>
+      <p>The hotspot then turns on by itself when the phone connects to the car, and the car joins it automatically. Phones from other makers may have a similar automation feature.</p>
+      <p>Trouble? See <a href={href('/troubleshooting/')}>troubleshooting</a>.</p>
+    </div>
+
+    <div class="shots" role="group" aria-label="App screenshots">
+      <figure>
+        <DeviceMockup screenshot={home} alt="WebMirror home screen with the Start button, address and PIN" frame="phone" />
+        <figcaption>Home: Start, address and PIN</figcaption>
+      </figure>
+      <figure>
+        <DeviceMockup screenshot={settings} alt="WebMirror settings list" frame="phone" />
+        <figcaption>Settings</figcaption>
+      </figure>
+      <figure>
+        <DeviceMockup screenshot={help} alt="WebMirror in-app help page" frame="phone" />
+        <figcaption>Help, in the app</figcaption>
+      </figure>
+    </div>
+  </div>
+</PageLayout>
+<style>
+  .split { display: grid; gap: var(--s-6); align-items: start; }
+  .shots { display: grid; gap: var(--s-5); }
+  figure { margin: 0; text-align: center; }
+  figcaption { margin-top: var(--s-2); color: var(--text-muted); font-size: var(--fs-sm); }
+  .shots figure { max-width: 260px; margin-inline: auto; }
+  @media (min-width: 960px) {
+    .split { grid-template-columns: minmax(0, 1fr) 280px; }
+    .shots { position: sticky; top: 96px; }
+  }
+</style>

@@ -1,0 +1,184 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import HeroMockup from '../components/HeroMockup.astro';
+import HowDiagram from '../components/HowDiagram.astro';
+import DownloadButton from '../components/DownloadButton.astro';
+import PlayBadge from '../components/PlayBadge.astro';
+import FeatureCard from '../components/FeatureCard.astro';
+import Callout from '../components/Callout.astro';
+import FaqItem from '../components/FaqItem.astro';
+import { FAQS } from '../data/faq';
+import { getRelease } from '../lib/release';
+import { abs, href, REPO } from '../lib/site';
+
+const r = await getRelease();
+const app = {
+  '@type': 'SoftwareApplication',
+  name: 'WebMirror',
+  description: 'Free, open-source Android app that mirrors the phone screen, with sound, to the Tesla in-car browser over Wi-Fi.',
+  url: abs('/'),
+  image: abs('/og.png'),
+  operatingSystem: 'Android 10+',
+  applicationCategory: 'UtilitiesApplication',
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+  license: 'https://opensource.org/licenses/MIT',
+  codeRepository: REPO,
+  author: { '@type': 'Person', name: 'danyk20', url: 'https://github.com/danyk20' },
+  ...(r.version ? { softwareVersion: r.version } : {}),
+  ...(r.publishedAt ? { datePublished: r.publishedAt.slice(0, 10) } : {}),
+  downloadUrl: r.url,
+};
+const teaser = FAQS.slice(0, 4);
+---
+<BaseLayout
+  title="WebMirror: mirror your Android phone to your Tesla screen"
+  description="Free Tesla screen mirroring from Android. Share your phone screen, with sound, to the Tesla browser over Wi-Fi. No app, cable or account in the car."
+  path="/"
+  jsonLd={[app]}
+>
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div class="hero-text">
+        <p class="eyebrow">Free and open source</p>
+        <h1>Your phone, on your Tesla screen</h1>
+        <p class="lead">Wireless screen mirroring from Android to the Tesla browser. No app, cable or account in the car.</p>
+        <div class="cta">
+          <DownloadButton size="lg" detail />
+          <a class="btn btn-secondary btn-lg" href="#how-it-works">How it works</a>
+        </div>
+        <div class="badges">
+          <PlayBadge />
+          <p class="muted small">Android 10 or newer</p>
+        </div>
+      </div>
+      <div class="hero-art"><HeroMockup /></div>
+    </div>
+  </section>
+
+  <section class="trust" aria-label="Highlights">
+    <ul class="wrap">
+      <li>No app in the car</li>
+      <li>Free and open source</li>
+      <li>No account</li>
+      <li>No tracking</li>
+    </ul>
+  </section>
+
+  <section class="section" id="how-it-works">
+    <div class="wrap">
+      <p class="eyebrow">How it works</p>
+      <h2>Three steps to a mirrored screen</h2>
+      <ol class="steps three">
+        <li><h3>Turn on the hotspot</h3><p>Share your phone's hotspot and join it from the Tesla. Turn on "Remain connected in Drive".</p></li>
+        <li><h3>Tap Start</h3><p>Open WebMirror on the phone, tap Start and allow screen sharing.</p></li>
+        <li><h3>Open the address</h3><p>In the Tesla browser, open the address shown in the app or scan its QR code. Enter the PIN once.</p></li>
+      </ol>
+      <HowDiagram />
+      <p class="more"><a href={href('/setup/')}>Read the full setup guide</a></p>
+    </div>
+  </section>
+
+  <section class="section section-alt" id="features">
+    <div class="wrap">
+      <p class="eyebrow">Features</p>
+      <h2>Built for the Tesla browser</h2>
+      <ul class="grid">
+        <FeatureCard title="Low delay">About 40 ms from the phone screen to the browser picture, measured on a clean Wi-Fi link.</FeatureCard>
+        <FeatureCard title="Up to 60 fps">The default Smoothest setting sends 60 fps and falls back to 30 fps by itself if the car cannot keep up.</FeatureCard>
+        <FeatureCard title="Sound in sync">Play the phone's sound in the Tesla browser, in sync with the picture, or over Bluetooth with a delay slider.</FeatureCard>
+        <FeatureCard title="Touch and typing">Tap, swipe and pinch on the Tesla screen. Type with the phone keyboard or the Tesla browser's own keyboard.</FeatureCard>
+        <FeatureCard title="PIN pairing">A 4 or 6 digit PIN stops others on the hotspot from watching or controlling your phone.</FeatureCard>
+        <FeatureCard title="Free secure address">Get a free https address with DuckDNS and Let's Encrypt in about two minutes. It renews by itself.</FeatureCard>
+        <FeatureCard title="Heat protection">If the phone gets hot, WebMirror lowers frame rate and quality, then restores them when it cools down.</FeatureCard>
+        <FeatureCard title="Quick Settings tile">Start and stop mirroring from the Android Quick Settings panel without opening the app.</FeatureCard>
+      </ul>
+    </div>
+  </section>
+
+  <section class="section" id="performance">
+    <div class="wrap perf">
+      <div>
+        <p class="eyebrow">Performance</p>
+        <h2>Measured, not promised</h2>
+        <p class="lead">Delay from the phone screen to the browser picture, on a clean Wi-Fi link.</p>
+        <p class="muted">At a desk, the 60 fps option delivered 59 to 60 fps with about 32 ms delay and no dropped frames while scrolling. It has not been measured in a car yet. Videos reach 60 fps only if the video itself is 60 fps. Most are 24 to 30 fps.</p>
+        <p class="muted">Measured with the app's built-in automatic test on a Samsung Galaxy S22, at a desk and in a car.</p>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <caption>Picture delay by mode</caption>
+          <thead><tr><th scope="col">Mode</th><th scope="col">Delay</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Picture only</th><td>about 40 ms</td></tr>
+            <tr><th scope="row">Picture only, 60 fps (desk)</th><td>about 32 ms</td></tr>
+            <tr><th scope="row">Browser sound, Fast profile</th><td>about 140 ms</td></tr>
+            <tr><th scope="row">Browser sound, High quality profile</th><td>about 190 ms</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="wrap">
+      <Callout kind="safety">
+        <p>WebMirror is for passengers. The driver must never watch or operate the mirrored screen while driving. Follow the traffic laws of your country.</p>
+      </Callout>
+    </div>
+  </section>
+
+  <section class="section section-alt" id="faq">
+    <div class="wrap wrap-text-center">
+      <p class="eyebrow">FAQ</p>
+      <h2>Common questions</h2>
+      {teaser.map((f) => <FaqItem q={f.q}><p>{f.a}</p></FaqItem>)}
+      <p class="more"><a href={href('/faq/')}>See all questions</a></p>
+    </div>
+  </section>
+
+  <section class="section final">
+    <div class="wrap">
+      <h2>Put your phone on the big screen</h2>
+      <p class="lead">Free, open source and installed in a minute.</p>
+      <div class="cta center">
+        <DownloadButton size="lg" detail />
+        <a class="btn btn-secondary btn-lg" href={href('/setup/')}>Read the setup guide</a>
+      </div>
+      <div class="center"><PlayBadge /></div>
+    </div>
+  </section>
+</BaseLayout>
+<style>
+  .hero { padding-block: clamp(40px, 7vw, 96px) clamp(32px, 5vw, 64px); background: radial-gradient(900px 480px at 80% 0%, rgb(30 79 216 / .22), transparent 70%); }
+  .hero-grid { display: grid; gap: var(--s-6); align-items: center; }
+  .hero-text h1 { margin-bottom: var(--s-3); }
+  .hero-text .lead { max-width: 34ch; margin-bottom: var(--s-4); }
+  .cta { display: flex; flex-wrap: wrap; gap: var(--s-3); margin-bottom: var(--s-4); }
+  .cta.center { justify-content: center; }
+  .badges { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); }
+  .badges p { margin: 0; }
+  .small { font-size: var(--fs-sm); }
+  .hero-art { min-width: 0; }
+  @media (min-width: 900px) { .hero-grid { grid-template-columns: 1fr 1.1fr; } }
+
+  .trust { border-block: 1px solid var(--line); background: var(--surface); }
+  .trust ul { list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--s-2) var(--s-4); margin-block: 0; padding-block: var(--s-3); text-align: center; font-weight: 600; font-family: var(--font-display); }
+  .trust li { padding: var(--s-1) 0; }
+  .trust li::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--success); margin-right: 10px; }
+
+  .three { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin-block: var(--s-5); }
+  .three > li { padding: 64px var(--s-4) var(--s-4); }
+  .three > li::before { top: var(--s-4); left: var(--s-4); }
+  .three h3 { font-size: 1.25rem; }
+  .three p { margin: 0; color: var(--text-muted); }
+  .more { margin-top: var(--s-4); font-weight: 600; }
+
+  .grid { list-style: none; padding: 0; margin: var(--s-5) 0 0; display: grid; gap: var(--s-3); grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+
+  .perf { display: grid; gap: var(--s-6); align-items: start; }
+  @media (min-width: 900px) { .perf { grid-template-columns: 1fr 1fr; } }
+  .section-tight { padding-block: var(--s-4); }
+  .wrap-text-center { max-width: 820px; }
+  .final { text-align: center; }
+  .final .center { display: flex; justify-content: center; }
+</style>

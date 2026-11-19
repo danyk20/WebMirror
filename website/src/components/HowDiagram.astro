@@ -1,0 +1,44 @@
+---
+---
+<figure class="how" tabindex="0" aria-label="Diagram: how WebMirror works">
+  <svg viewBox="0 0 800 280" role="img" aria-labelledby="hd-t hd-d">
+    <title id="hd-t">How WebMirror works</title>
+    <desc id="hd-d">The Android phone runs WebMirror. Over the phone's Wi-Fi hotspot it sends screen video and sound to the Tesla browser; touches from the Tesla screen go back to the phone.</desc>
+    <defs>
+      <marker id="hd-ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4c7dff"/></marker>
+      <marker id="hd-ag" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#3dd68c"/></marker>
+    </defs>
+    <rect x="0.5" y="0.5" width="799" height="279" rx="16" fill="#12161f" stroke="#2a3142"/>
+    <!-- Phone -->
+    <rect x="40" y="40" width="200" height="200" rx="14" fill="#1a1f2b" stroke="#2a3142"/>
+    <rect x="117" y="62" width="46" height="80" rx="9" fill="none" stroke="#4c7dff" stroke-width="5"/>
+    <rect x="133" y="130" width="14" height="4" rx="2" fill="#4c7dff"/>
+    <path d="M171,88 a12,12 0 0 1 0,24" fill="none" stroke="#7c9dff" stroke-width="4.5" stroke-linecap="round"/>
+    <path d="M178,79 a24,24 0 0 1 0,42" fill="none" stroke="#4c7dff" stroke-width="4.5" stroke-linecap="round"/>
+    <text x="140" y="180" text-anchor="middle" class="t1">Android phone</text>
+    <text x="140" y="204" text-anchor="middle" class="t2">WebMirror app</text>
+    <text x="140" y="222" text-anchor="middle" class="t2">(the web server)</text>
+    <!-- Car -->
+    <rect x="560" y="40" width="200" height="200" rx="14" fill="#1a1f2b" stroke="#2a3142"/>
+    <rect x="595" y="66" width="130" height="80" rx="8" fill="#0b0d12" stroke="#2a3142"/>
+    <rect x="603" y="74" width="114" height="64" rx="4" fill="#1e3a8a"/>
+    <rect x="648" y="82" width="24" height="48" rx="5" fill="none" stroke="#f2f4f8" stroke-width="3"/>
+    <text x="660" y="180" text-anchor="middle" class="t1">Tesla screen</text>
+    <text x="660" y="204" text-anchor="middle" class="t2">built-in web browser</text>
+    <text x="660" y="222" text-anchor="middle" class="t2">(or any browser)</text>
+    <text x="400" y="62" text-anchor="middle" class="t2">over the phone's Wi-Fi hotspot</text>
+    <line x1="252" y1="110" x2="546" y2="110" stroke="#4c7dff" stroke-width="4" marker-end="url(#hd-ah)"/>
+    <text x="400" y="98" text-anchor="middle" class="t3">Screen video + sound</text>
+    <line x1="548" y1="172" x2="254" y2="172" stroke="#3dd68c" stroke-width="4" stroke-dasharray="10 7" marker-end="url(#hd-ag)"/>
+    <text x="400" y="160" text-anchor="middle" class="t3">Touches (optional)</text>
+    <text x="400" y="200" text-anchor="middle" class="t2">No app, cable or account needed in the car</text>
+  </svg>
+</figure>
+<style>
+  .how { margin: 0; overflow-x: auto; border-radius: var(--r-2); }
+  svg { width: 100%; min-width: 600px; display: block; }
+  svg :global(text) { font-family: var(--font-body); }
+  .t1 { font-size: 20px; font-weight: 600; fill: #f2f4f8; }
+  .t2 { font-size: 14px; fill: #a9b1c2; }
+  .t3 { font-size: 15px; font-weight: 600; fill: #f2f4f8; }
+</style>

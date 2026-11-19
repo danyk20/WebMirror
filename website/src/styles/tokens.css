@@ -1,0 +1,57 @@
+/* Design tokens: dark car-dashboard look. 8-pt spacing scale. */
+:root {
+  color-scheme: dark;
+
+  /* Surfaces */
+  --bg: #0b0d12;
+  --surface: #12161f;
+  --surface-2: #1a1f2b;
+  --line: #2a3142;
+
+  /* Text. Contrast on --bg / --surface / --surface-2:
+     --text 17+:1, --text-muted 8:1 / 7.4:1 / 6.6:1 */
+  --text: #f2f4f8;
+  --text-muted: #a9b1c2;
+
+  /* Accent. --accent is the app blue (fills with white text: 6.6:1).
+     --link is the lighter tone for text on dark (6.6:1 on --surface-2). */
+  --accent: #1e4fd8;
+  --accent-hover: #2b5ee8;
+  --accent-bright: #4c7dff;
+  --link: #7c9dff;
+  --success: #3dd68c;
+  --warn: #f5b94a;
+
+  /* Spacing (8-pt) */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 16px;
+  --s-4: 24px;
+  --s-5: 32px;
+  --s-6: 48px;
+  --s-7: 64px;
+  --s-8: 96px;
+  --s-9: 128px;
+
+  /* Radius */
+  --r-1: 12px;
+  --r-2: 20px;
+  --r-3: 28px;
+
+  /* Type scale (14-64 px), fluid */
+  --fs-sm: 0.875rem;
+  --fs-base: clamp(1rem, 0.96rem + 0.2vw, 1.125rem);
+  --fs-lg: clamp(1.125rem, 1.05rem + 0.4vw, 1.375rem);
+  --fs-h3: clamp(1.25rem, 1.15rem + 0.5vw, 1.5rem);
+  --fs-h2: clamp(1.625rem, 1.3rem + 1.6vw, 2.5rem);
+  --fs-h1: clamp(2.25rem, 1.5rem + 3.8vw, 4rem);
+
+  --font-display: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-body: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --wrap: 1120px;
+  --wrap-text: 720px;
+  --gutter: clamp(16px, 4vw, 32px);
+  --target: 44px;
+}

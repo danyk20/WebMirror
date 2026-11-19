@@ -1,0 +1,12 @@
+---
+import { getRelease, formatSize } from '../lib/release';
+interface Props { size?: 'sm' | 'md' | 'lg'; detail?: boolean }
+const { size = 'md', detail = false } = Astro.props;
+const r = await getRelease();
+const meta = [r.version ? `Version ${r.version}` : null, formatSize(r.apkSize)].filter(Boolean).join(' · ');
+const cls = ['btn', 'btn-primary', size === 'sm' ? 'btn-sm' : size === 'lg' ? 'btn-lg' : '', detail && meta ? 'btn-stack' : ''].join(' ');
+---
+<a class={cls} href={r.url} rel="noopener">
+  <span>Download for Android</span>
+  {detail && meta && <small>{meta}</small>}
+</a>

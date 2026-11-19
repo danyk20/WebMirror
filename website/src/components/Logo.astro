@@ -1,0 +1,12 @@
+---
+import { href } from '../lib/site';
+---
+<a class="logo" href={href('/')} aria-label="WebMirror, home">
+  <img src={href('/favicon.svg')} alt="" width="32" height="32" />
+  <span>WebMirror</span>
+</a>
+<style>
+  .logo { display: inline-flex; align-items: center; gap: 10px; min-height: var(--target); color: var(--text); text-decoration: none; font: 700 1.125rem var(--font-display); letter-spacing: -0.01em; }
+  .logo:hover { color: #fff; }
+  .logo img { border-radius: 8px; }
+</style>

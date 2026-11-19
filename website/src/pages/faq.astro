@@ -1,0 +1,29 @@
+---
+import PageLayout from '../layouts/PageLayout.astro';
+import FaqItem from '../components/FaqItem.astro';
+import { FAQS } from '../data/faq';
+import { href } from '../lib/site';
+
+const faqLd = {
+  '@type': 'FAQPage',
+  mainEntity: FAQS.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })),
+};
+---
+<PageLayout
+  title="WebMirror FAQ: Tesla models, sound, safety, https"
+  description="Answers about mirroring an Android phone to a Tesla: which models work, sound, touch control, https, iPhone, Android Auto and safety."
+  path="/faq/"
+  heading="Frequently asked questions"
+  lead="Short answers about WebMirror and Tesla screen mirroring."
+  crumb="FAQ"
+  jsonLd={[faqLd]}
+>
+  <div class="list">
+    {FAQS.map((f) => <FaqItem q={f.q}><p>{f.a}</p></FaqItem>)}
+  </div>
+  <p class="more">Still stuck? Read <a href={href('/troubleshooting/')}>troubleshooting</a> or <a href="https://github.com/danyk20/WebMirror/issues/new/choose">report a problem</a>.</p>
+</PageLayout>
+<style>
+  .list { max-width: 820px; }
+  .more { margin-top: var(--s-5); }
+</style>

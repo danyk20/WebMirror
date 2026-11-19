@@ -1,0 +1,52 @@
+---
+import Logo from './Logo.astro';
+import DownloadButton from './DownloadButton.astro';
+import { href, REPO } from '../lib/site';
+const links = [
+  { label: 'How it works', href: href('/#how-it-works') },
+  { label: 'Setup', href: href('/setup/') },
+  { label: 'FAQ', href: href('/faq/') },
+  { label: 'GitHub', href: REPO },
+];
+---
+<header class="site-header">
+  <div class="wrap bar">
+    <Logo />
+    <nav class="desktop" aria-label="Main">
+      <ul>
+        {links.map((l) => <li><a href={l.href}>{l.label}</a></li>)}
+      </ul>
+      <DownloadButton size="sm" />
+    </nav>
+    <details class="mobile">
+      <summary aria-label="Menu"><span class="bars" aria-hidden="true"></span></summary>
+      <nav aria-label="Main (mobile)">
+        <ul>
+          {links.map((l) => <li><a href={l.href}>{l.label}</a></li>)}
+        </ul>
+        <DownloadButton />
+      </nav>
+    </details>
+  </div>
+</header>
+<style>
+  .site-header { position: sticky; top: 0; z-index: 50; background: rgb(11 13 18 / .92); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
+  .bar { display: flex; align-items: center; justify-content: space-between; min-height: 64px; gap: var(--s-3); }
+  ul { list-style: none; margin: 0; padding: 0; }
+  .desktop { display: none; align-items: center; gap: var(--s-4); }
+  .desktop ul { display: flex; gap: var(--s-1); }
+  .desktop a:not(.btn), .mobile li a { display: inline-flex; align-items: center; min-height: var(--target); padding: 0 12px; color: var(--text-muted); text-decoration: none; font-weight: 500; border-radius: var(--r-1); }
+  .desktop a:not(.btn):hover, .mobile li a:hover { color: #fff; }
+  .mobile { position: static; }
+  summary { list-style: none; width: var(--target); height: var(--target); display: grid; place-items: center; cursor: pointer; border-radius: var(--r-1); border: 1px solid var(--line); }
+  summary::-webkit-details-marker { display: none; }
+  .bars, .bars::before, .bars::after { display: block; width: 20px; height: 2px; background: var(--text); border-radius: 2px; content: ''; position: relative; }
+  .bars::before { position: absolute; top: -6px; }
+  .bars::after { position: absolute; top: 6px; }
+  .mobile nav { position: absolute; left: 0; right: 0; top: 100%; background: var(--surface); border-bottom: 1px solid var(--line); padding: var(--s-3) var(--gutter) var(--s-4); display: grid; gap: var(--s-3); }
+  .mobile li a { width: 100%; font-size: 1.125rem; }
+  @media (min-width: 840px) {
+    .desktop { display: flex; }
+    .mobile { display: none; }
+  }
+</style>

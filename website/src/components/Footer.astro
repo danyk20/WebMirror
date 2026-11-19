@@ -1,0 +1,50 @@
+---
+import { href, REPO, RELEASES, ISSUES, AUTHOR } from '../lib/site';
+---
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="cols">
+      <div>
+        <p class="brand">WebMirror</p>
+        <p class="muted small">Free, open-source screen mirroring from Android to the Tesla browser.</p>
+      </div>
+      <nav aria-label="Project">
+        <h2>Project</h2>
+        <ul>
+          <li><a href={REPO}>GitHub</a></li>
+          <li><a href={RELEASES}>Releases</a></li>
+          <li><a href={ISSUES}>Report a problem</a></li>
+          <li><a href={`${REPO}/blob/main/LICENSE`}>MIT license</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="Guides">
+        <h2>Guides</h2>
+        <ul>
+          <li><a href={href('/setup/')}>Setup</a></li>
+          <li><a href={href('/secure-address/')}>Secure address</a></li>
+          <li><a href={href('/faq/')}>FAQ</a></li>
+          <li><a href={href('/troubleshooting/')}>Troubleshooting</a></li>
+          <li><a href={href('/privacy/')}>Privacy</a></li>
+          <li><a href={href('/changelog/')}>Changelog</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="legal">
+      <p>Made by <a href={AUTHOR}>danyk20</a></p>
+      <p class="small muted">Not affiliated with or endorsed by Tesla, Inc. Tesla is a trademark of Tesla, Inc.</p>
+    </div>
+  </div>
+</footer>
+<style>
+  .site-footer { border-top: 1px solid var(--line); background: var(--surface); padding-block: var(--s-7) var(--s-5); margin-top: auto; }
+  .cols { display: grid; gap: var(--s-5); grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+  .cols > div:first-child { grid-column: span 1; }
+  h2 { font: 600 var(--fs-sm) var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: var(--s-2); }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li a { display: inline-flex; align-items: center; min-height: var(--target); color: var(--text); text-decoration: none; }
+  li a:hover { color: var(--link); text-decoration: underline; }
+  .brand { font: 700 1.25rem var(--font-display); margin-bottom: var(--s-2); }
+  .small { font-size: var(--fs-sm); }
+  .legal { margin-top: var(--s-5); padding-top: var(--s-4); border-top: 1px solid var(--line); }
+  .legal p { margin-bottom: var(--s-2); }
+</style>

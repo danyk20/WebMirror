@@ -1,0 +1,608 @@
+---
+import { Picture } from 'astro:assets';
+import home from '../assets/screens/home.png';
+import road from '../assets/road-scene.svg';
+
+const widths = [240, 480];
+const sizes = '(min-width: 900px) 230px, 26vw';
+// Signal arcs: same geometry as the app icon (concentric arcs, +/-50 degrees).
+const cx = 25.6;
+const cy = 30;
+const arcs = [7, 12, 17].map((r) => {
+  const dx = (r * Math.cos((50 * Math.PI) / 180)).toFixed(2);
+  const dy = (r * Math.sin((50 * Math.PI) / 180)).toFixed(2);
+  return `M${(cx + Number(dx)).toFixed(2)} ${(cy - Number(dy)).toFixed(2)}A${r} ${r} 0 0 1 ${(cx + Number(dx)).toFixed(2)} ${(cy + Number(dy)).toFixed(2)}`;
+});
+---
+
+<div
+  class="hero-mockup"
+  role="img"
+  aria-label="Illustration: an Android phone running WebMirror mirrors its screen to a car centre display, in portrait. The phone turns to landscape and the display switches to the full-width landscape picture. While the car is in Drive, a passenger on the right-hand side touches the car display, and the touch is sent back to the phone, which reacts. The passenger's hand leaves and the phone turns back to portrait."
+>
+  <div class="glow" aria-hidden="true"></div>
+  <div class="road" aria-hidden="true"><i class="lane far"></i><i class="lane near"></i></div>
+
+  <div class="display" aria-hidden="true">
+    <div class="screen">
+      <div class="mirrored">
+        <Picture
+          src={home}
+          alt=""
+          formats={['avif', 'webp']}
+          fallbackFormat="webp"
+          widths={widths}
+          sizes={sizes}
+          loading="eager"
+          fetchpriority="high"
+          decoding="async"
+        />
+      </div>
+      <div class="scene wide">
+        <img class="art" src={road.src} width="1200" height="600" alt="" decoding="async" />
+        <i class="shade"></i>
+        <i class="bar"><b></b></i>
+        <i class="ctl"><s class="ic-pause"></s><s class="ic-play"></s></i>
+        <i class="touch"><u class="ring"></u><u class="dot"></u></i>
+      </div>
+      <div class="status"><span class="gear">D</span><span class="spd">64<small>km/h</small></span></div>
+    </div>
+  </div>
+
+  <svg class="arcs" viewBox="0 0 100 62" aria-hidden="true" focusable="false">
+    {arcs.map((d, i) => <path class={`arc arc-${i + 1}`} d={d} />)}
+  </svg>
+
+  <div class="phone-float" aria-hidden="true">
+    <div class="phone">
+      <div class="phone-screen">
+        <div class="portrait">
+          <Picture
+            src={home}
+            alt=""
+            formats={['avif', 'webp']}
+            fallbackFormat="webp"
+            widths={widths}
+            sizes={sizes}
+            loading="eager"
+            decoding="async"
+          />
+        </div>
+        <div class="land">
+          <div class="scene">
+            <img class="art" src={road.src} width="1200" height="600" alt="" decoding="async" />
+            <i class="shade"></i>
+            <i class="bar"><b></b></i>
+            <i class="ctl"><s class="ic-pause"></s><s class="ic-play"></s></i>
+            <i class="touch"><u class="ring"></u><u class="dot"></u></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hand-clip" aria-hidden="true">
+    <div class="hand">
+      <svg class="hand-art" viewBox="0 0 120 260" focusable="false">
+        <path class="sleeve" d="M36 150h66l5 110H32z" />
+        <path class="sleeve-line" d="M36 156h66" />
+        <rect class="skin-d" x="42" y="118" width="58" height="48" rx="10" />
+        <rect class="skin" x="35" y="4" width="22" height="104" rx="11" />
+        <rect class="skin" x="58" y="62" width="21" height="62" rx="10.5" />
+        <rect class="skin" x="78" y="68" width="20" height="56" rx="10" />
+        <rect class="skin" x="26" y="74" width="74" height="68" rx="26" />
+        <rect class="skin-d" x="57" y="62" width="2" height="24" rx="1" />
+        <rect class="skin-d" x="77" y="70" width="2" height="22" rx="1" />
+        <path class="skin" d="M24 96c-10 4-14 16-8 28 5 10 16 14 26 12l-4-38z" />
+        <path class="skin-d" d="M22 104c-6 6-6 16-1 24" />
+      </svg>
+      <span class="pill"><i></i>Passenger</span>
+    </div>
+  </div>
+</div>
+
+<style>
+  .hero-mockup {
+    --accent: #4c7dff;
+    --skin: #ecd2bf;
+    --skin-d: #d3b29b;
+    --sleeve: #3a4770;
+    container-type: inline-size;
+    position: relative;
+    width: 100%;
+    max-width: 880px;
+    margin-inline: auto;
+    aspect-ratio: 100 / 62;
+    user-select: none;
+  }
+  .hero-mockup :global(picture),
+  .hero-mockup :global(img) {
+    display: block;
+  }
+  .hero-mockup i,
+  .hero-mockup s,
+  .hero-mockup u,
+  .hero-mockup b {
+    display: block;
+    text-decoration: none;
+    font-style: normal;
+  }
+
+  /* Soft light on the dash below the display */
+  .glow {
+    position: absolute;
+    left: 22cqw;
+    top: 47cqw;
+    width: 78cqw;
+    height: 15cqw;
+    background: radial-gradient(ellipse 50% 100% at 50% 0%, rgb(30 79 216 / 0.5), transparent 72%);
+    opacity: 0.85;
+  }
+
+  /* Road below the display: lane lines slide past to say "driving" */
+  .road {
+    position: absolute;
+    left: 44cqw;
+    top: 55.6cqw;
+    width: 56cqw;
+    height: 6cqw;
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
+    opacity: 0.55;
+  }
+  .lane {
+    position: absolute;
+    left: 0;
+    width: 112cqw;
+    will-change: transform;
+  }
+  .lane.far {
+    top: 1.4cqw;
+    height: 0.2cqw;
+    background: repeating-linear-gradient(90deg, rgb(255 255 255 / 0.5) 0 2cqw, transparent 2cqw 4cqw);
+    opacity: 0.45;
+  }
+  .lane.near {
+    top: 3.4cqw;
+    height: 0.4cqw;
+    background: repeating-linear-gradient(90deg, rgb(255 255 255 / 0.8) 0 4cqw, transparent 4cqw 8cqw);
+  }
+
+  /* Car centre display */
+  .display {
+    position: absolute;
+    left: 14cqw;
+    top: 0;
+    width: 86cqw;
+    aspect-ratio: 16 / 10;
+    padding: 1.1cqw;
+    box-sizing: border-box;
+    border-radius: 2.8cqw;
+    background: linear-gradient(160deg, #232938 0%, #0b0e15 50%, #06080c 100%);
+    box-shadow:
+      inset 0 0 0 1px rgb(255 255 255 / 0.09),
+      inset 0 1px 0 rgb(255 255 255 / 0.2),
+      0 0 0 1px rgb(0 0 0 / 0.7),
+      0 3cqw 6cqw -2cqw rgb(0 0 0 / 0.8);
+  }
+  .display .screen {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    border-radius: 1.8cqw;
+    background:
+      radial-gradient(ellipse 70% 60% at 50% 40%, #10141d, #000 75%);
+    display: flex;
+    justify-content: center;
+  }
+  /* Portrait mirror: centred strip with black side areas (like the WebMirror player) */
+  .mirrored {
+    height: 100%;
+    aspect-ratio: 1080 / 2340;
+    opacity: 0;
+  }
+  .mirrored :global(picture),
+  .mirrored :global(img) {
+    height: 100%;
+    width: 100%;
+  }
+
+  /* Landscape scene (shared by display and phone) */
+  .scene {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background: #120d22;
+  }
+  .scene.wide {
+    opacity: 1;
+  }
+  .art {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scale(1.08);
+  }
+  .shade {
+    position: absolute;
+    inset: auto 0 0;
+    height: 34%;
+    background: linear-gradient(to top, rgb(8 6 18 / 0.65), transparent);
+  }
+  .bar {
+    position: absolute;
+    left: 7%;
+    right: 7%;
+    bottom: 7%;
+    height: 1.3%;
+    min-height: 2px;
+    border-radius: 99px;
+    background: rgb(255 255 255 / 0.3);
+    overflow: hidden;
+  }
+  .bar b {
+    width: 100%;
+    height: 100%;
+    background: #fff;
+    transform-origin: 0 50%;
+    transform: scaleX(0.38);
+  }
+  .ctl {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 11%;
+    aspect-ratio: 1;
+    margin: -5.5% 0 0 -5.5%;
+    border-radius: 50%;
+    background: rgb(12 14 28 / 0.55);
+    box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 0.75);
+  }
+  .ctl s {
+    position: absolute;
+    inset: 0;
+  }
+  .ic-play {
+    clip-path: polygon(38% 28%, 38% 72%, 74% 50%);
+    background: #fff;
+  }
+  .ic-pause {
+    background:
+      linear-gradient(#fff, #fff) 36% 50% / 9% 42% no-repeat,
+      linear-gradient(#fff, #fff) 64% 50% / 9% 42% no-repeat;
+    opacity: 0;
+  }
+  .touch {
+    position: absolute;
+    inset: 0;
+  }
+  .ring {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 13%;
+    aspect-ratio: 1;
+    margin: -6.5% 0 0 -6.5%;
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px rgb(255 255 255 / 0.9), 0 0 0 5px rgb(76 125 255 / 0.5);
+    background: rgb(76 125 255 / 0.28);
+    opacity: 0.85;
+  }
+  .dot {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 4%;
+    aspect-ratio: 1;
+    margin: -2% 0 0 -2%;
+    border-radius: 50%;
+    background: rgb(255 255 255 / 0.85);
+    opacity: 0;
+  }
+
+  /* Phone: landscape layer is pre-rotated so it reads upright once the phone turns */
+  .phone-screen {
+    position: relative;
+    aspect-ratio: 1080 / 2340;
+  }
+  .land {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 50.92cqw;
+    height: 23.5cqw;
+    transform: translate(-50%, -50%) rotate(90deg);
+    opacity: 0;
+  }
+  .land .scene {
+    border-radius: 0;
+  }
+
+  /* Display status strip: driving cue (generic, not a car UI) */
+  .status {
+    position: absolute;
+    left: 2.2cqw;
+    top: 1.6cqw;
+    display: flex;
+    align-items: center;
+    gap: 1.2cqw;
+    padding: 0.5cqw 1.4cqw 0.5cqw 0.6cqw;
+    border-radius: 99px;
+    background: rgb(10 12 22 / 0.62);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.12);
+    color: #fff;
+    font: 600 max(8px, 1.7cqw) / 1 system-ui, sans-serif;
+    letter-spacing: 0.02em;
+  }
+  .gear {
+    display: grid;
+    place-items: center;
+    width: 1.5em;
+    height: 1.5em;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+  }
+  .spd small {
+    margin-left: 0.3em;
+    font-size: 0.7em;
+    font-weight: 500;
+    opacity: 0.7;
+  }
+
+  .arcs {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
+    transform-origin: 25.6cqw 30cqw;
+  }
+  .arc {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 0.8;
+    stroke-linecap: round;
+  }
+  .arc-1 { --o: 0.95; opacity: var(--o); }
+  .arc-2 { --o: 0.65; opacity: var(--o); }
+  .arc-3 { --o: 0.4; opacity: var(--o); }
+
+  /* Phone, in front on the left */
+  .phone-float {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 25cqw;
+  }
+  .phone {
+    box-sizing: border-box;
+    padding: 0.75cqw;
+    border-radius: 3.6cqw;
+    background: linear-gradient(160deg, #2a3040 0%, #0d1018 60%, #080a0f 100%);
+    box-shadow:
+      inset 0 0 0 1px rgb(255 255 255 / 0.12),
+      inset 0 1px 0 rgb(255 255 255 / 0.25),
+      0 0 0 1px rgb(0 0 0 / 0.7),
+      0 2.4cqw 5cqw -1.5cqw rgb(0 0 0 / 0.9);
+  }
+  .phone-screen {
+    overflow: hidden;
+    border-radius: 2.9cqw;
+    background: #000;
+    line-height: 0;
+  }
+  .portrait {
+    position: absolute;
+    inset: 0;
+  }
+  .portrait :global(img) {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Passenger hand: tip of the index finger sits on the tap point (centre of the display) */
+  .hand-clip {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .hand {
+    position: absolute;
+    left: 49.3cqw;
+    top: 26.3cqw;
+    width: 20cqw;
+    height: 43.4cqw;
+  }
+  .hand-art {
+    display: block;
+    width: 100%;
+    height: 100%;
+    transform-origin: 7.7cqw 0.7cqw;
+    transform: rotate(-25deg);
+    filter: drop-shadow(0 1cqw 1.4cqw rgb(0 0 0 / 0.45));
+    overflow: visible;
+  }
+  .skin { fill: var(--skin); }
+  .skin-d { fill: var(--skin-d); }
+  .sleeve { fill: var(--sleeve); }
+  .sleeve-line { stroke: var(--accent); stroke-width: 3; fill: none; }
+  .hand-art path.skin-d { fill: none; stroke: var(--skin-d); stroke-width: 3; stroke-linecap: round; }
+  .pill {
+    position: absolute;
+    left: 19cqw;
+    top: 12cqw;
+    display: flex;
+    align-items: center;
+    gap: 0.6em;
+    padding: 0.55em 1em 0.55em 0.8em;
+    border-radius: 99px;
+    background: rgb(14 18 32 / 0.92);
+    box-shadow: inset 0 0 0 1px rgb(124 157 255 / 0.55);
+    color: #fff;
+    font: 600 max(9px, 1.8cqw) / 1 system-ui, sans-serif;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+  .pill i {
+    width: 0.6em;
+    height: 0.6em;
+    border-radius: 50%;
+    background: #7c9dff;
+  }
+
+  /* ---- Static state (also the reduced-motion still): landscape phase, hand touching ---- */
+  .mirrored { opacity: 0; }
+  .land { opacity: 1; }
+  .portrait { opacity: 0; }
+  .phone { transform: translate(6.5cqw, 17.4cqw) rotate(-90deg) scale(0.7); }
+  .arcs { transform: translate(11.9cqw, 23cqw) scale(0.7); }
+  .ic-pause { opacity: 0; }
+  .ic-play { opacity: 1; }
+  .road { opacity: 0.55; }
+
+  /* ---- Motion: 14 s loop, transforms and opacity (one small clip-path), only when allowed ---- */
+  @media (prefers-reduced-motion: no-preference) {
+    .hero-mockup {
+      --loop: 14s;
+      --ease: cubic-bezier(0.65, 0, 0.35, 1);
+    }
+    .phone-float { animation: float var(--loop) ease-in-out infinite; }
+    .phone { animation: turn var(--loop) linear infinite; }
+    .arcs { animation: arcs-move var(--loop) linear infinite; }
+    .portrait { animation: p-phone var(--loop) linear infinite; }
+    .land { animation: l-phone var(--loop) linear infinite; }
+    .mirrored { animation: m-port var(--loop) linear infinite; }
+    .scene.wide { animation: m-land var(--loop) linear infinite; }
+    .glow { animation: glow var(--loop) ease-in-out infinite; }
+    .arc { animation: pulse 3.5s ease-out infinite backwards; }
+    .arc-2 { animation-delay: 0.22s; }
+    .arc-3 { animation-delay: 0.44s; }
+    .road { animation: road-in var(--loop) linear infinite; }
+    .lane.near { animation: slide-near 3.5s linear infinite; }
+    .lane.far { animation: slide-far 3.5s linear infinite; }
+
+    .art { animation: pan var(--loop) linear infinite; }
+    .ctl { animation: ctl var(--loop) linear infinite; }
+    .ic-pause { animation: ic-pause var(--loop) linear infinite; }
+    .ic-play { animation: ic-play var(--loop) linear infinite; }
+    .ring { animation: ring var(--loop) linear infinite; }
+    .dot { animation: dot var(--loop) linear infinite; }
+    .hand { animation: hand var(--loop) linear infinite; }
+    .hand-art { animation: press var(--loop) linear infinite; }
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-0.8cqw); }
+  }
+  /* rotate to landscape 3.0-4.6 s, back 10.6-12.2 s */
+  @keyframes turn {
+    0%, 21.4% { transform: none; animation-timing-function: cubic-bezier(0.5, 0, 0.8, 0.8); }
+    27.1% { transform: translate(11.5cqw, 3cqw) rotate(-45deg) scale(0.85); animation-timing-function: cubic-bezier(0.2, 0.2, 0.5, 1); }
+    32.9%, 75.7% { transform: translate(6.5cqw, 17.4cqw) rotate(-90deg) scale(0.7); animation-timing-function: cubic-bezier(0.5, 0, 0.8, 0.8); }
+    81.4% { transform: translate(11.5cqw, 3cqw) rotate(-45deg) scale(0.85); animation-timing-function: cubic-bezier(0.2, 0.2, 0.5, 1); }
+    87.1%, 100% { transform: none; }
+  }
+  @keyframes arcs-move {
+    0%, 21.4% { transform: none; animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); }
+    32.9%, 75.7% { transform: translate(11.9cqw, 23cqw) scale(0.7); animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); }
+    87.1%, 100% { transform: none; }
+  }
+  @keyframes p-phone {
+    0%, 24% { opacity: 1; }
+    29%, 81% { opacity: 0; }
+    86%, 100% { opacity: 1; }
+  }
+  @keyframes l-phone {
+    0%, 24% { opacity: 0; }
+    29%, 81% { opacity: 1; }
+    86%, 100% { opacity: 0; }
+  }
+  /* display: portrait strip, then expands to full landscape (4.7-6.0 s), collapses 10.6-12.0 s */
+  @keyframes m-port {
+    0% { opacity: 0; transform: translateY(1.6cqw) scale(0.97); }
+    8%, 33% { opacity: 1; transform: none; }
+    38%, 80% { opacity: 0; transform: none; }
+    86%, 96% { opacity: 1; transform: none; }
+    100% { opacity: 0; transform: none; }
+  }
+  @keyframes m-land {
+    0%, 33% { opacity: 0; clip-path: inset(0 36% 0 36%); animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); }
+    37% { opacity: 1; }
+    43%, 75.7% { opacity: 1; clip-path: inset(0 0 0 0); animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); }
+    85% { opacity: 1; }
+    86%, 100% { opacity: 0; clip-path: inset(0 36% 0 36%); }
+  }
+  @keyframes glow {
+    0%, 6% { opacity: 0.35; }
+    14%, 90% { opacity: 0.95; }
+    100% { opacity: 0.35; }
+  }
+  @keyframes pulse {
+    0% { opacity: 0; transform: translateX(-1.2px); }
+    25% { opacity: var(--o); }
+    70%, 100% { opacity: 0; transform: translateX(2.2px); }
+  }
+  @keyframes road-in {
+    0%, 8% { opacity: 0; }
+    20%, 90% { opacity: 0.55; }
+    100% { opacity: 0; }
+  }
+  @keyframes slide-near { to { transform: translateX(-56cqw); } }
+  @keyframes slide-far { to { transform: translateX(-28cqw); } }
+
+  /* touch from the passenger: 7.4 s tap, 7.9-8.7 s swipe, hand leaves 9.2-10.2 s */
+  @keyframes hand {
+    0%, 43% { opacity: 0; transform: translate(50cqw, 24cqw); }
+    43.6% { opacity: 1; transform: translate(50cqw, 24cqw); animation-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1); }
+    51.4% { opacity: 1; transform: translate(5cqw, 3.5cqw); animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1); }
+    52.9%, 56.4% { opacity: 1; transform: translate(0, 0); animation-timing-function: cubic-bezier(0.45, 0, 0.25, 1); }
+    62.1%, 64.3% { opacity: 1; transform: translate(-9cqw, -1.5cqw); animation-timing-function: cubic-bezier(0.55, 0, 0.7, 0.6); }
+    72.9% { opacity: 1; transform: translate(50cqw, 24cqw); }
+    73%, 100% { opacity: 0; transform: translate(50cqw, 24cqw); }
+  }
+  @keyframes press {
+    0%, 51.4% { transform: rotate(-25deg) scale(1); }
+    52.9% { transform: rotate(-25deg) scale(0.95); }
+    54.5%, 100% { transform: rotate(-25deg) scale(1); }
+  }
+  @keyframes ring {
+    0%, 52.8% { opacity: 0; transform: scale(0.3); }
+    53% { opacity: 0.9; transform: scale(0.35); }
+    58%, 100% { opacity: 0; transform: scale(1.7); }
+  }
+  @keyframes dot {
+    0%, 52.9% { opacity: 0; transform: translateX(0); }
+    54% { opacity: 0.8; transform: translateX(0); animation-timing-function: cubic-bezier(0.45, 0, 0.25, 1); }
+    56.4% { opacity: 0.8; transform: translateX(0); }
+    62.1% { opacity: 0.8; transform: translateX(-267%); }
+    64.3%, 100% { opacity: 0; transform: translateX(-267%); }
+  }
+  @keyframes ctl {
+    0%, 52.9% { opacity: 0; transform: scale(0.8); }
+    55% { opacity: 1; transform: scale(1); }
+    69% { opacity: 1; transform: scale(1); }
+    72%, 100% { opacity: 0; transform: scale(1); }
+  }
+  @keyframes ic-pause {
+    0%, 53% { opacity: 0; }
+    53.4%, 54% { opacity: 1; }
+    55%, 100% { opacity: 0; }
+  }
+  @keyframes ic-play {
+    0%, 54% { opacity: 0; }
+    55%, 100% { opacity: 1; }
+  }
+  @keyframes pan {
+    0%, 55% { transform: scale(1.08) translateX(0); }
+    62.1%, 69% { transform: scale(1.08) translateX(-3%); animation-timing-function: ease-in-out; }
+    78%, 100% { transform: scale(1.08) translateX(0); }
+  }
+</style>

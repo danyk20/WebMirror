@@ -1,0 +1,15 @@
+---
+import PageLayout from '../layouts/PageLayout.astro';
+import { renderRepoMarkdown } from '../lib/markdown';
+// Single source: CHANGELOG.md in the repo root.
+const html = await renderRepoMarkdown('CHANGELOG.md');
+---
+<PageLayout
+  title="WebMirror changelog: release notes and new versions | WebMirror"
+  description="What changed in each WebMirror version: new features, fixes and changes for Android screen mirroring to the Tesla browser."
+  path="/changelog/"
+  heading="Changelog"
+  crumb="Changelog"
+>
+  <div class="prose md" set:html={html} />
+</PageLayout>

@@ -1,0 +1,18 @@
+---
+interface Props { kind?: 'safety' | 'tip' | 'note'; title?: string }
+const { kind = 'note', title } = Astro.props;
+const label = title ?? (kind === 'safety' ? 'Passengers only' : kind === 'tip' ? 'Tip' : 'Note');
+---
+<aside class:list={['callout', kind]}>
+  <p class="t">{label}</p>
+  <div><slot /></div>
+</aside>
+<style>
+  .callout { border: 1px solid var(--line); border-left: 4px solid var(--accent-bright); background: var(--surface); border-radius: var(--r-1); padding: var(--s-3) var(--s-4); margin: var(--s-4) 0; }
+  .safety { border-left-color: var(--warn); }
+  .tip { border-left-color: var(--success); }
+  .t { font: 700 var(--fs-sm) var(--font-display); letter-spacing: .08em; text-transform: uppercase; margin-bottom: var(--s-1); color: var(--text); }
+  .safety .t { color: var(--warn); }
+  .tip .t { color: var(--success); }
+  .callout :global(p:last-child) { margin-bottom: 0; }
+</style>

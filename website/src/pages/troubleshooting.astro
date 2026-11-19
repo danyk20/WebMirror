@@ -1,0 +1,60 @@
+---
+import PageLayout from '../layouts/PageLayout.astro';
+import { href, ISSUES } from '../lib/site';
+---
+<PageLayout
+  title="WebMirror troubleshooting: no page, no sound, frozen"
+  description="Fix common problems when mirroring an Android phone to a Tesla: page does not load, connection not private, PIN asked again, frozen picture, black screen, no sound."
+  path="/troubleshooting/"
+  heading="Troubleshooting"
+  lead="Common problems and how to fix them."
+  crumb="Troubleshooting"
+>
+  <div class="prose">
+    <h2 id="not-loading">The page does not load</h2>
+    <ul>
+      <li>Check that the hotspot is on and the car is joined to it.</li>
+      <li>In the Tesla, turn on "Remain connected in Drive".</li>
+      <li>Type the address exactly as shown on Home, including <code>https://</code> and <code>:8443</code> (or <code>http://</code> and <code>:8080</code>). Better: scan the QR code. Using <code>http://</code> with port 8443, or <code>https://</code> with port 8080, fails.</li>
+      <li>Make sure WebMirror shows Mirroring on Home.</li>
+    </ul>
+
+    <h2 id="not-private">"Your connection is not private"</h2>
+    <p>The certificate is missing, expired or only a test certificate. Open Settings, Secure connection (HTTPS) and get a real certificate. See <a href={href('/secure-address/')}>the secure address guide</a>.</p>
+
+    <h2 id="name-not-resolving">The secure address name does not open in the car</h2>
+    <p>Some routers and DNS resolvers block answers that point to private or link-local addresses. This is called "DNS rebinding protection". On the phone hotspot, the car uses the phone's mobile-data DNS, which normally works. If it fails, test the name on a laptop that is joined to the phone hotspot, or set your resolver to allow <code>duckdns.org</code>.</p>
+
+    <h2 id="mismatch">Certificate error: name mismatch</h2>
+    <p>Open the address with your DuckDNS name, for example <code>https://&lt;your-name&gt;.duckdns.org:8443</code>. Never use the IP address: <code>https://169.254.77.1:8443</code> always fails, because a certificate cannot be issued for an IP address.</p>
+
+    <h2 id="virtual-address">I changed the virtual address</h2>
+    <p>The app updates the DuckDNS address by itself. If it shows an error, set "current ip" on the DuckDNS page to the new address. The certificate does not need to change: it belongs to the name, not to the address.</p>
+
+    <h2 id="pin-again">The PIN is asked again</h2>
+    <p>Either "Forget paired viewers" was used, the browser's data was cleared, or more than 20 browsers paired since. Enter the PIN again.</p>
+
+    <h2 id="freeze">The picture freezes while driving</h2>
+    <p>The car's Wi-Fi connection probably dropped. Check that "Remain connected in Drive" is on. The page reconnects by itself.</p>
+
+    <h2 id="black">Black screen for some apps</h2>
+    <p>Some apps, for example banking, video and streaming apps, block screen capture on purpose. This cannot be changed.</p>
+
+    <h2 id="no-sound">No sound</h2>
+    <ul>
+      <li>Choose "In the browser" under Settings, Audio, and allow the Microphone permission. WebMirror uses it only to capture the sound the phone plays.</li>
+      <li>In the car, tap "Tap for sound" on the page once. Browsers do not play sound before a tap.</li>
+      <li>Some apps, for example Netflix, block sound capture. Their sound stays silent.</li>
+      <li>If the sound crackles on weak Wi-Fi, switch the sound profile from Fast to High quality.</li>
+    </ul>
+
+    <h2 id="stopped">Sharing stopped</h2>
+    <p>The phone screen locked or you stopped sharing in Android's status bar. Tap Resume on Home. To stop the phone from locking while you share, switch on "Keep screen on" under Settings, Video and quality.</p>
+
+    <h2 id="labels">Labels on the stream status</h2>
+    <p>Smoothest sends 60 fps and falls back to 30 fps by itself if the browser cannot keep up, then tries 60 again after a minute or more. If the phone gets hot, WebMirror lowers the frame rate and quality by itself and restores them when it cools down. The stream status then shows "(phone hot)".</p>
+
+    <h2 id="report">Still stuck?</h2>
+    <p>Settings, Debugging has technical information that you can share. <a href={ISSUES}>Report a problem on GitHub</a>.</p>
+  </div>
+</PageLayout>

@@ -1,0 +1,18 @@
+---
+import PageLayout from '../layouts/PageLayout.astro';
+import { renderRepoMarkdown } from '../lib/markdown';
+// Single source: PRIVACY.md in the repo root.
+const html = await renderRepoMarkdown('PRIVACY.md');
+---
+<PageLayout
+  title="WebMirror privacy policy | WebMirror"
+  description="WebMirror collects no personal data: no accounts, no analytics, no advertising. See what stays on your phone and which services the app contacts."
+  path="/privacy/"
+  heading="Privacy policy"
+  crumb="Privacy"
+>
+  <div class="prose md" set:html={html} />
+</PageLayout>
+<style>
+  .md :global(a) { overflow-wrap: anywhere; }
+</style>
