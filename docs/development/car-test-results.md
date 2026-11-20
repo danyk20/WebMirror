@@ -202,3 +202,17 @@ Reports: `docs/development/test-runs/20261118-011853-parked.*`, `docs/developmen
   3. Android cancels an injected gesture when a new finger joins while another is held. Fingers now start together (first finger waits 60 ms); a later finger lifts and re-places the held ones (65e695c).
 - Verified on the phone from a desk viewer (DevTools touch events, same path as the car): pinch-out and pinch-in with the second finger 400 ms late both zoom Google Maps, no cancelled gestures. Picture stays centred with the compact control bar (owner confirmed in the car).
 - Owner confirmed in the car (2026-11-18): all gestures work on the Tesla screen, including pinch zoom.
+
+## Car test 5 (2026-11-20): can the car reach the phone without the virtual address (VPN)?
+
+Background: the virtual address had been switched off because Android withdrew WebMirror's VPN consent (another VPN app or the system), so the DuckDNS name pointed at an address the phone no longer had and the car timed out. Question: can WebMirror do without the VPN by pointing the name at the real hotspot address?
+
+| URL in the Tesla browser | Result |
+|---|---|
+| `http://10.15.23.199:8080` (phone's real hotspot address) | "refused to connect" |
+| `http://10-15-23-199.nip.io:8080` (public name resolving to that address) | "refused to connect" |
+| Same `http://10.15.23.199:8080` from the Mac on the same hotspot | loads (HTTP 200) |
+| `https://485652.duckdns.org:8443` (name -> `169.254.77.1`, virtual address on) | loads, full-quality stream |
+
+- **The Tesla browser itself refuses private (RFC 1918) addresses, also when reached through a DNS name.** The phone accepts hotspot clients on the real address (the Mac on the same hotspot gets the page), so the refusal is in the car.
+- Decision: the link-local virtual address (local VPN) stays required for the car. Pointing the name at the hotspot address is not an option.
