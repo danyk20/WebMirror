@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-20
+
 ### Added
 
 - Warning on Home when the car cannot reach the phone because the virtual address is off, with a "Fix" button that switches it on again. The mirroring notification says the same and opens WebMirror when tapped.
@@ -71,7 +73,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Release signing from environment variables or Gradle properties.
 - Documentation, safety notice and MIT license.
 
-[Unreleased]: https://github.com/danyk20/WebMirror/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/danyk20/WebMirror/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/danyk20/WebMirror/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/danyk20/WebMirror/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/danyk20/WebMirror/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/danyk20/WebMirror/compare/v0.1.0...v0.2.0
