@@ -129,7 +129,9 @@ internal fun MainScreen(settings: Settings, actions: MainActions) {
         Surface(Modifier.fillMaxSize().padding(padding)) {
             Box(Modifier.fillMaxSize()) {
                 when (tab) {
-                    Tab.HOME -> HomeScreen(settings, HomeActions(actions.onStart, actions.onRequestNotifications, openWizard))
+                    Tab.HOME -> HomeScreen(settings, HomeActions(actions.onStart, actions.onRequestNotifications, openWizard) {
+                        actions.onVirtualIp(true, settings.virtualIp)
+                    })
                     Tab.SETTINGS -> {
                         val current = page
                         if (current == null) SettingsHome(settings) { page = it }

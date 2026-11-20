@@ -187,6 +187,7 @@ class MainActivity : ComponentActivity() {
         settings.virtualIpEnabled = on
         if (on) AutoCert.updateIp(this, ip)
         if (!on) {
+            settings.virtualIpLost = false // switched off on purpose
             VirtualIpService.stop(this)
             return
         }

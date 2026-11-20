@@ -5,6 +5,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- Warning on Home when the car cannot reach the phone because the virtual address is off, with a "Fix" button that switches it on again. The mirroring notification says the same and opens WebMirror when tapped.
+
+### Changed
+
+- When another VPN app or Android switches the virtual address off, WebMirror now remembers it and tells you (Home, notification, Settings > Network) instead of silently showing "Off".
+- Rotate on the car screen: when the app on the phone only works upright (for example a home screen), the car page says so instead of seemingly doing nothing.
+
+### Fixed
+
+- Switching the virtual address off in Settings > Network now really switches it off (the VPN stayed active before).
+
 ## [0.3.0] - 2026-11-19
 
 ### Added

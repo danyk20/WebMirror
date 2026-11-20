@@ -42,6 +42,11 @@ class Settings internal constructor(private val prefs: SharedPreferences) {
         get() = prefs.getBoolean(KEY_VIRTUAL_IP_ENABLED, false)
         set(value) = prefs.edit().putBoolean(KEY_VIRTUAL_IP_ENABLED, value).apply()
 
+    /** Set when another VPN app or Android switched the virtual address off; cleared when it is active again or the user switches it off. */
+    var virtualIpLost: Boolean
+        get() = prefs.getBoolean(KEY_VIRTUAL_IP_LOST, false)
+        set(value) = prefs.edit().putBoolean(KEY_VIRTUAL_IP_LOST, value).apply()
+
     /** Quality preset (plan 2.3). */
     var preset: Preset
         get() = Preset.fromKey(prefs.getString(KEY_PRESET, null))
@@ -188,6 +193,7 @@ class Settings internal constructor(private val prefs: SharedPreferences) {
         private const val FILE = "webmirror"
         private const val KEY_VIRTUAL_IP = "virtualIp"
         private const val KEY_VIRTUAL_IP_ENABLED = "virtualIpEnabled"
+        private const val KEY_VIRTUAL_IP_LOST = "virtualIpLost"
         private const val KEY_PRESET = "preset"
         private const val KEY_AUDIO = "audioMode"
         private const val KEY_AUDIO_PROFILE = "audioProfile"

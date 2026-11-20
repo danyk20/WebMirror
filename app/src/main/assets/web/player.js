@@ -1310,6 +1310,7 @@
       onKbdMessage(m);
     } else if (m.t === 'rotate') {
       if (m.ok === false && m.reason === 'permission') showCtlNote('Allow rotation on the phone: WebMirror > Settings > Remote control > Rotate from the car.');
+      else if (m.ok === true) checkRotated();
     } else if (m.t === 'denied') {
       setStatus('Denied: ' + m.reason);
       showMessage('Access denied (' + m.reason + ')');
@@ -1900,7 +1901,21 @@
   }
 
   kbdBtnEl.addEventListener('click', function () { focusKbdField(); });
-  rotBtnEl.addEventListener('click', function () { send({ t: 'rotate' }); });
+  // Rotate: the phone answers ok when it changed its rotation setting. An app that only works upright (e.g. a home
+  // screen) keeps the picture upright anyway; say so instead of leaving the button looking broken.
+  let rotWasLandscape = null;
+  let rotCheckTimer = null;
+  function pictureLandscape() { return canvas.width > canvas.height; }
+  function checkRotated() {
+    if (rotCheckTimer !== null) clearTimeout(rotCheckTimer);
+    rotCheckTimer = setTimeout(function () {
+      rotCheckTimer = null;
+      if (rotWasLandscape !== null && pictureLandscape() === rotWasLandscape) {
+        showCtlNote('The app on the phone stays upright. It turns when you open an app that can rotate, such as a video or a map.');
+      }
+    }, 1500);
+  }
+  rotBtnEl.addEventListener('click', function () { rotWasLandscape = pictureLandscape(); send({ t: 'rotate' }); });
   // A tap on the picture ends with a user gesture: use it to bring the keyboard back if the user dismissed it.
   function refocusKbd() {
     if (kbd.tesla && kbd.show && ctl.on && document.activeElement !== kbd.field) focusKbdField();

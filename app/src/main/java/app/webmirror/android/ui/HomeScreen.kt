@@ -53,6 +53,7 @@ import app.webmirror.android.Settings
 import app.webmirror.android.input.RemoteControlState
 import app.webmirror.android.net.TlsStore
 import app.webmirror.android.net.VirtualIpService
+import app.webmirror.android.net.carCannotReach
 import app.webmirror.android.net.AutoCert
 import kotlinx.coroutines.delay
 
@@ -61,6 +62,7 @@ internal class HomeActions(
     val onStart: () -> Unit,
     val onRequestNotifications: () -> Unit,
     val onOpenWizard: () -> Unit,
+    val onFixVirtualIp: () -> Unit,
 )
 
 /** The Home screen: only what is used every time. */
@@ -76,6 +78,7 @@ internal fun HomeScreen(settings: Settings, actions: HomeActions) {
         Text("WebMirror", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 8.dp))
         StatusCard()
         StartStopButton(actions.onStart)
+        VirtualIpWarning(settings, actions.onFixVirtualIp)
         CarCard(settings)
         PinCard(settings)
         ControlCard(settings)
@@ -160,6 +163,46 @@ private fun StartStopButton(onStart: () -> Unit) {
             modifier = Modifier.fillMaxWidth().height(64.dp),
         ) {
             Text(if (state.running) "Stop" else "Start", style = MaterialTheme.typography.titleLarge)
+        }
+    }
+}
+
+/** Warns when the car cannot reach the phone because the virtual address is off; Fix switches it on again. */
+@Composable
+private fun VirtualIpWarning(settings: Settings, onFix: () -> Unit) {
+    val vip by VirtualIpService.state.collectAsState()
+    val tls by TlsStore.state.collectAsState()
+    // The flag is written before the state changes, so reading it on each recomposition is current.
+    val lost = settings.virtualIpLost
+    if (!carCannotReach(vip.active, lost, tls.info?.hostNames.orEmpty().isNotEmpty())) return
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Icon(AppIcons.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        "The car can't reach the phone",
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        "The virtual address ${settings.virtualIp} is off" +
+                            if (lost) " \u2014 another VPN app or Android switched it off." else ".",
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+            Button(
+                onClick = onFix,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError,
+                ),
+            ) { Text("Fix") }
         }
     }
 }

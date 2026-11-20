@@ -27,6 +27,15 @@ class VirtualIpService : VpnService() {
     private var tun: ParcelFileDescriptor? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) {
+            // Switched off by the user. stopService alone does not end a VPN service: the system stays bound to it
+            // while the tunnel is open. Closing the tunnel releases it.
+            Log.i(TAG, "virtual address switched off")
+            closeTunnel()
+            _state.value = VirtualIpState()
+            stopSelf()
+            return START_NOT_STICKY
+        }
         val ip = intent?.getStringExtra(EXTRA_IP)
         if (ip == null || !Ipv4.isValid(ip)) {
             fail("Invalid virtual address: ${ip ?: "(none)"}")
@@ -51,6 +60,7 @@ class VirtualIpService : VpnService() {
             return START_NOT_STICKY
         }
         Log.i(TAG, "virtual address $ip active")
+        Settings(this).virtualIpLost = false
         _state.value = VirtualIpState(active = true, address = ip)
         return START_NOT_STICKY
     }
@@ -59,7 +69,7 @@ class VirtualIpService : VpnService() {
     override fun onRevoke() {
         Log.i(TAG, "virtual address revoked")
         closeTunnel()
-        Settings(this).virtualIpEnabled = false
+        markLost()
         _state.value = VirtualIpState(error = "The virtual address was switched off by the system or by another VPN app.")
         super.onRevoke() // stops the service
     }
@@ -72,9 +82,16 @@ class VirtualIpService : VpnService() {
 
     private fun fail(message: String) {
         closeTunnel()
-        Settings(this).virtualIpEnabled = false
+        markLost()
         _state.value = VirtualIpState(error = message)
         stopSelf()
+    }
+
+    /** Switches the setting off; if it was on, remembers that it was lost (not switched off by the user) so the UI can warn. */
+    private fun markLost() {
+        val settings = Settings(this)
+        if (settings.virtualIpEnabled) settings.virtualIpLost = true
+        settings.virtualIpEnabled = false
     }
 
     private fun closeTunnel() {
@@ -89,6 +106,7 @@ class VirtualIpService : VpnService() {
     companion object {
         private const val TAG = "WebMirror"
         private const val EXTRA_IP = "ip"
+        private const val ACTION_STOP = "app.webmirror.android.action.STOP_VIRTUAL_IP"
 
         private val _state = MutableStateFlow(VirtualIpState())
         val state: StateFlow<VirtualIpState> = _state.asStateFlow()
@@ -108,7 +126,16 @@ class VirtualIpService : VpnService() {
         }
 
         fun stop(context: Context) {
-            context.stopService(Intent(context, VirtualIpService::class.java))
+            if (!_state.value.active) {
+                context.stopService(Intent(context, VirtualIpService::class.java))
+                return
+            }
+            try {
+                context.startService(Intent(context, VirtualIpService::class.java).setAction(ACTION_STOP))
+            } catch (e: Exception) {
+                Log.w(TAG, "cannot stop the virtual address service now: $e")
+                context.stopService(Intent(context, VirtualIpService::class.java))
+            }
         }
     }
 }

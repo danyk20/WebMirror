@@ -505,6 +505,9 @@ private fun NetworkSettings(settings: Settings, onVirtualIp: (Boolean, String) -
             settings.virtualIp = Settings.DEFAULT_VIRTUAL_IP
         },
     ) { Text("Use ${Settings.DEFAULT_VIRTUAL_IP}") }
+    if (settings.virtualIpLost && !vip.active) {
+        ErrorText("Switched off by another VPN app or by Android. Switch it on again; Android asks once.")
+    }
     vip.error?.let { ErrorText(it) }
 }
 

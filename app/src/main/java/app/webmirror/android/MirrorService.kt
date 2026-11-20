@@ -35,7 +35,9 @@ import app.webmirror.android.input.TypingState
 import app.webmirror.android.input.RemoteInput
 import app.webmirror.android.input.RemoteInputService
 import app.webmirror.android.net.Addresses
+import app.webmirror.android.net.TlsInfo
 import app.webmirror.android.net.TlsStore
+import app.webmirror.android.net.carCannotReach
 import app.webmirror.android.net.VirtualIpService
 import app.webmirror.android.server.WebServer
 import app.webmirror.android.stream.StreamConfig
@@ -53,6 +55,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import app.webmirror.android.tile.MirrorTileService
@@ -496,6 +499,13 @@ class MirrorService : Service() {
         TlsStore.refresh(this)
         scope.launch { TlsStore.state.collect { applyTls(it.info) } }
         scope.launch { VirtualIpService.state.collect { refreshUrls() } }
+        // The notification warns while the car cannot reach the phone; update it when that changes.
+        scope.launch {
+            combine(VirtualIpService.state, TlsStore.state) { v, t -> carUnreachable(v.active, t.info) }
+                .distinctUntilChanged()
+                .drop(1)
+                .collect { getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification(_state.value.paused)) }
+        }
         // Remote control: the phone's switch and the accessibility service state go to the hub (and in hello.control to the viewers).
         scope.launch {
             combine(RemoteControlState.allowed, RemoteInputService.connected) { a, r -> a to r }
@@ -610,6 +620,9 @@ class MirrorService : Service() {
         _state.update { it.copy(running = false, paused = false, urls = Addresses.UrlList.EMPTY, viewerCount = 0, httpsRunning = false, tlsError = null) }
     }
 
+    private fun carUnreachable(active: Boolean, tls: TlsInfo?): Boolean =
+        carCannotReach(active, Settings(this).virtualIpLost, tls?.hostNames.orEmpty().isNotEmpty())
+
     private fun buildNotification(paused: Boolean): Notification {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
@@ -626,7 +639,13 @@ class MirrorService : Service() {
         return Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(getString(R.string.app_name))
-            .setContentText(getString(if (paused) R.string.notification_paused else R.string.notification_text))
+            .setContentText(
+                when {
+                    paused -> getString(R.string.notification_paused)
+                    carUnreachable(VirtualIpService.state.value.active, TlsStore.state.value.info) -> getString(R.string.notification_car_unreachable)
+                    else -> getString(R.string.notification_text)
+                },
+            )
             .setOngoing(true)
             .setContentIntent(openApp)
             .addAction(

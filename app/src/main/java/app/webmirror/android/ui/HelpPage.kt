@@ -179,6 +179,7 @@ internal val HELP_SECTIONS: List<HelpSection> = listOf(
                 "In the Tesla, turn on \"Remain connected in Drive\".",
                 "Type the address exactly as shown on Home, including https:// and :8443 (or http:// and :8080). Better: scan the QR code.",
                 "Make sure WebMirror shows Mirroring on Home.",
+                "If Home says \"The car can't reach the phone\", another VPN app or Android switched the virtual address off. Tap Fix on Home; Android asks once.",
             ),
             h("\"Your connection is not private\""),
             p("The certificate is missing, expired or only a test certificate. Open Settings > Secure connection (HTTPS) and get a real certificate."),
