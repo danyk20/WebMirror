@@ -216,3 +216,9 @@ Background: the virtual address had been switched off because Android withdrew W
 
 - **The Tesla browser itself refuses private (RFC 1918) addresses, also when reached through a DNS name.** The phone accepts hotspot clients on the real address (the Mac on the same hotspot gets the page), so the refusal is in the car.
 - Decision: the link-local virtual address (local VPN) stays required for the car. Pointing the name at the hotspot address is not an option.
+
+## Car test 6 (2026-11-20): 0.3.1 features
+
+- **Rotate from the car:** the phone turns both ways in apps that can rotate (YouTube player, Maps); the stream follows in about 0.2-0.3 s. Apps that request portrait only (YouTube home: `SCREEN_ORIENTATION_USER_PORTRAIT`) stay upright, as when turning the phone by hand; the car page now explains it.
+- **Virtual address warning:** with the virtual address switched off during mirroring the notification reads "The car can't reach the phone: virtual address off. Tap to fix."; Home > Fix brought it back and the Tesla reconnected.
+- **Restore:** after Stop the user's auto-rotate (on) was back; the crash-recovery restore also ran after an app update during a rotated session.
