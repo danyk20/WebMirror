@@ -47,6 +47,14 @@ export const FAQS: Faq[] = [
     a: 'WebMirror is free and open source (MIT license). It has no accounts, no analytics and no advertising, and the author receives no data. Only browsers you pair with the PIN can watch the phone.',
   },
   {
+    q: 'Do you collect or store any of my data?',
+    a: 'No. WebMirror needs no registration and no email address, and it has no analytics, crash reporting or tracking. There is no WebMirror server: the picture and sound go directly from your phone to the browser you pair, over your own hotspot. Settings and keys stay on the phone and are deleted when you uninstall the app.',
+  },
+  {
+    q: 'Is it safe?',
+    a: 'Yes. Only browsers that enter the PIN shown on your phone can watch, and after 5 wrong PINs all PIN entry is locked for a minute. With the free secure address the connection is encrypted with HTTPS. Android asks permission each time screen sharing starts, control from the car is off until you switch it on, and you can unpair every browser at once. The code is open source, so anyone can check it.',
+  },
+  {
     q: 'Does it work on other devices?',
     a: 'Yes. Any device with a modern browser on the same network works, such as a laptop, tablet or TV. It is optimised for the Tesla browser.',
   },

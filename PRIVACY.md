@@ -2,7 +2,15 @@
 
 Last updated: 2026-11-18
 
-WebMirror does not collect, store or share personal data with the developer or with anyone else. It has no accounts, no analytics, no advertising and no tracking.
+**In short: your data is yours, and it stays on your device.**
+
+WebMirror does not collect, store or share any data about you, with the developer or with anyone else, for analytics, advertising or any other purpose. There is:
+
+- **no registration**: no account, no sign-in, no email address, no phone number,
+- **no data collection**: no analytics, no crash reporting, no usage statistics, no advertising IDs, no tracking SDKs,
+- **no WebMirror server**: the developer runs no backend, so there is nowhere your data could be sent, stored or leaked from.
+
+The source code is public, so anyone can check these statements.
 
 ## What the app does with your data
 
@@ -13,6 +21,12 @@ Data that stays on your phone:
 - Settings, and the list of paired browsers.
 - If you set up a free HTTPS certificate: your DuckDNS name, your DuckDNS token and the Let's Encrypt account key. The token and the key are encrypted with a key in the Android Keystore. The certificate is stored on the phone too.
 - Optional test reports from the automatic test, created only when you run it. You choose whether to share them.
+
+Android cloud backup is switched off for WebMirror, so this data is not copied to Google Drive or anywhere else. Uninstalling the app deletes all of it.
+
+## The website
+
+This website has no analytics, no cookies, no advertising and makes no requests to third parties. It is a set of static pages hosted on GitHub Pages; GitHub, as the host, processes basic request data such as IP addresses under its own privacy policy.
 
 ## Network connections outside your local network
 

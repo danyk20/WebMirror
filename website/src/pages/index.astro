@@ -32,7 +32,7 @@ const teaser = FAQS.slice(0, 4);
 ---
 <BaseLayout
   title="WebMirror: mirror your Android phone to your Tesla screen"
-  description="Free Tesla screen mirroring from Android. Share your phone screen, with sound, to the Tesla browser over Wi-Fi. No app, cable or account in the car."
+  description="Free, private Tesla screen mirroring from Android. Share your phone screen, with sound, to the Tesla browser over Wi-Fi. No registration, no tracking: your data stays on your device."
   path="/"
   jsonLd={[app]}
 >
@@ -42,6 +42,7 @@ const teaser = FAQS.slice(0, 4);
         <p class="eyebrow">Free and open source</p>
         <h1>Your phone, on your Tesla screen</h1>
         <p class="lead">Wireless screen mirroring from Android to the Tesla browser. No app, cable or account in the car.</p>
+        <p class="privacy-line">No registration. No tracking. Your data never leaves your devices.</p>
         <div class="cta">
           <DownloadButton size="lg" detail />
           <a class="btn btn-secondary btn-lg" href="#how-it-works">How it works</a>
@@ -57,10 +58,10 @@ const teaser = FAQS.slice(0, 4);
 
   <section class="trust" aria-label="Highlights">
     <ul class="wrap">
-      <li>No app in the car</li>
+      <li>No registration</li>
+      <li>Zero data collection</li>
+      <li>Stays on your device</li>
       <li>Free and open source</li>
-      <li>No account</li>
-      <li>No tracking</li>
     </ul>
   </section>
 
@@ -95,7 +96,80 @@ const teaser = FAQS.slice(0, 4);
     </div>
   </section>
 
-  <section class="section" id="performance">
+  <section class="section privacy" id="privacy">
+    <div class="wrap">
+      <div class="privacy-head">
+        <p class="eyebrow">Private by design</p>
+        <h2>Your data is yours. It stays on your device.</h2>
+        <p class="lead">WebMirror does not collect, store or share any data about you: not for analytics, not for advertising, not for anything else. There is no WebMirror server. Your screen travels directly from your phone to the browser you pair, and nowhere else.</p>
+      </div>
+      <ul class="grid">
+        <FeatureCard title="No registration">No account, no sign-in, no email address, no phone number. Install it and use it.</FeatureCard>
+        <FeatureCard title="Zero data collection">No analytics, no crash reporting, no advertising IDs, no tracking SDKs. The developer receives nothing.</FeatureCard>
+        <FeatureCard title="Stays on your device">Settings, paired browsers and keys are kept only on the phone, secrets encrypted in the Android Keystore. Cloud backup is off.</FeatureCard>
+        <FeatureCard title="No cloud in between">Picture, sound and touches go over your phone's own hotspot. No relay server, no recording, nothing to leak.</FeatureCard>
+      </ul>
+
+      <div class="flow">
+        <h3>Where your data goes, step by step</h3>
+        <ol class="steps flow-steps">
+          <li><h4>Your private network</h4><p>The phone's own Wi-Fi hotspot connects phone and car. Only devices you let in can join.</p></li>
+          <li><h4>A server inside the app</h4><p>WebMirror runs a tiny web server on the phone itself, reachable only on your hotspot, never from the internet.</p></li>
+          <li><h4>The car proves it may watch</h4><p>The car browser enters the PIN shown on the phone once and receives a random pairing key.</p></li>
+          <li><h4>Phone to car, directly</h4><p>Picture and sound are encoded on the phone and sent straight to the paired browser. Nothing is recorded.</p></li>
+          <li><h4>Stop means stop</h4><p>Tap Stop and capture ends, the server shuts down, and nothing is left behind except your settings.</p></li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-alt" id="security">
+    <div class="wrap">
+      <p class="eyebrow">Security</p>
+      <h2>Why it is safe</h2>
+      <p class="lead">Safety comes from the design, not from promises: there is no account to steal and no server to break into.</p>
+      <ul class="grid">
+        <FeatureCard title="Nothing to breach">No backend, no user database. Data that is never collected cannot be leaked, sold or handed over.</FeatureCard>
+        <FeatureCard title="Only paired browsers">Without the PIN a browser sees nothing. Pairing keys come from a cryptographic random generator.</FeatureCard>
+        <FeatureCard title="Guessing is blocked">After 5 wrong PINs within a minute, all PIN entry locks for a minute. Unpair every browser with one tap.</FeatureCard>
+        <FeatureCard title="Encrypted connection">With the free secure address, picture, sound and touches are encrypted with HTTPS and a real Let's Encrypt certificate.</FeatureCard>
+        <FeatureCard title="Android stays in control">Android asks your permission every time screen sharing starts and shows while it runs. Stop it any time.</FeatureCard>
+        <FeatureCard title="Control is opt-in">Control from the car is off until you turn it on. The touch service only injects taps and cannot read your screen.</FeatureCard>
+        <FeatureCard title="Signed releases">Every release is signed with one published key. Android installs an update only if the signature matches.</FeatureCard>
+        <FeatureCard title="Open source">Every line of code is public under the MIT license, so anyone can verify each of these points.</FeatureCard>
+      </ul>
+      <p class="more"><a href={href('/privacy/')}>Read the privacy policy</a></p>
+    </div>
+  </section>
+
+  <section class="section" id="compare">
+    <div class="wrap">
+      <p class="eyebrow">Compare</p>
+      <h2>How WebMirror compares</h2>
+      <p class="lead">Other ways to get a phone onto a Tesla screen are hardware boxes that plug into the car, and mirroring apps from app stores. Here is how they usually differ.</p>
+      <div class="table-wrap">
+        <table class="data-table compare">
+          <caption>WebMirror and typical alternatives</caption>
+          <thead><tr><th scope="col"></th><th scope="col" class="us">WebMirror</th><th scope="col">Hardware boxes</th><th scope="col">Other mirroring apps</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Price</th><td class="us">Free</td><td>Paid device, can cost hundreds of euros</td><td>Often paid upgrades or ads</td></tr>
+            <tr><th scope="row">Extra hardware</th><td class="us">None</td><td>A box plugged into the car</td><td>None</td></tr>
+            <tr><th scope="row">Registration or email</th><td class="us">None</td><td>Sometimes</td><td>Sometimes</td></tr>
+            <tr><th scope="row">Data collection</th><td class="us">None, verifiable in public code</td><td>Trust the seller</td><td>Trust the store label</td></tr>
+            <tr><th scope="row">Cloud or relay server</th><td class="us">None, phone to car directly</td><td>Varies</td><td>Some use one</td></tr>
+            <tr><th scope="row">Open source</th><td class="us">Yes, MIT</td><td>Some</td><td>Rarely</td></tr>
+            <tr><th scope="row">Sound in sync in the car</th><td class="us">Yes</td><td>Usually</td><td>Not always</td></tr>
+            <tr><th scope="row">Touch and typing from the car</th><td class="us">Yes</td><td>Usually</td><td>Not always</td></tr>
+            <tr><th scope="row">Encrypted HTTPS link</th><td class="us">Free certificate set up on the phone</td><td>Not applicable</td><td>Rarely offered</td></tr>
+            <tr><th scope="row">Measured delay</th><td class="us">About 40 ms, published</td><td>Rarely published</td><td>Rarely published</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="muted small">Based on public information about alternatives available in November 2026. Products differ, so check the details of any specific product. WebMirror is Android only; if you use an iPhone, look at the apps in the App Store.</p>
+    </div>
+  </section>
+
+  <section class="section section-alt" id="performance">
     <div class="wrap perf">
       <div>
         <p class="eyebrow">Performance</p>
@@ -155,6 +229,18 @@ const teaser = FAQS.slice(0, 4);
   .hero-text .lead { max-width: 34ch; margin-bottom: var(--s-4); }
   .cta { display: flex; flex-wrap: wrap; gap: var(--s-3); margin-bottom: var(--s-4); }
   .cta.center { justify-content: center; }
+  .privacy-line { display: inline-flex; align-items: center; gap: 10px; font-weight: 600; margin-bottom: var(--s-4); }
+  .privacy-line::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--success); flex: none; }
+  .privacy-head { max-width: 760px; }
+  .flow { margin-top: var(--s-6); }
+  .flow h3 { font-size: 1.25rem; margin-bottom: var(--s-3); }
+  .flow-steps { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-block: var(--s-3) 0; }
+  .flow-steps > li { padding: 60px var(--s-3) var(--s-3); }
+  .flow-steps h4 { font-size: 1.0625rem; margin-bottom: var(--s-2); }
+  .flow-steps p { margin: 0; color: var(--text-muted); }
+  .compare td:last-child { font-weight: 400; font-family: inherit; white-space: normal; }
+  .compare th[scope="row"] { font-weight: 600; }
+  .compare .us { color: var(--text); font-weight: 600; background: rgb(30 79 216 / .14); }
   .badges { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); }
   .badges p { margin: 0; }
   .small { font-size: var(--fs-sm); }

@@ -2,7 +2,7 @@
 
 <h1 align="center">WebMirror</h1>
 
-<p align="center"><b>Mirror your Android phone screen to your Tesla.</b><br>Wireless screen sharing from Android to any web browser, optimised for the Tesla in-car browser. No app, cable or account needed in the car.</p>
+<p align="center"><b>Mirror your Android phone screen to your Tesla.</b><br>Wireless screen sharing from Android to any web browser, optimised for the Tesla in-car browser. No app, cable or account needed in the car.<br><b>No registration. No tracking. Your data never leaves your devices.</b></p>
 
 <p align="center"><a href="https://danyk20.github.io/WebMirror/"><b>Website</b></a> · <a href="https://github.com/danyk20/WebMirror/releases/latest"><b>Download</b></a> · <a href="https://danyk20.github.io/WebMirror/setup/"><b>Setup guide</b></a> · <a href="https://danyk20.github.io/WebMirror/faq/"><b>FAQ</b></a></p>
 
@@ -21,8 +21,25 @@ WebMirror shares your Android phone's screen, with sound, to any web browser ove
 
 How it works in one sentence: the phone turns on its Wi-Fi hotspot, the Tesla joins it, and the Tesla browser opens the address shown in the app. It also works with any other device with a modern browser, such as a laptop, tablet or TV.
 
+## Private by design
+
+> **Your data is yours. It stays on your device.**
+>
+> WebMirror does not collect, store or share any data about you: not for analytics, not for advertising, not for anything else. There is no registration, no sign-in, no email address and no tracking. There is no WebMirror server: your screen and sound travel directly from your phone to the browser you pair, over your own hotspot, and nowhere else.
+
+| | |
+| --- | --- |
+| **No registration** | No account, no email, no phone number. Install and use. |
+| **No data collection** | No analytics, no crash reporting, no advertising IDs, no tracking SDKs. The developer receives nothing. |
+| **Stays on your device** | Settings, paired browsers and certificate keys are kept only on the phone, with secrets encrypted in the Android Keystore. Cloud backup is switched off. |
+| **Local connection only** | Mirroring runs over your phone's own Wi-Fi hotspot. No cloud relay, no recording. |
+| **Open source** | Every line is public under the MIT license, so anyone can check these promises. |
+
+Details are in the [privacy policy](PRIVACY.md).
+
 ## Features
 
+- **Private by design.** No registration and no data collection. Everything stays on your device.
 - **Nothing to install in the car.** Open a web address or scan a QR code.
 - **Low delay.** About 40 ms picture delay in measurements, with optional in-sync sound.
 - **Up to 60 fps.** The default "Smoothest" setting sends 60 fps and falls back to 30 fps by itself if the car cannot keep up.
@@ -87,7 +104,46 @@ The phone captures its screen with Android's screen capture, encodes it with a h
 
 <p align="center"><img src="docs/images/how-it-works.svg" width="720" alt="The Android phone runs WebMirror and sends screen video and sound over its Wi-Fi hotspot to the Tesla browser; touches go back to the phone"></p>
 
+### Where your data goes, step by step
+
+1. **The phone creates a private network.** Your phone's own Wi-Fi hotspot connects the phone and the car. This network belongs to you and only devices you let in can join it.
+2. **The phone becomes a small web server.** WebMirror runs a tiny server inside the app, on the phone itself. It is reachable only on your hotspot, not from the internet.
+3. **The car browser asks to watch and must prove it may.** It enters the PIN shown on the phone. The phone then gives that browser a random pairing key, so you enter the PIN only once per browser.
+4. **The picture and sound go straight from phone to car.** They are encoded on the phone and sent over the hotspot to the paired browser. They do not pass through any server, cloud or third party, and nothing is recorded.
+5. **When you tap Stop, it is over.** Screen capture ends, the server stops and nothing is left behind except your settings on the phone.
+
+### Why it is safe
+
+- **No server to hack, no database to leak.** WebMirror has no backend and no user accounts, so there is no central store of user data that could be breached, sold or handed over. It does not exist.
+- **Only paired browsers can watch.** Without the PIN a browser sees nothing. Pairing keys are long random values from a cryptographic random generator and are checked in constant time.
+- **Guessing the PIN does not work.** After 5 wrong PINs within a minute, all PIN entry is locked for a minute. You can change the PIN or unpair all browsers at any moment with "Forget paired viewers".
+- **Encrypted connection.** With the free secure address the picture, sound and touches are encrypted with HTTPS (a real Let's Encrypt certificate), so other devices on the network cannot read them.
+- **Android stays in control.** Android asks your permission each time screen sharing starts and shows that it is running. You can stop it from the notification, the Quick Settings tile or the app.
+- **Remote control is opt-in and blind.** Control from the car is off until you switch it on. The accessibility service only injects the touches sent by a paired browser. It is configured so that it cannot read the content of your screen.
+- **Secrets are protected on the phone.** Certificate keys and the DuckDNS token are encrypted with a key held in the Android Keystore, and the app is excluded from cloud backup.
+- **Signed releases.** Every release is signed with one key whose fingerprint is published in [Verify the APK](#verify-the-apk). Android installs an update only if it is signed with the same key.
+- **Open source.** All code is public, so anyone can verify every point on this list.
+
 The wire protocol and architecture are described in [docs/development/PLAN.md](docs/development/PLAN.md).
+
+## How WebMirror compares
+
+Other ways to get a phone onto a Tesla screen are hardware boxes that plug into the car, and mirroring apps from app stores. How they usually differ:
+
+| | **WebMirror** | Hardware boxes | Other mirroring apps |
+| --- | --- | --- | --- |
+| Price | **Free** | Paid device, can cost hundreds of euros | Often paid upgrades or ads |
+| Extra hardware | **None** | A box plugged into the car | None |
+| Registration or email | **None** | Sometimes | Sometimes |
+| Data collection | **None, verifiable in public code** | Trust the seller | Trust the store label |
+| Cloud or relay server | **None, phone to car directly** | Varies | Some use one |
+| Open source | **Yes, MIT** | Some | Rarely |
+| Sound in sync in the car | **Yes** | Usually | Not always |
+| Touch and typing from the car | **Yes** | Usually | Not always |
+| Encrypted HTTPS link | **Free certificate set up on the phone** | Not applicable | Rarely offered |
+| Measured delay | **About 40 ms, published** | Rarely published | Rarely published |
+
+Based on public information from November 2026; products differ. WebMirror is Android only.
 
 ## Performance
 
@@ -105,10 +161,12 @@ Measured with the app's built-in automatic test on a Samsung Galaxy S22, at a de
 
 ## Privacy and security
 
-- No accounts, no analytics, no advertising. The app author receives no data.
-- Mirroring stays on your local network. The network is used for nothing else, except:
-  - DuckDNS, Let's Encrypt and Cloudflare DNS, only while you get or renew a certificate.
+- **Zero data collection.** No registration, no email, no analytics, no crash reporting, no advertising, no tracking. The developer receives no data about you or your use of the app.
+- **Your data stays on your device.** Settings, paired browsers and certificate keys never leave the phone. Secrets are encrypted with the Android Keystore and Android cloud backup is off.
+- **Mirroring stays on your local network**, directly between the phone and the browser you pair. Nothing is recorded. The app uses the internet only for these optional functions, and sends only what they need:
+  - DuckDNS, Let's Encrypt and Cloudflare DNS, only while you get or renew a free certificate.
   - The GitHub API, only in the GitHub version, to check for updates.
+- **The website has no analytics, no cookies and no third-party requests.**
 - A PIN pairs each browser. Without a PIN, anyone on your hotspot can watch and control the phone.
 - Remote control uses an accessibility service that injects the touches sent from the car. It does not read your screen. With the optional Tesla keyboard it only learns whether a text field is selected and what kind it is (never its text). You can turn it off in the app or in Android settings.
 
