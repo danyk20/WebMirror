@@ -29,6 +29,10 @@ jobs:
       - name: Unit tests and debug build
         run: ./gradlew testDebugUnitTest assembleDebug
 
+      # Android Lint for both store flavors; errors fail the build (warnings are only reported).
+      - name: Lint
+        run: ./gradlew lintGithubDebug lintPlayDebug
+
       - uses: actions/setup-node@v7
         with:
           node-version: 22

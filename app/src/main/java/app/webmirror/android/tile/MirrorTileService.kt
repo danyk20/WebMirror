@@ -1,5 +1,6 @@
 package app.webmirror.android.tile
 
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Context
@@ -67,7 +68,9 @@ class MirrorTileService : TileService() {
         if (isLocked) unlockAndRun { launch(intent) } else launch(intent)
     }
 
+    // The Intent variant runs only below API 34, where it is the only one; API 34+ uses the PendingIntent variant.
     @Suppress("DEPRECATION")
+    @SuppressLint("StartActivityAndCollapseDeprecated")
     private fun launch(intent: Intent) {
         if (Build.VERSION.SDK_INT >= 34) {
             startActivityAndCollapse(

@@ -216,7 +216,7 @@ class MirrorService : Service() {
             }
             capture = cap
             cap.start()
-            val ba = BrowserAudio(p, hub) { note -> _state.update { it.copy(audioNote = note ?: if (micAllowed()) null else it.audioNote) } }
+            val ba = BrowserAudio(applicationContext, p, hub) { note -> _state.update { it.copy(audioNote = note ?: if (micAllowed()) null else it.audioNote) } }
             browserAudio = ba
             hub.audioRequester = { plan -> ba.apply(plan) }
             ba.apply(hub.audioPlan())

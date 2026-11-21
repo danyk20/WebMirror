@@ -1,5 +1,8 @@
 package app.webmirror.android.audio
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioPlaybackCaptureConfiguration
 import android.media.AudioAttributes
@@ -38,6 +41,7 @@ object OpusSupport {
  * stops or restarts the worker thread to match the plan; the video is never touched.
  */
 class BrowserAudio(
+    private val context: Context,
     private val projection: MediaProjection,
     private val hub: StreamHub,
     /** A human-readable problem ("" never; null = problem gone) for the app. */
@@ -118,6 +122,11 @@ class BrowserAudio(
         }
 
         private fun createRecord(): AudioRecord {
+            // Playback capture needs RECORD_AUDIO. The service only plans sound when it is granted, but the user can
+            // withdraw it at any time; the SecurityException is reported by run() like a refusal from Android.
+            if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                throw SecurityException("RECORD_AUDIO is not granted")
+            }
             val cfg = AudioPlaybackCaptureConfiguration.Builder(projection)
                 .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
                 .addMatchingUsage(AudioAttributes.USAGE_GAME)
