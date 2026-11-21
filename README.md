@@ -132,10 +132,10 @@ Other ways to get a phone onto a Tesla screen are hardware boxes that plug into 
 
 | | **WebMirror** | Hardware boxes | Other mirroring apps |
 | --- | --- | --- | --- |
-| Price | **Free** | Paid device, can cost hundreds of euros | Often paid upgrades or ads |
+| Price | **Free** | Paid device, can cost hundreds of euros | Usually ads, a subscription or a paid unlock |
 | Extra hardware | **None** | A box plugged into the car | None |
-| Registration or email | **None** | Sometimes | Sometimes |
-| Data collection | **None, verifiable in public code** | Trust the seller | Trust the store label |
+| Registration or email | **None** | Sometimes | Usually none |
+| Data collection | **None, verifiable in public code** | Trust the seller | Many collect usage data or device IDs |
 | Cloud or relay server | **None, phone to car directly** | Varies | Some use one |
 | Open source | **Yes, MIT** | Some | Rarely |
 | Sound in sync in the car | **Yes** | Usually | Not always |

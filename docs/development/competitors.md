@@ -1,28 +1,43 @@
 # Competitor comparison (internal)
 
-Researched 2026-11-21 from public web pages. Play Store pages could not be read, so Play "Data safety" details are **unverified** for every Android app. Recheck before quoting any of this publicly. The public website and README compare by category only and name no competitor.
+Researched 2026-11-21. Google Play listings read in Chrome (Swiss store, English), App Store and project pages on the web. "Data" is the developer's own Google Play Data safety declaration (self-declared, not audited). Recheck before quoting any of this publicly. The public website and README compare by category only and name no competitor.
 
-| App | Platform | Price | Extra hardware | Account | Cloud / relay | Data collection | Open source | Sound | Touch | Latency |
-|---|---|---|---|---|---|---|---|---|---|---|
-| **WebMirror** | Android 10+ | Free | No | None | None, local hotspot only | None (verifiable in code) | Yes, MIT | Yes, in sync in the browser, or Bluetooth | Yes, multi-touch and typing | ~40 ms measured |
-| [TesMirror](https://puppytigerstudio.github.io/en/tesmirror/guide.html) | Android 10+ | unverified | No | unverified | Local hotspot (per guide) | unverified | Not stated | Not mentioned | Yes (accessibility service) | Not stated |
-| TeslAA ([Electrek 2021](https://electrek.co/2021/09/30/android-auto-tesla-vehicles-browser-app/)) | Android (Android Auto in the browser) | ~$6.50 in 2021, current unverified | No | unverified | Uses an external web page; relay unverified | unverified | unverified | unverified | unverified | Not stated |
-| [Tesla Android / Tesdroid](https://github.com/tesla-android/android-raspberry-pi) | Raspberry Pi box + any phone | ~EUR 289 unit (sold out when checked); DIY build is free but heavy | **Yes** | Optional store account | unverified | Privacy-focused claims | Yes, GPL-3.0 | Yes | Yes | Not stated |
-| [ScreenStream](https://github.com/dkrivoruchko/ScreenStream) | Android 7+ | Free; Play version has ads | No | No | Local MJPEG, or WebRTC via a signaling server | unverified | Yes, MIT | Not in Local mode | No remote control | Not stated (MJPEG locally) |
-| [TslaMirror](https://apps.apple.com/us/app/tslamirror/id1542447409) | iPhone | Free + in-app purchase | No | Not stated | Local hotspot | "Data Not Collected" label | No | Yes, manual start, may drift | **No** | Not stated |
-| [TesDisplay](https://apps.apple.com/app/TesDisplay/id6469987744) | iPhone | Free + Pro $4.99 | No | Not stated | unverified | "Data Not Collected" label | Not stated | Partial | Not stated | Not stated; reviews report lag |
+## Android apps that mirror to the Tesla browser
+
+| App | Price | Ads | Downloads | Data (Play Data safety) | Notable |
+|---|---|---|---|---|---|
+| **WebMirror** | Free | No | — | None collected; open source, verifiable | Sound in sync, touch + typing, H.264/HEVC/VP9/AV1, 60 fps, ~40 ms measured, free HTTPS cert, PIN |
+| [TslaMirror](https://play.google.com/store/apps/details?id=com.hustmobile.teslamirror) (Hustmobile) | In-app purchases | No | 10K+ (2.6★) | None collected | MJPEG/H.264/H.265, sound (up to 96 kHz), single-app casting, **Android Auto casting**; also on iPhone ($0.99/month or $5.99 lifetime) |
+| [Tesla Display](https://play.google.com/store/apps/details?id=io.github.blackpill.tesladisplay) (Super Ratel) | Free + in-app purchases | **Yes** | 10K+ | **Collects** app activity, performance, device IDs | Touch control, sound, video links |
+| [Tesla Air](https://play.google.com/store/apps/details?id=cc.tsla.air) | **$2.99/month or $14.99 lifetime** (3-day trial) | No | 10+ | None collected | Opens tsla.cc in the car; picture and sound stay on the hotspot |
+| [Carmiro](https://play.google.com/store/apps/details?id=com.wovex.carmiro) / [Carmiro Lite](https://play.google.com/store/apps/details?id=com.wovex.carmiro_lite) | CHF 7.90 / free with **ads** | Lite: yes | 5+ / 100+ (4.7★) | **Collects** location, app activity, device IDs | Separate second screen with its own launcher, split screen, touch + typing |
+| [MOMEE](https://play.google.com/store/apps/details?id=com.momee.teslahud) | In-app purchases, 30-day trial | No | 1K+ | None collected, "data isn't encrypted" | Touch control, app shortcuts, App Cast beta (needs ADB) |
+| [T-Cast](https://play.google.com/store/apps/details?id=com.borlagames.tcastmirrorcar) | In-app purchases | No | 100+ | **Collects and shares** device IDs | Mirror mode + Android Auto mode via a companion plugin |
+| [Tesvo](https://play.google.com/store/apps/details?id=com.imran.tesvo) | 7-day trial, then one-time purchase | No | 100+ (4.7★) | None collected, "data isn't encrypted" | No account, local only, MJPEG or H.264, tesvo.app address, weather bar |
+| [TesMirror](https://play.google.com/store/apps/details?id=com.puppytiger.tesmirror) | Free | **Yes** | 100+ | None collected | Touch control; no sound mentioned |
+| [ScreenStream](https://play.google.com/store/apps/details?id=info.dvkr.screenstream) | Free (Play version has ads) | **Yes** | 5M+ (3.7★) | **Collects and shares** app activity, performance, device IDs | Open source (MIT), Android 7+, local MJPEG (no sound, no touch), WebRTC via signaling server, RTSP |
+| [Duplila](https://play.google.com/store/apps/details?id=com.duplila.screenshare) | Free + in-app purchases | **Yes** | 50K+ (4.4★) | **Collects** personal info and more; shares IDs | General Android-to-Android via ADB, not Tesla-specific |
+
+## Other approaches
+
+| Product | Notes |
+|---|---|
+| [Tesla Android / Tesdroid](https://github.com/tesla-android/android-raspberry-pi) | Raspberry Pi box plugged into the car, about EUR 289 (sold out when checked), open source (GPL-3.0), CarPlay / Android Auto, LTE |
+| [TesDisplay](https://apps.apple.com/app/TesDisplay/id6469987744) (iPhone) | Free + Pro $4.99, "Data Not Collected", reviews report lag |
+| TeslAA (AAWireless) | Android Auto in the browser; last solid info from 2021, current status unverified |
 
 ## Where WebMirror is clearly stronger
 
-- The only free, open-source Android option found with **sound, touch and typing** in the car browser together.
-- **No hardware**: the hardware route costs about EUR 289 and was sold out.
-- **Verifiable privacy**: open code, no account, no relay or signaling server, no ads. Competitors rely on store labels.
-- **Modern video**: WebCodecs with H.264/HEVC/VP9/AV1, up to 60 fps, measured ~40 ms. No competitor publishes a latency figure.
-- **Free HTTPS certificate set up on the phone**: not offered by any competitor found.
+- **Free, with no ads, subscriptions or trials.** Every Tesla-specific competitor found has ads, a subscription, a paid unlock or a paid app.
+- **No data collected, and anyone can check it.** Five of the ten Android listings declare collecting data (device IDs, app activity, even location), and two declare sharing it. The rest rely on a self-declared label. WebMirror is the only open-source Tesla-specific app.
+- **Encrypted connection.** Two "no data collected" competitors declare "data isn't encrypted". WebMirror offers HTTPS with a free certificate set up on the phone.
+- **Video quality.** Competitors list MJPEG, H.264 and H.265 at most. WebMirror adds VP9 and AV1, up to 60 fps, and publishes a measured ~40 ms delay. No competitor publishes a delay.
+- **The full set in one app:** sound in sync, touch, typing with the Tesla keyboard, Rotate, PIN pairing and heat protection.
 
 ## Where competitors are honestly better
 
-- **iPhone support** (TslaMirror, TesDisplay). WebMirror is Android only.
-- **Native car UI**: Android Auto / CarPlay style (TeslAA, Tesla Android box), DRM video and always-on LTE (box).
-- **Maturity and reach**: ScreenStream supports Android 7+, WebRTC over the internet and RTSP, and is on F-Droid and Play.
-- **Store presence and reviews** (TesMirror, TslaMirror).
+- **Android Auto in the car** (TslaMirror, T-Cast, the Tesla Android box).
+- **A separate second screen** that runs apps independently of the phone (Carmiro, TslaMirror, MOMEE beta).
+- **iPhone support** (TslaMirror, TesDisplay).
+- **Extras:** weather bar and scratch pad (Tesvo), split screen (Carmiro), lossless 96 kHz audio (TslaMirror).
+- **Reach and store presence:** ScreenStream (5M+ downloads, Android 7+), TslaMirror (10K+), Google Play listings and reviews. WebMirror is not on Play yet.

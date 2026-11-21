@@ -4,6 +4,7 @@ import HeroMockup from '../components/HeroMockup.astro';
 import HowDiagram from '../components/HowDiagram.astro';
 import DownloadButton from '../components/DownloadButton.astro';
 import PlayBadge from '../components/PlayBadge.astro';
+import AndroidRobot from '../components/AndroidRobot.astro';
 import FeatureCard from '../components/FeatureCard.astro';
 import Callout from '../components/Callout.astro';
 import FaqItem from '../components/FaqItem.astro';
@@ -49,7 +50,7 @@ const teaser = FAQS.slice(0, 4);
         </div>
         <div class="badges">
           <PlayBadge />
-          <p class="muted small">Android 10 or newer</p>
+          <p class="muted small platform"><AndroidRobot size={22} /> Android 10 or newer</p>
         </div>
       </div>
       <div class="hero-art"><HeroMockup /></div>
@@ -152,10 +153,10 @@ const teaser = FAQS.slice(0, 4);
           <caption>WebMirror and typical alternatives</caption>
           <thead><tr><th scope="col"></th><th scope="col" class="us">WebMirror</th><th scope="col">Hardware boxes</th><th scope="col">Other mirroring apps</th></tr></thead>
           <tbody>
-            <tr><th scope="row">Price</th><td class="us">Free</td><td>Paid device, can cost hundreds of euros</td><td>Often paid upgrades or ads</td></tr>
+            <tr><th scope="row">Price</th><td class="us">Free</td><td>Paid device, can cost hundreds of euros</td><td>Usually ads, a subscription or a paid unlock</td></tr>
             <tr><th scope="row">Extra hardware</th><td class="us">None</td><td>A box plugged into the car</td><td>None</td></tr>
-            <tr><th scope="row">Registration or email</th><td class="us">None</td><td>Sometimes</td><td>Sometimes</td></tr>
-            <tr><th scope="row">Data collection</th><td class="us">None, verifiable in public code</td><td>Trust the seller</td><td>Trust the store label</td></tr>
+            <tr><th scope="row">Registration or email</th><td class="us">None</td><td>Sometimes</td><td>Usually none</td></tr>
+            <tr><th scope="row">Data collection</th><td class="us">None, verifiable in public code</td><td>Trust the seller</td><td>Many collect usage data or device IDs</td></tr>
             <tr><th scope="row">Cloud or relay server</th><td class="us">None, phone to car directly</td><td>Varies</td><td>Some use one</td></tr>
             <tr><th scope="row">Open source</th><td class="us">Yes, MIT</td><td>Some</td><td>Rarely</td></tr>
             <tr><th scope="row">Sound in sync in the car</th><td class="us">Yes</td><td>Usually</td><td>Not always</td></tr>
@@ -243,6 +244,7 @@ const teaser = FAQS.slice(0, 4);
   .compare .us { color: var(--text); font-weight: 600; background: rgb(30 79 216 / .14); }
   .badges { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); }
   .badges p { margin: 0; }
+  .platform { display: inline-flex; align-items: center; gap: 8px; }
   .small { font-size: var(--fs-sm); }
   .hero-art { min-width: 0; }
   @media (min-width: 900px) { .hero-grid { grid-template-columns: 1fr 1.1fr; } }
