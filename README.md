@@ -2,7 +2,7 @@
 
 <h1 align="center">WebMirror</h1>
 
-<p align="center"><b>Mirror your Android phone screen to your Tesla.</b><br>Wireless screen sharing from Android to any web browser, optimised for the Tesla in-car browser. No app, cable or account needed in the car.<br><b>No registration. No tracking. Your data never leaves your devices.</b></p>
+<p align="center"><b>Mirror your Android phone screen to your Tesla.</b><br>Wireless screen sharing from Android to any web browser, optimised for the Tesla in-car browser. No app, cable or account needed in the car.<br><b>Everything others charge for, free and open source. Up to 60 fps, touch and sound, no ads, no account, no tracking.</b></p>
 
 <p align="center"><a href="https://danyk20.github.io/WebMirror/"><b>Website</b></a> · <a href="https://github.com/danyk20/WebMirror/releases/latest"><b>Download</b></a> · <a href="https://danyk20.github.io/WebMirror/setup/"><b>Setup guide</b></a> · <a href="https://danyk20.github.io/WebMirror/faq/"><b>FAQ</b></a></p>
 
@@ -128,22 +128,20 @@ The wire protocol and architecture are described in [docs/development/PLAN.md](d
 
 ## How WebMirror compares
 
-Other ways to get a phone onto a Tesla screen are hardware boxes that plug into the car, and mirroring apps from app stores. How they usually differ:
+Most Tesla mirroring apps come with ads, a subscription or a paid unlock, and several declare that they collect data. WebMirror is free, has no ads, collects nothing and is open source.
 
-| | **WebMirror** | Hardware boxes | Other mirroring apps |
-| --- | --- | --- | --- |
-| Price | **Free** | Paid device, can cost hundreds of euros | Usually ads, a subscription or a paid unlock |
-| Extra hardware | **None** | A box plugged into the car | None |
-| Registration or email | **None** | Sometimes | Usually none |
-| Data collection | **None, verifiable in public code** | Trust the seller | Many collect usage data or device IDs |
-| Cloud or relay server | **None, phone to car directly** | Varies | Some use one |
-| Open source | **Yes, MIT** | Some | Rarely |
-| Sound in sync in the car | **Yes** | Usually | Not always |
-| Touch and typing from the car | **Yes** | Usually | Not always |
-| Encrypted HTTPS link | **Free certificate set up on the phone** | Not applicable | Rarely offered |
-| Measured delay | **About 40 ms, published** | Rarely published | Rarely published |
+| Product | Price | Ads | Data the developer declares collecting | Open source | Extra hardware | Sound |
+| --- | --- | --- | --- | --- | --- | --- |
+| **WebMirror** | **Free** | **No** | **None** | **Yes, MIT** | **No** | **Yes, in sync** |
+| TslaMirror (Android app) | In-app purchases | No | None declared | Not stated | No | Yes |
+| Tesla Display (Android app) | Free + in-app purchases | Yes | App activity, app performance, device IDs | Not stated | No | Yes |
+| Tesla Air (Android app) | $2.99/month or $14.99 once | No | None declared | Not stated | No | Yes |
+| Carmiro (Android app) | CHF 7.90; Lite version free with ads | Lite: yes | Location, app activity, device IDs | Not stated | No | Not stated |
+| Tesvo (Android app) | 7-day trial, then paid unlock | No | None declared | Not stated | No | Not stated |
+| ScreenStream (Android app, not Tesla-specific) | Free | Yes (Play version) | App activity, app performance, device IDs; also shared | Yes, MIT | No | Not in local Wi-Fi mode |
+| Tesla Android (Raspberry Pi box) | About €289 device | No | Not on Google Play | Yes, GPL-3.0 | Yes, box in the car | Yes |
 
-Based on public information from November 2026; products differ. WebMirror is Android only.
+Sources: each app's Google Play listing (Swiss store; prices can differ by region) and the Tesla Android project page, checked 21 November 2026. "Data the developer declares collecting" is the developer's own Google Play data safety statement. "Not stated" means the listing does not say. If something is out of date, [open an issue](https://github.com/danyk20/WebMirror/issues) and it will be corrected. Product names are trademarks of their owners; no affiliation is implied.
 
 ## Performance
 
