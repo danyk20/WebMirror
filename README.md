@@ -243,6 +243,19 @@ app/src/main/assets/web/   the browser page (plain JavaScript, no build step)
 app/src/test/              JVM tests (java/) and web page tests (js/)
 ```
 
+## Roadmap
+
+Planned, in no particular order and without dates:
+
+- **Google Play release.**
+- **Android Auto on the Tesla screen.**
+- **Separate second screen:** apps run on the Tesla screen while the phone stays free for other things.
+- **Launcher and app shortcuts in the car:** start your favourite apps with one tap on the Tesla screen.
+- **Battery saving:** dim the phone screen while mirroring.
+- **An easy address:** open a short, memorable name in the car instead of a number.
+
+Ideas and votes are welcome in [GitHub issues](https://github.com/danyk20/WebMirror/issues).
+
 ## Documentation
 
 - [Free HTTPS certificate guide](docs/HTTPS-CERTIFICATE.md)

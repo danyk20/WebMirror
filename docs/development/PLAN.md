@@ -562,6 +562,14 @@ Then **tune the numbers in §2.3** to the highest settings the car holds with ze
 - **Typing from the browser:** done, see 2.1.5 (Tesla keyboard on Android 13+; the phone keyboard otherwise).
 - **Internet streaming:** a `RelaySink` implementing `StreamSink` connects out to a relay server that forwards the same protocol to remote viewers; add Opus audio and adaptive bitrate at that point.
 
+### Planned features (added 2026-11-21, from the competitor review in `competitors.md`; no order or dates yet)
+- **Google Play release:** finish M6 (Play Console declarations, Data safety form "no data collected", `VpnService` and `mediaProjection` declarations) and publish the `play` flavor. Biggest reach gap: every competitor is on Play.
+- **Android Auto on the Tesla screen:** show the phone's Android Auto interface in the car browser instead of a copy of the phone (TslaMirror, T-Cast offer it). Hardest item: depends on Google's Android Auto app and unofficial ways to run it on a secondary display. Research feasibility first.
+- **Separate second screen:** run apps on a virtual display that the car shows, independent of the phone screen, so the phone stays usable (Carmiro, TslaMirror, MOMEE beta). `ScreenCapture` already creates a virtual display; launching apps onto a secondary display needs research (permissions, ADB or not, per-device support).
+- **Launcher and app shortcuts in the car:** a panel in the page to start chosen apps on the phone (or on the second screen) with one tap (Carmiro, MOMEE). New `input`-style JSON message; the phone needs a way to launch apps from the background (accessibility or the second screen).
+- **Battery saving by dimming the phone screen:** lower the phone's own brightness while mirroring and restore it on Stop (TesMirror, MOMEE). Today WebMirror only holds a dim wake lock. Needs `WRITE_SETTINGS` (already declared) or a dark overlay.
+- **An easy address:** open a short name in the car instead of typing an IP (Tesla Air `tsla.cc`, Tesvo `tesvo.app`). Car test 5 showed the Tesla browser refuses private addresses, also through a DNS name, so find out how they do it (likely a public page that hands over to the phone). Must keep the privacy promise: no tracking, no data through our server; a static page on GitHub Pages is acceptable.
+
 ---
 
 ## 5. Verification summary
