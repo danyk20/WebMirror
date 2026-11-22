@@ -74,10 +74,17 @@ class MainActivity : ComponentActivity() {
             val ip = pendingVirtualIp
             pendingVirtualIp = null
             if (result.resultCode == RESULT_OK && ip != null) {
-                VirtualIpService.start(this, ip)
+                if (MirrorService.state.value.running) VirtualIpService.start(this, ip)
             } else {
                 settings.virtualIpEnabled = false
             }
+        }
+
+    /** VPN consent asked before mirroring starts. Denied: mirror without the virtual address and let Home warn. */
+    private val vpnConsentForMirror =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode != RESULT_OK) settings.virtualIpLost = true
+            startMirrorAfterVpn()
         }
 
     /** Bytes of the picked .p12, held in memory until the password was accepted (nothing is saved before). */
@@ -145,10 +152,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Restore the virtual address if it was on and the system consent is still valid. Done here, not in
-        // onCreate: an activity created while the screen is off/locked may not start services (the start is also
-        // guarded, and tried again on the next resume).
-        if (settings.virtualIpEnabled && !VirtualIpService.state.value.active &&
+        // While mirroring, recover a virtual address start that failed (e.g. while the screen was off). Done here,
+        // not in onCreate: an activity created while the screen is off/locked may not start services.
+        if (MirrorService.state.value.running && settings.virtualIpEnabled && !VirtualIpService.state.value.active &&
             Ipv4.isValid(settings.virtualIp) && VpnService.prepare(this) == null
         ) {
             VirtualIpService.start(this, settings.virtualIp)
@@ -157,6 +163,17 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startMirror() {
+        if (settings.virtualIpEnabled && Ipv4.isValid(settings.virtualIp)) {
+            val consent = VpnService.prepare(this)
+            if (consent != null) {
+                vpnConsentForMirror.launch(consent)
+                return
+            }
+        }
+        startMirrorAfterVpn()
+    }
+
+    private fun startMirrorAfterVpn() {
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
@@ -193,7 +210,7 @@ class MainActivity : ComponentActivity() {
         }
         val consent = VpnService.prepare(this)
         if (consent == null) {
-            VirtualIpService.start(this, ip)
+            if (MirrorService.state.value.running) VirtualIpService.start(this, ip)
         } else {
             pendingVirtualIp = ip
             vpnConsent.launch(consent)

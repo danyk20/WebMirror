@@ -5,6 +5,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- The virtual address (the local VPN) now runs only while mirroring and is switched off when you stop, so the VPN icon disappears and other apps (for example streaming apps) are not affected. It comes back automatically when you start mirroring.
+
 ### Fixed
 
 - Sound in the browser checks the microphone permission right before capturing, so withdrawing it while mirroring shows a clear message instead of an error. Android Lint now runs on every change.

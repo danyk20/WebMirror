@@ -12,6 +12,8 @@ import app.webmirror.android.AudioMode
 import app.webmirror.android.Settings
 import app.webmirror.android.CaptureRequest
 import app.webmirror.android.MirrorService
+import app.webmirror.android.net.Ipv4
+import android.net.VpnService
 
 /** Invisible activity started by the Quick Settings tile: shows the capture consent dialog, starts mirroring, finishes. */
 class StartCaptureActivity : ComponentActivity() {
@@ -29,17 +31,30 @@ class StartCaptureActivity : ComponentActivity() {
     private val audioPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { captureConsent.launch(CaptureRequest.createIntent(this)) }
 
+    /** VPN consent for the virtual address. Denied: mirror without it and let Home warn. */
+    private val vpnConsent =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode != Activity.RESULT_OK) Settings(this).virtualIpLost = true
+            askAudioThenCapture()
+        }
+
+    private fun askAudioThenCapture() {
+        if (Settings(this).audioMode == AudioMode.BROWSER &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
+        ) {
+            audioPermission.launch(Manifest.permission.RECORD_AUDIO)
+        } else {
+            captureConsent.launch(CaptureRequest.createIntent(this))
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // After a configuration change or process death the consent dialog may already be showing.
         if (savedInstanceState == null) {
-            if (Settings(this).audioMode == AudioMode.BROWSER &&
-                ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
-            ) {
-                audioPermission.launch(Manifest.permission.RECORD_AUDIO)
-            } else {
-                captureConsent.launch(CaptureRequest.createIntent(this))
-            }
+            val settings = Settings(this)
+            val consent = if (settings.virtualIpEnabled && Ipv4.isValid(settings.virtualIp)) VpnService.prepare(this) else null
+            if (consent != null) vpnConsent.launch(consent) else askAudioThenCapture()
         }
     }
 }

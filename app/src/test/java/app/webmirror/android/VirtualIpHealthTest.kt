@@ -7,23 +7,29 @@ import org.junit.Test
 
 class VirtualIpHealthTest {
     @Test
+    fun notMirroringIsNeverAProblem() {
+        assertFalse(carCannotReach(mirroring = false, active = false, lost = true, httpsNameConfigured = true))
+        assertFalse(carCannotReach(mirroring = false, active = false, lost = false, httpsNameConfigured = true))
+    }
+
+    @Test
     fun activeAddressIsAlwaysReachable() {
-        assertFalse(carCannotReach(active = true, lost = true, httpsNameConfigured = true))
-        assertFalse(carCannotReach(active = true, lost = false, httpsNameConfigured = true))
+        assertFalse(carCannotReach(mirroring = true, active = true, lost = true, httpsNameConfigured = true))
+        assertFalse(carCannotReach(mirroring = true, active = true, lost = false, httpsNameConfigured = true))
     }
 
     @Test
     fun lostAddressIsUnreachable() {
-        assertTrue(carCannotReach(active = false, lost = true, httpsNameConfigured = false))
+        assertTrue(carCannotReach(mirroring = true, active = false, lost = true, httpsNameConfigured = false))
     }
 
     @Test
     fun secureNamePointsToTheVirtualAddress() {
-        assertTrue(carCannotReach(active = false, lost = false, httpsNameConfigured = true))
+        assertTrue(carCannotReach(mirroring = true, active = false, lost = false, httpsNameConfigured = true))
     }
 
     @Test
-    fun offOnPurposeWithoutNameIsFine() {
-        assertFalse(carCannotReach(active = false, lost = false, httpsNameConfigured = false))
+    fun offWithoutNameIsFine() {
+        assertFalse(carCannotReach(mirroring = true, active = false, lost = false, httpsNameConfigured = false))
     }
 }

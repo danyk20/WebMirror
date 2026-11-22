@@ -471,17 +471,22 @@ private fun NetworkSettings(settings: Settings, onVirtualIp: (Boolean, String) -
     var text by remember { mutableStateOf(settings.virtualIp) }
     var fieldError by remember { mutableStateOf<String?>(null) }
 
+    // The preference is not observable: hold it in state (re-read whenever the VPN state changes) so the switch moves at once.
+    var enabled by remember(vip) { mutableStateOf(settings.virtualIpEnabled) }
+
     GroupTitle("Virtual address")
-    Note("A link-local address that the Tesla browser accepts. Devices on the phone's hotspot reach the server there.")
-    SwitchRow(if (vip.active) "On: ${vip.address}" else "Off", vip.active) { on ->
+    Note("A link-local address that the Tesla browser accepts. Devices on the phone's hotspot reach the server there. It runs as a local VPN only while you mirror.")
+    SwitchRow(if (enabled) "On while mirroring" else "Off", enabled) { on ->
         val ip = text.trim()
         if (on && !Ipv4.isValid(ip)) {
             fieldError = "Enter four numbers from 0 to 255 separated by dots, e.g. 169.254.77.1"
         } else {
             fieldError = null
             onVirtualIp(on, ip)
+            enabled = settings.virtualIpEnabled
         }
     }
+    if (vip.active) Note("Active now: ${vip.address}")
     OutlinedTextField(
         value = text,
         onValueChange = {
@@ -506,7 +511,7 @@ private fun NetworkSettings(settings: Settings, onVirtualIp: (Boolean, String) -
         },
     ) { Text("Use ${Settings.DEFAULT_VIRTUAL_IP}") }
     if (settings.virtualIpLost && !vip.active) {
-        ErrorText("Switched off by another VPN app or by Android. Switch it on again; Android asks once.")
+        ErrorText("Switched off by another VPN app or by Android. It is set up again when you start mirroring; Android may ask once.")
     }
     vip.error?.let { ErrorText(it) }
 }

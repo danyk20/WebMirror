@@ -83,15 +83,15 @@ class VirtualIpService : VpnService() {
     private fun fail(message: String) {
         closeTunnel()
         markLost()
+        Settings(this).virtualIpEnabled = false
         _state.value = VirtualIpState(error = message)
         stopSelf()
     }
 
-    /** Switches the setting off; if it was on, remembers that it was lost (not switched off by the user) so the UI can warn. */
+    /** Remembers that the address was lost (not switched off by the user) so the UI can warn. The setting stays on: the next Start retries. */
     private fun markLost() {
         val settings = Settings(this)
         if (settings.virtualIpEnabled) settings.virtualIpLost = true
-        settings.virtualIpEnabled = false
     }
 
     private fun closeTunnel() {

@@ -172,9 +172,10 @@ private fun StartStopButton(onStart: () -> Unit) {
 private fun VirtualIpWarning(settings: Settings, onFix: () -> Unit) {
     val vip by VirtualIpService.state.collectAsState()
     val tls by TlsStore.state.collectAsState()
+    val mirroring = MirrorService.state.collectAsState().value.running
     // The flag is written before the state changes, so reading it on each recomposition is current.
     val lost = settings.virtualIpLost
-    if (!carCannotReach(vip.active, lost, tls.info?.hostNames.orEmpty().isNotEmpty())) return
+    if (!carCannotReach(mirroring, vip.active, lost, tls.info?.hostNames.orEmpty().isNotEmpty())) return
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
         modifier = Modifier.fillMaxWidth(),
@@ -189,8 +190,8 @@ private fun VirtualIpWarning(settings: Settings, onFix: () -> Unit) {
                         style = MaterialTheme.typography.titleMedium,
                     )
                     Text(
-                        "The virtual address ${settings.virtualIp} is off" +
-                            if (lost) " \u2014 another VPN app or Android switched it off." else ".",
+                        if (lost) "The virtual address ${settings.virtualIp} was switched off: another VPN app or Android switched it off."
+                        else "The virtual address ${settings.virtualIp} is off.",
                         color = MaterialTheme.colorScheme.onErrorContainer,
                         style = MaterialTheme.typography.bodyMedium,
                     )

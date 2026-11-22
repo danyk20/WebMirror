@@ -39,6 +39,8 @@ import app.webmirror.android.net.TlsInfo
 import app.webmirror.android.net.TlsStore
 import app.webmirror.android.net.carCannotReach
 import app.webmirror.android.net.VirtualIpService
+import app.webmirror.android.net.Ipv4
+import android.net.VpnService
 import app.webmirror.android.server.WebServer
 import app.webmirror.android.stream.StreamConfig
 import app.webmirror.android.stream.Pairing
@@ -242,6 +244,10 @@ class MirrorService : Service() {
             }
             active = true
             acquireLocks()
+            // The virtual address (local VPN) lives only while mirroring. We are in the foreground here, so starting is allowed.
+            if (settings.virtualIpEnabled && Ipv4.isValid(settings.virtualIp) && VpnService.prepare(this) == null) {
+                VirtualIpService.start(this, settings.virtualIp)
+            }
         }
         acquireScreenLock()
         _state.update { it.copy(paused = false, serverError = null) }
@@ -364,6 +370,7 @@ class MirrorService : Service() {
         endCapture()
         releaseLocks()
         stopServer()
+        VirtualIpService.stop(this)
         hub.reset()
         _state.update { it.copy(running = false, paused = false, serverError = error, stream = null, video = null, encoder = null) }
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -504,7 +511,7 @@ class MirrorService : Service() {
             combine(VirtualIpService.state, TlsStore.state) { v, t -> carUnreachable(v.active, t.info) }
                 .distinctUntilChanged()
                 .drop(1)
-                .collect { getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification(_state.value.paused)) }
+                .collect { if (_state.value.running) getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification(_state.value.paused)) }
         }
         // Remote control: the phone's switch and the accessibility service state go to the hub (and in hello.control to the viewers).
         scope.launch {
@@ -621,7 +628,7 @@ class MirrorService : Service() {
     }
 
     private fun carUnreachable(active: Boolean, tls: TlsInfo?): Boolean =
-        carCannotReach(active, Settings(this).virtualIpLost, tls?.hostNames.orEmpty().isNotEmpty())
+        carCannotReach(_state.value.running, active, Settings(this).virtualIpLost, tls?.hostNames.orEmpty().isNotEmpty())
 
     private fun buildNotification(paused: Boolean): Notification {
         val nm = getSystemService(NotificationManager::class.java)
