@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-11-22
+
 ### Changed
 
 - The virtual address (the local VPN) now runs only while mirroring and is switched off when you stop, so the VPN icon disappears and other apps (for example streaming apps) are not affected. It comes back automatically when you start mirroring.
@@ -81,7 +83,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Release signing from environment variables or Gradle properties.
 - Documentation, safety notice and MIT license.
 
-[Unreleased]: https://github.com/danyk20/WebMirror/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/danyk20/WebMirror/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/danyk20/WebMirror/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/danyk20/WebMirror/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/danyk20/WebMirror/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/danyk20/WebMirror/compare/v0.2.0...v0.2.1
