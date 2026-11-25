@@ -194,6 +194,7 @@ internal fun rememberAccessibilityReady(): Boolean {
 }
 
 internal fun openAccessibilitySettings(context: Context) {
+    RemoteInputService.setBindable(context, true) // an unbound (disabled) service is not listed in Settings
     context.startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 }
 

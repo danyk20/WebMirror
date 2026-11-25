@@ -5,6 +5,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- Banking apps no longer object after mirroring stops: the remote-control accessibility service is bound only while mirroring.
+- A paused session now stops after 2 hours (Settings, adjustable or Never), and right away when WebMirror is swiped away while paused, so the VPN no longer lingers and blocks banking apps.
+
 ## [0.3.2] - 2026-11-22
 
 ### Changed

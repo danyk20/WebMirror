@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import app.webmirror.android.input.PhoneRotation
 import app.webmirror.android.input.RemoteControlState
+import app.webmirror.android.input.RemoteInputService
 import app.webmirror.android.input.TypingState
 import app.webmirror.android.net.AutoCert
 import app.webmirror.android.net.Ipv4
@@ -110,6 +111,7 @@ class MainActivity : ComponentActivity() {
         TypingState.keyboard.value = settings.typingKeyboard
         TlsStore.refresh(this)
         if (!MirrorService.state.value.running) PhoneRotation.restore(this) // crash recovery
+        if (!MirrorService.state.value.running) RemoteInputService.releaseIfIdle(this)
         AutoCert.onAppStart(this)
         Updates.schedule(this)
         handleIntent(intent)
@@ -152,6 +154,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Hide the remote-control service again when idle (e.g. after the user enabled it in Settings, or the process died while mirroring).
+        if (!MirrorService.state.value.running) RemoteInputService.releaseIfIdle(this)
         // While mirroring, recover a virtual address start that failed (e.g. while the screen was off). Done here,
         // not in onCreate: an activity created while the screen is off/locked may not start services.
         if (MirrorService.state.value.running && settings.virtualIpEnabled && !VirtualIpService.state.value.active &&

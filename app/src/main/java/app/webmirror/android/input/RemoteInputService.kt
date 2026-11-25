@@ -421,6 +421,26 @@ class RemoteInputService : AccessibilityService() {
             }
         }
 
+        /**
+         * Binds (true) or unbinds (false) the service without touching the user's Accessibility setting.
+         * A disabled component is unbound by the system and is not listed as an enabled accessibility service;
+         * enabling it again makes the system rebind it. DEFAULT keeps the manifest as the source of truth.
+         */
+        fun setBindable(context: android.content.Context, on: Boolean) {
+            val want = if (on) android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DEFAULT
+            else android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+            val cn = android.content.ComponentName(context, RemoteInputService::class.java)
+            val pm = context.packageManager
+            if (pm.getComponentEnabledSetting(cn) != want) {
+                pm.setComponentEnabledSetting(cn, want, android.content.pm.PackageManager.DONT_KILL_APP)
+            }
+        }
+
+        /** Not mirroring: unbind only if the user already enabled it (otherwise it must stay listed in Settings so they can enable it). */
+        fun releaseIfIdle(context: android.content.Context) {
+            if (isEnabledInSettings(context)) setBindable(context, false)
+        }
+
         @Volatile
         var instance: RemoteInputService? = null
             private set

@@ -128,6 +128,11 @@ class Settings internal constructor(private val prefs: SharedPreferences) {
         get() = prefs.getBoolean(KEY_KEEP_SCREEN_ON, true)
         set(value) = prefs.edit().putBoolean(KEY_KEEP_SCREEN_ON, value).apply()
 
+    /** Minutes a paused session may idle before it stops itself (frees the VPN); 0 = never. */
+    var pausedAutoStopMinutes: Int
+        get() = prefs.getInt(KEY_PAUSED_AUTO_STOP, 120)
+        set(value) = prefs.edit().putInt(KEY_PAUSED_AUTO_STOP, value).apply()
+
     /** Always send JPEG, even when every viewer could decode H.264 (plan M4.4). */
     var forceJpeg: Boolean
         get() = prefs.getBoolean(KEY_FORCE_JPEG, false)
@@ -178,6 +183,7 @@ class Settings internal constructor(private val prefs: SharedPreferences) {
         private const val KEY_TEST_PATTERN = "testUsePattern"
         private const val KEY_STREAM_CONFIG = "streamConfig"
         private const val KEY_KEEP_SCREEN_ON = "keepScreenOn"
+        private const val KEY_PAUSED_AUTO_STOP = "paused_auto_stop_minutes"
         private const val KEY_REMOTE_CONTROL = "remoteControlAllowed"
         private const val KEY_TYPING_KEYBOARD = "typingKeyboard"
         const val DEFAULT_REMOTE_CONTROL = true

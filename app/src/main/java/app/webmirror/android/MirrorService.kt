@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Activity
+import android.app.AlarmManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -18,6 +19,7 @@ import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Handler
+import android.os.SystemClock
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
@@ -148,10 +150,20 @@ class MirrorService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    /** Swiped away from Recents while paused: stop at once, so the VPN does not linger. Active mirroring keeps running. */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        if (active && _state.value.paused) stopAll(null)
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> startMirroring(intent)
             ACTION_STOP -> stopAll(null)
+            ACTION_PAUSED_TIMEOUT -> if (active && _state.value.paused) {
+                Log.i(TAG, "paused for ${Settings(this).pausedAutoStopMinutes} min, stopping")
+                stopAll(null)
+            } else if (!active) stopSelf()
             ACTION_REFRESH -> if (active) refreshUrls() else stopSelf()
             ACTION_APPLY_SETTINGS -> if (active) applySettings() else stopSelf()
             else -> if (!active) stopSelf()
@@ -183,6 +195,8 @@ class MirrorService : Service() {
             failStart("Cannot start the foreground service: ${e.message ?: e.javaClass.simpleName}", resuming)
             return
         }
+        // Bind the remote-control accessibility service only while mirroring (it is unbound again in stopAll).
+        RemoteInputService.setBindable(this, true)
         val code = intent.getIntExtra(EXTRA_CODE, Activity.RESULT_CANCELED)
         val data = if (Build.VERSION.SDK_INT >= 33) {
             intent.getParcelableExtra(EXTRA_DATA, Intent::class.java)
@@ -250,6 +264,7 @@ class MirrorService : Service() {
             }
         }
         acquireScreenLock()
+        cancelPausedStop()
         _state.update { it.copy(paused = false, serverError = null) }
         Log.i(TAG, if (resuming) "mirroring resumed" else "mirroring started")
     }
@@ -298,8 +313,30 @@ class MirrorService : Service() {
         Log.i(TAG, "capture paused, server still running")
     }
 
+    /**
+     * Auto-stop a session left paused (the VPN would otherwise stay up); 0 minutes = off. Replaces any pending alarm.
+     * An alarm on elapsed real time, not a Handler: a paused phone is usually locked and asleep, and Handler delays
+     * do not advance in deep sleep. Inexact in Doze (minutes late at most), which is fine here.
+     */
+    private fun schedulePausedStop() {
+        cancelPausedStop()
+        val minutes = Settings(this).pausedAutoStopMinutes
+        if (minutes <= 0) return
+        getSystemService(AlarmManager::class.java).setAndAllowWhileIdle(
+            AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime() + minutes * 60_000L, pausedStopIntent(),
+        )
+    }
+
+    private fun cancelPausedStop() = getSystemService(AlarmManager::class.java).cancel(pausedStopIntent())
+
+    private fun pausedStopIntent(): PendingIntent = PendingIntent.getService(
+        this, 2, Intent(this, MirrorService::class.java).setAction(ACTION_PAUSED_TIMEOUT),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
+
     /** Foreground type specialUse (no projection any more) with the "Paused" notification text. */
     private fun enterPausedForeground() {
+        schedulePausedStop()
         val n = buildNotification(true)
         try {
             if (Build.VERSION.SDK_INT >= 34) {
@@ -365,12 +402,14 @@ class MirrorService : Service() {
             return
         }
         active = false
+        cancelPausedStop()
         hub.setControl(false, RemoteInputService.connected.value)
         PhoneRotation.restore(this)
         endCapture()
         releaseLocks()
         stopServer()
         VirtualIpService.stop(this)
+        RemoteInputService.releaseIfIdle(this)
         hub.reset()
         _state.update { it.copy(running = false, paused = false, serverError = error, stream = null, video = null, encoder = null) }
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -673,6 +712,7 @@ class MirrorService : Service() {
         private const val ACTION_REFRESH = "app.webmirror.android.REFRESH"
         private const val IDLE_TIMEOUT_MS = 10_000L
         private const val ACTION_STOP = "app.webmirror.android.STOP"
+        private const val ACTION_PAUSED_TIMEOUT = "app.webmirror.android.PAUSED_TIMEOUT"
         private const val ACTION_START = "app.webmirror.android.START"
         private const val ACTION_APPLY_SETTINGS = "app.webmirror.android.APPLY_SETTINGS"
         private const val EXTRA_CODE = "code"

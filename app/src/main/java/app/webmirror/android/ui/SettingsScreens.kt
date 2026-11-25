@@ -193,6 +193,7 @@ private fun VideoSettings(settings: Settings) {
     var preset by remember { mutableStateOf(settings.preset) }
     var forceJpeg by remember { mutableStateOf(settings.forceJpeg) }
     var keepOn by remember { mutableStateOf(settings.keepScreenOn) }
+    var stopMinutes by remember { mutableStateOf(settings.pausedAutoStopMinutes) }
     val apply = { MirrorService.applySettings(context) }
     GroupTitle("Quality")
     Column(Modifier.selectableGroup()) {
@@ -223,6 +224,16 @@ private fun VideoSettings(settings: Settings) {
         forceJpeg = it
         settings.forceJpeg = it
         apply()
+    }
+    GroupTitle("Stop when paused for")
+    Note("A paused session keeps the virtual address (VPN) on, which some banking apps refuse. Swiping WebMirror away while paused stops it at once.")
+    Column(Modifier.selectableGroup()) {
+        for ((label, minutes) in listOf("30 min" to 30, "1 hour" to 60, "2 hours" to 120, "4 hours" to 240, "Never" to 0)) {
+            ChoiceRow(label, stopMinutes == minutes) {
+                stopMinutes = minutes
+                settings.pausedAutoStopMinutes = minutes
+            }
+        }
     }
 }
 
